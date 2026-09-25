@@ -16,6 +16,7 @@ class VisionValidatorTest {
         )
         assertThat(result).isEqualTo(ValidationResult.Pass)
         assertThat(result.isPass).isTrue()
+    }
 
     @Test
     fun unknownGreaterThanOne_gateHold() {
@@ -50,8 +51,6 @@ class VisionValidatorTest {
         val result = validator.validate(0.96f, 0.98f, 1)
         assertThat(result).isEqualTo(ValidationResult.Pass)
     }
-
-    // --- PASS/HOLD integrity: three gates unchanged ---
 
     @Test
     fun integrity_thresholdConstantsUnchanged() {
@@ -95,26 +94,21 @@ class VisionValidatorTest {
             assertThat(validator.validate(b, g, u).isPass).isFalse()
         }
     }
-}
 
     @Test
     fun threeIndependentHoldModes_noBypass() {
-        // Mode A: low grid confidence alone → HOLD
         val holdGrid = validator.validate(0.99f, 0.97f, 0)
         assertThat(holdGrid.isPass).isFalse()
         assertThat((holdGrid as ValidationResult.Hold).reason).contains("grid confidence")
 
-        // Mode B: low board confidence alone → HOLD
         val holdBoard = validator.validate(0.94f, 0.99f, 0)
         assertThat(holdBoard.isPass).isFalse()
         assertThat((holdBoard as ValidationResult.Hold).reason).contains("board confidence")
 
-        // Mode C: unknownCount > MAX alone → HOLD
         val holdUnk = validator.validate(0.99f, 0.99f, 2)
         assertThat(holdUnk.isPass).isFalse()
         assertThat((holdUnk as ValidationResult.Hold).reason).contains("unknownCount")
 
-        // No bypass: all three must fail independently; combining still HOLD
         assertThat(validator.validate(0.90f, 0.90f, 5).isPass).isFalse()
     }
 }

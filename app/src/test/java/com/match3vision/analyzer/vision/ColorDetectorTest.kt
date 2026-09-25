@@ -18,6 +18,7 @@ class ColorDetectorTest {
         val r = detector.detect(SyntheticFrames.solidCell(SyntheticFrames.COLOR_B))
         assertThat(r.color).isEqualTo(TileColor.B)
         assertThat(r.confidence).isAtLeast(0.8f)
+    }
 
     @Test
     fun solidRed_detectsR() {
@@ -66,8 +67,6 @@ class ColorDetectorTest {
     fun mixedTwoHues_documentsUncertainty() {
         val w = 24
         val h = 24
-        // Left/right split (not checkerboard): ColorDetector step sampling on
-        // checkerboards can land on a single hue and report conf=1.0.
         val cell = IntArray(w * h) { i ->
             val x = i % w
             if (x < w / 2) SyntheticFrames.COLOR_B else SyntheticFrames.COLOR_R
@@ -79,7 +78,6 @@ class ColorDetectorTest {
 
     @Test
     fun hueBucketBoundaries_documentCurrentMapping() {
-        // Spot-check representative hues via solid RGB near bucket centers
         val samples = listOf(
             SyntheticFrames.rgb(220, 30, 30) to TileColor.R,
             SyntheticFrames.rgb(240, 140, 30) to TileColor.O,
@@ -93,9 +91,6 @@ class ColorDetectorTest {
             assertThat(r.color).isEqualTo(expected)
         }
     }
-}
-
-    // --- Shading / AA / brightness / compression regressions ---
 
     @Test
     fun shadedBlue_stillDetectsB() {
