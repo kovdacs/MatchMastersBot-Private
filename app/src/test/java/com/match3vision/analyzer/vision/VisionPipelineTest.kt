@@ -1,6 +1,7 @@
 package com.match3vision.analyzer.vision
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import com.match3vision.analyzer.capture.ContentRoi
 import org.junit.Test
 
@@ -23,7 +24,14 @@ class VisionPipelineTest {
         // Diagnostics present
         assertThat(result.diagnostics).containsKey("method")
         // With solid palette cells + projection, expect few unknowns and PASS
-        assertThat(result.unknownCount).isAtMost(1)
+        assertWithMessage(
+            "unknownCount=%s validation=%s method=%s gridConf=%s diag=%s",
+            result.unknownCount,
+            result.validation,
+            result.method,
+            result.gridConfidence,
+            result.diagnostics,
+        ).that(result.unknownCount).isAtMost(1)
         assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
         assertThat(result.validation).isEqualTo(ValidationResult.Pass)
     }
