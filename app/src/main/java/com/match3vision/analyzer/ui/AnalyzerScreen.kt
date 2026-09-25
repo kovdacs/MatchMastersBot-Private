@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+@Composable
 fun AnalyzerScreen(
     viewModel: AnalyzerViewModel,
     onStartCapture: () -> Unit,
