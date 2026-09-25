@@ -1,11 +1,19 @@
 # real_frames
 
 Place a real Match Masters PvP board capture here as `pvp_board.jpg` to enable
-`RealFrameVisionTest` (REAL_FRAME / REAL_FIXTURE harness).
+`RealFrameVisionTest` (REAL_FRAME harness).
 
-**Status:** `REAL_FRAME_MISSING` — `pvp_board.jpg` is not in this repository.
-Searches of the private repo, match3-vision-ai trees, Google Drive, and Gmail
-found no matching capture. Do not invent a fake frame.
+**Status:** `REAL_FRAME_AVAILABLE = NO` — `pvp_board.jpg` is not in this repository
+(git history search found only launcher mipmaps + REFERENCE_PENDING JSON).
+Do not invent a fake frame.
 
-When present, CI Temurin 17 loads it via `javax.imageio.ImageIO` in
+## Harness modes (keep separate)
+
+| Mode | When |
+|------|------|
+| REAL_FRAME | This folder’s `pvp_board.jpg` — Assume-skip if missing |
+| REALISTIC_SYNTHETIC | `RealisticSyntheticFixture` — always runs; **not** a real MM frame |
+| SYNTHETIC_UNIT | `SyntheticFrames.letterboxedBoard` — clean unit board |
+
+When present, CI Temurin 17 loads JPEG via `javax.imageio.ImageIO` in
 `RealFrameLoader` (no Android Bitmap required for JVM unit tests).

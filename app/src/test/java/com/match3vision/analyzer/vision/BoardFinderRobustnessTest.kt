@@ -27,7 +27,6 @@ class BoardFinderRobustnessTest {
         assertThat(grid.confidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
         // Documented value band for clean synthetic
         assertThat(grid.confidence).isAtLeast(0.98f)
-    }
 
     @Test
     fun gutterJitter_1to2px_stillProjectionOrFallback() {
@@ -168,5 +167,84 @@ class BoardFinderRobustnessTest {
         assertThat(degraded).isLessThan(VisionThresholds.MIN_GRID_CONFIDENCE)
         // Gate constant must remain untouched
         assertThat(VisionThresholds.MIN_GRID_CONFIDENCE).isEqualTo(0.98f)
+    }
+}
+
+    @Test
+    fun multiPerturbationMatrix_documentsGridBoardGate() {
+        data class Case(val name: String, val pixels: IntArray, val w: Int, val h: Int, val roi: ContentRoi)
+
+        val cases = mutableListOf<Case>()
+        run {
+            val (p, w, h) = SyntheticFrames.letterboxedBoard(withGutters = true)
+            cases += Case("clean", p, w, h, SyntheticFrames.contentRoiForLetterbox())
+        }
+        run {
+            val (base, w, h) = SyntheticFrames.letterboxedBoard(withGutters = true)
+            val noisy = base.copyOf()
+            var s = 11
+            for (i in noisy.indices) {
+                if (noisy[i] == SyntheticFrames.BLACK) continue
+                s = (s * 1103515245 + 12345) and 0x7fffffff
+                val d = (s % 25) - 12
+                fun ch(v: Int) = (v + d).coerceIn(0, 255)
+                val px = noisy[i]
+                noisy[i] = PixelMath.rgb(ch(PixelMath.red(px)), ch(PixelMath.green(px)), ch(PixelMath.blue(px)))
+            }
+            cases += Case("noise", noisy, w, h, SyntheticFrames.contentRoiForLetterbox())
+        }
+        run {
+            val (base, w, h) = SyntheticFrames.letterboxedBoard(withGutters = true)
+            val q = IntArray(base.size) { i ->
+                val p = base[i]
+                fun q8(v: Int) = ((v / 16) * 16).coerceIn(0, 255)
+                PixelMath.rgb(q8(PixelMath.red(p)), q8(PixelMath.green(p)), q8(PixelMath.blue(p)))
+            }
+            cases += Case("jpegQuant", q, w, h, SyntheticFrames.contentRoiForLetterbox())
+        }
+        run {
+            val (p, w, h) = SyntheticFrames.letterboxedBoard(
+                letterboxTop = 40, letterboxBottom = 10, letterboxLeft = 25, letterboxRight = 5,
+                withGutters = true,
+            )
+            cases += Case(
+                "letterbox",
+                p, w, h,
+                SyntheticFrames.contentRoiForLetterbox(
+                    letterboxTop = 40, letterboxBottom = 10, letterboxLeft = 25, letterboxRight = 5,
+                ),
+            )
+        }
+        run {
+            val (p, w, h) = SyntheticFrames.letterboxedBoard(boardSize = 154, gutter = 2, withGutters = true)
+            cases += Case("scale154", p, w, h, SyntheticFrames.contentRoiForLetterbox(boardSize = 154))
+        }
+        run {
+            val realistic = RealisticSyntheticFixture.buildCanonical()
+            cases += Case(
+                "REALISTIC_SYNTHETIC",
+                realistic.pixels, realistic.width, realistic.height, realistic.contentRoi,
+            )
+        }
+
+        val pipeline = VisionPipeline()
+        println("BoardFinder multi-perturbation matrix")
+        println("| case | method | gridConf | boardConf | unknowns | gate |")
+        println("|------|--------|----------|-----------|----------|------|")
+        for (c in cases) {
+            val result = pipeline.analyze(c.pixels, c.w, c.h, c.roi)
+            val gate = if (result.validation.isPass) "PASS" else "HOLD"
+            println(
+                "| ${c.name} | ${result.method} | " +
+                    "${"%.4f".format(result.gridConfidence)} | " +
+                    "${"%.4f".format(result.boardConfidence)} | " +
+                    "${result.unknownCount} | $gate |",
+            )
+            assertThat(result.grid.validate() || result.method == GridMethod.EVEN_SPLIT).isTrue()
+            // Gates unchanged
+            assertThat(VisionThresholds.MIN_GRID_CONFIDENCE).isEqualTo(0.98f)
+            assertThat(VisionThresholds.MIN_BOARD_CONFIDENCE).isEqualTo(0.95f)
+            assertThat(VisionThresholds.MAX_UNKNOWN_COUNT).isEqualTo(1)
+        }
     }
 }

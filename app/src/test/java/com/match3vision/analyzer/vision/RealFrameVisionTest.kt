@@ -6,16 +6,18 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * REAL_FRAME / REAL_FIXTURE harness.
+ * Harness mode **REAL_FRAME**.
  *
  * Loads `real_frames/pvp_board.jpg` when present and runs [VisionPipeline],
  * dumping numeric diagnostics on assertion failure.
  *
  * When the real Match Masters capture is absent (current state: REAL_FRAME_MISSING),
- * tests are skipped via [Assume] so CI stays green.
+ * tests are skipped via [Assume] so CI stays green — do **not** invent a JPEG.
  *
- * Photorealistic-synthetic robustness lives in other *Robustness* / *Realistic* tests
- * and must not be claimed as real Match Masters frames.
+ * Three harness modes (keep separate):
+ * - REAL_FRAME — this class (Assume-skip if missing)
+ * - REALISTIC_SYNTHETIC — [RealisticSyntheticVisionTest] (always runs; not real MM)
+ * - SYNTHETIC_UNIT — clean [SyntheticFrames.letterboxedBoard] unit tests
  */
 class RealFrameVisionTest {
 

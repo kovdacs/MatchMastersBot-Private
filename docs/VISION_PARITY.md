@@ -3,24 +3,35 @@
 **Status:** `REFERENCE_PENDING`  
 **Date:** 2026-09-25 (Europe/Vienna)
 
+## Flags
+
+| Flag | Value |
+|------|-------|
+| `REAL_FRAME_AVAILABLE` | **NO** |
+| `REALISTIC_FIXTURE_AVAILABLE` | **YES** |
+| `PYTHON_REFERENCE_AVAILABLE` | **NO** |
+| `PARITY_VERIFIED` | **NO** |
+| `VISION_REAL_WORLD_VALIDATED` | **NO** |
+
 ## Purpose
 
-Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference dump for the same input frame. Metrics are **never blended into a single score** — each dimension is reported separately.
+Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference dump for the **same real input frame**. Metrics are **never blended into a single score** — each dimension is reported separately.
+
+**Do not** treat REALISTIC_SYNTHETIC ↔ SYNTHETIC_UNIT agreement as “parity verified”.
 
 ## Reference availability
 
 **No real Python V3.1 output fixtures are present in this repository.**  
-**No real Match Masters board capture (`pvp_board.jpg`) is present.**
+**No real Match Masters board capture (`pvp_board.jpg`) is present** (git history search: only mipmaps + REFERENCE_PENDING JSON).
 
-Searches (private repo, match3-vision-ai trees, Google Drive exact + keyword, Gmail) found neither the JPEG nor a V3.1 dump. Do **not** invent READY board data or a fake dump.
-
-The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json` (and `data/vision/parity/pvp_board_reference.json`) therefore carries:
+The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json`
+(and `data/vision/parity/pvp_board_reference.json`) therefore carries:
 
 ```json
 "status": "REFERENCE_PENDING"
 ```
 
-with null/empty field values.
+with null/empty field values. **Do not invent READY board data.**
 
 When a real dump **and** matching frame are added later:
 
@@ -30,7 +41,13 @@ When a real dump **and** matching frame are added later:
 4. Re-run `VisionParityComparator` against Android exports from `VisionResultExporter`.
 5. Enable full assertions in `RealFrameVisionTest` (currently Assume-skips when missing).
 
-Comparator unit tests continue to cover `REFERENCE_PENDING` behavior and synthetic READY comparisons (synthetic only — not real V3.1).
+Comparator unit tests continue to cover `REFERENCE_PENDING` behavior and synthetic READY
+comparisons (**synthetic only — not real V3.1; not PARITY_VERIFIED**).
+
+## REALISTIC_SYNTHETIC (not parity)
+
+`RealisticSyntheticFixture` + `RealisticSyntheticGroundTruth` exercise robustness with
+**authored construction GT**. That is detector robustness, not Android↔Python parity.
 
 ## Comparison dimensions (separate metrics)
 
@@ -52,15 +69,15 @@ Required top-level fields:
 
 - `imageWidth`, `imageHeight`
 - `letterboxRoi` `{left,top,right,bottom}`
-- `roiOffset` `{dx,dy}` (board ROI origin relative to letterbox, or absolute board left/top)
+- `roiOffset` `{dx,dy}`
 - `gridMethod` (`PROJECTION` | `EVEN_SPLIT`)
 - `gridConfidence`
 - `xBoundaries` (8 floats), `yBoundaries` (8 floats)
-- `cellBoxes` (49 objects: `row,col,left,top,right,bottom`)
-- `cells` (49 objects: `row,col,color,shape,special,occlusion,confidence,isUnknown`)
+- `cellBoxes` (49 objects)
+- `cells` (49 objects)
 - `unknownCount`
-- `gate` (`PASS` | `HOLD` + optional `holdReason`)
-- `boardConfidence`, `confidence` (Android-side; not used as a blended parity score)
+- `gate` (`PASS` | `HOLD`)
+- `boardConfidence`, `confidence` (not used as a blended parity score)
 
 ## Safety
 

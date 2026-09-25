@@ -1,0 +1,24 @@
+{
+  "label": "REALISTIC_SYNTHETIC",
+  "status": "SYNTHETIC_AUTHORED",
+  "provenance": "Authored from RealisticSyntheticFixture.Params construction (drawn palette indices + occludedCells). NOT from VisionPipeline detector output. NOT a real Match Masters frame. NOT a Python V3.1 dump.",
+  "note": "Runtime GT is rebuilt from RealisticSyntheticGroundTruth.fromParams(buildCanonical()) so this JSON is documentation / snapshot only.",
+  "params": {
+    "cellSize": 18,
+    "baseGutter": 2,
+    "gutterJitterAmp": 1,
+    "letterboxTop": 28,
+    "letterboxBottom": 18,
+    "letterboxLeft": 22,
+    "letterboxRight": 12,
+    "noiseAmp": 8,
+    "jpegQuantStep": 8,
+    "brightness": 1.05,
+    "contrast": 1.08,
+    "seed": 20260925,
+    "occludedCells": [[3, 5]],
+    "occlusionKind": "PARTIAL_DARK_60"
+  },
+  "boardRoi": "derived at build time",
+  "cells": "49 entries derived at build time (color VERIFIED from palette; shape UNVERIFIED solid fill; occluded → UNKNOWN)"
+}

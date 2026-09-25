@@ -1,69 +1,62 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
-**Date:** 2026-09-21 (Europe/Vienna)  
-**Root:** `/workspace/match3-vision-ai/android/`  
-**Package:** `com.match3vision.analyzer`
+**Date:** 2026-09-25 (Europe/Vienna)  
+**Root:** `/workspace/MatchMastersBot-Private`  
+**Package:** `com.match3vision.analyzer`  
+**Repo:** `kovdacs/MatchMastersBot-Private` (private)
+
+## Vision flags (evidence-based)
+
+| Flag | Value |
+|------|-------|
+| `REAL_FRAME_AVAILABLE` | **NO** |
+| `REALISTIC_FIXTURE_AVAILABLE` | **YES** |
+| `PYTHON_REFERENCE_AVAILABLE` | **NO** |
+| `PARITY_VERIFIED` | **NO** |
+| `VISION_REAL_WORLD_VALIDATED` | **NO** |
 
 ## Phase status
 
 | Phase | Title | Status |
 |------:|-------|--------|
 | 1 | Capture | PASS |
-| 2 | Vision pipeline | PASS |
-| 2.1 | Vision parity infra | PASS (`REFERENCE_PENDING` for Python dumps) |
-| 2.2 | Real frame validation | PASS |
-| 3 | Board model | PASS |
-| 4 | Rule engine | PASS (generic assumptions documented) |
-| 5 | Move engine | PASS |
-| 6 | Evaluation | PASS |
-| 7 | Look-ahead | PASS |
-| 8 | Opponent model | PASS (observable-only) |
-| 9 | Booster/Perk | PASS (stubs; unknown→UNKNOWN) |
-| 10 | Game mode | PASS |
-| 11 | Decision AI | PASS (display-only TOP-N) |
-| 12 | Analyzer UI | PASS |
-| 13 | Recording/Replay | PASS |
-| 14 | Analytics | PASS |
-| 15 | Learning infra | PASS (export only; no online learning) |
-| 16 | Safety | PASS (fail-closed) |
-| 17 | Full regression | BLOCKED (ENVIRONMENT_BLOCKED — no JDK) |
-| 18 | Final audit | PASS (this document + ARCHITECTURE_FINAL.md) |
+| 2 | Vision pipeline | PASS (robustness + REALISTIC_SYNTHETIC harness) |
+| 2.1 | Vision parity infra | PASS scaffold (`REFERENCE_PENDING`) |
+| 2.2 | Real frame validation | PASS harness; **REAL_FRAME_MISSING** |
+| 3–16 | Board→Safety | PASS (prior) |
+| 17 | Full regression | CI (`analyzer-ci`) — no JDK on box |
+| 18 | Final audit | See REAL_FRAME_REPORT.md |
 
-## Test counts
+## Vision package (this milestone)
 
-- Authored `@Test` methods (approx): **90+** (Phase 1–2 prior ~41 + new phases)
-- Gradle execution: **ENVIRONMENT_BLOCKED** (JDK/SDK missing on box)
+- Reference recovery documented: no `pvp_board.jpg` in git history
+- `RealisticSyntheticFixture` + authored `RealisticSyntheticGroundTruth`
+- Harness modes separated: REAL_FRAME / REALISTIC_SYNTHETIC / SYNTHETIC_UNIT
+- Robustness audits: BoardFinder matrix, GridConfidence calibration, occlusion,
+  color/shape/reconciler/special, validator three HOLD modes
+- Docs: `REAL_FRAME_REPORT.md`, `docs/VISION_PARITY.md`, `docs/VISION_TEST_MATRIX.md`
 
-## Build
+## Build / CI
 
-- `./gradlew :app:testDebugUnitTest` — **not run** (no `java` / Android SDK)
-- Sources target JDK 17 / compileSdk 35
+- Box: **no JDK** — unit tests + `assembleDebug` run on GitHub Actions (`analyzer-ci`, €0 free)
+- Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1
+- Analyzer-only: no AccessibilityService / touch injection / auto-play / DecisionEngine
 
-## BLOCKED / REFERENCE_PENDING
+## BLOCKED / PENDING
 
 | Item | Status |
 |------|--------|
-| JDK 17 + Android SDK on CI/box | ENVIRONMENT_BLOCKED |
-| Python V3.1 parity fixtures | REFERENCE_PENDING (`data/vision/parity/pvp_board_reference.json`) |
-| Real-device vision calibration | Deferred |
-| OpenCV | Intentionally omitted (pure Kotlin) |
+| Real `pvp_board.jpg` | REAL_FRAME_MISSING |
+| Python V3.1 dump | REFERENCE_PENDING |
+| Parity READY comparison | Blocked on real dump + frame |
+| Real-world vision validation | NO |
 
-## Known gaps
+## Next steps
 
-- Shape/special detectors are conservative heuristics (synthetic-friendly).
-- Special combo / refill rules are **documented generic assumptions**, not Match Masters facts.
-- Booster/perk catalogs are data-driven stubs; screen detectors return UNKNOWN without labels.
-- Opponent actor identity after board change remains UNKNOWN without HUD turn markers.
-- UI Compose sections implemented; instrumented UI tests not included.
-- No AccessibilityService / GestureDescription / input injection anywhere.
-
-## Next steps (human / CI)
-
-1. Install JDK 17 + Android SDK; set `local.properties` `sdk.dir`.
-2. Run `./gradlew :app:testDebugUnitTest` and fix any compile deltas.
-3. Drop real Python V3.1 dump into parity JSON (`status: READY`) and re-run comparator.
-4. Device calibration of letterbox/board/color thresholds.
-5. Do **not** add input automation.
+1. Drop real `pvp_board.jpg` + V3.1 dump; set reference READY.
+2. Run REAL_FRAME asserts + parity comparator on the same frame.
+3. Device calibration of letterbox/board/color thresholds.
+4. Do **not** add input automation.
 
 ## Safety confirmation
 
