@@ -83,8 +83,11 @@ class ShapeDetector(
         val varR = (sumR2 / foreground - meanR * meanR).coerceAtLeast(0.0)
         val relRadialVar = if (meanR > 1e-3) (varR / (meanR * meanR)).toFloat() else 1f
 
-        // Solid rectangular blob filling most of the cell → no silhouette
-        if (cellFill >= 0.82f && circularity < 0.70f && relRadialVar < 0.06f) {
+        // Solid rectangular blob filling most of the cell → no silhouette.
+        // Filled squares have circularity ≈ π/4 (~0.79) and elevated radial variance,
+        // so do NOT require circularity < 0.70 / relRadialVar < 0.06 (those never matched).
+        // Real carved circles leave empty corners → cellFill well below this threshold.
+        if (cellFill >= 0.82f && aspect in 0.85f..1.15f && bboxFill >= 0.85f) {
             return Result(TileShape.UNKNOWN, 0.35f)
         }
 
