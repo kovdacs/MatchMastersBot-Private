@@ -1,17 +1,17 @@
 package com.match3vision.analyzer.vision
 
-import java.awt.image.BufferedImage
 import java.io.File
 import java.io.InputStream
-import javax.imageio.ImageIO
 
 /**
  * JVM JPEG/PNG → ARGB [IntArray] loader for REAL_FRAME / fixture harness tests.
  *
- * Uses [javax.imageio.ImageIO] (available on CI Temurin 17). Not an Android Bitmap path.
+ * Decodes via [javax.imageio.ImageIO] at **runtime** (CI Temurin 17 has ImageIO).
+ * AGP unit-test **compile** classpath stubs omit `java.awt` / `javax.imageio`, so
+ * calls go through reflection — not an Android Bitmap path.
  *
- * REAL_FIXTURE: loads `real_frames/pvp_board.jpg` from test resources or filesystem
- * when present. Absence is expected until a real Match Masters capture is checked in.
+ * REAL_FIXTURE: loads `real_frames/pvp_board.jpg` from test resources when present.
+ * Absence is expected until a real Match Masters capture is checked in.
  */
 object RealFrameLoader {
 
@@ -40,20 +40,26 @@ object RealFrameLoader {
     }
 
     fun decode(input: InputStream, sourceLabel: String): LoadedFrame {
-        val image: BufferedImage = ImageIO.read(input)
+        // Reflection: AGP unit-test compile classpath lacks javax.imageio / java.awt.
+        val imageIO = Class.forName("javax.imageio.ImageIO")
+        val readMethod = imageIO.getMethod("read", InputStream::class.java)
+        val buffered = readMethod.invoke(null, input)
             ?: error("ImageIO failed to decode: $sourceLabel")
-        return fromBufferedImage(image, sourceLabel)
+        return fromBufferedImageReflect(buffered, sourceLabel)
     }
 
-    fun fromBufferedImage(image: BufferedImage, sourceLabel: String): LoadedFrame {
-        val w = image.width
-        val h = image.height
+    private fun fromBufferedImageReflect(image: Any, sourceLabel: String): LoadedFrame {
+        val w = image.javaClass.getMethod("getWidth").invoke(image) as Int
+        val h = image.javaClass.getMethod("getHeight").invoke(image) as Int
+        val getRgb = image.javaClass.getMethod(
+            "getRGB",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+        )
         val pixels = IntArray(w * h)
-        // Normalize to TYPE_INT_ARGB sampling
         for (y in 0 until h) {
             for (x in 0 until w) {
-                val rgb = image.getRGB(x, y) // ARGB int
-                pixels[y * w + x] = rgb
+                pixels[y * w + x] = getRgb.invoke(image, x, y) as Int
             }
         }
         return LoadedFrame(pixels, w, h, sourceLabel)
