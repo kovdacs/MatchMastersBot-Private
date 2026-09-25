@@ -33,7 +33,7 @@ class BoardFinderTest {
     fun letterbox_doesNotShiftCoordinatesIncorrectly() {
         val top = 20
         val left = 15
-        val boardSize = 140
+        val boardSize = 135
         val (pixels, w, h) = SyntheticFrames.letterboxedBoard(
             boardSize = boardSize,
             letterboxTop = top,

@@ -29,7 +29,7 @@ object SyntheticFrames {
      * solid colored cells (cycle palette).
      */
     fun letterboxedBoard(
-        boardSize: Int = 140, // divisible-ish by 7
+        boardSize: Int = 135, // exact: 7*17 + 8*2 = 135 (cell=17, gutter=2)
         letterboxTop: Int = 20,
         letterboxBottom: Int = 20,
         letterboxLeft: Int = 15,
@@ -107,7 +107,7 @@ object SyntheticFrames {
     }
 
     fun contentRoiForLetterbox(
-        boardSize: Int = 140,
+        boardSize: Int = 135,
         letterboxTop: Int = 20,
         letterboxBottom: Int = 20,
         letterboxLeft: Int = 15,
@@ -128,7 +128,7 @@ object SyntheticFrames {
 
     /** Flat noisy content — no periodic gutters → projection should fail. */
     fun noGutterBoard(
-        size: Int = 140,
+        size: Int = 135,
         seed: Int = 42,
     ): Triple<IntArray, Int, Int> {
         val pixels = IntArray(size * size)

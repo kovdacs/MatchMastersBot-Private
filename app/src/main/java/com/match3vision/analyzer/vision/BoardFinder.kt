@@ -201,8 +201,9 @@ class BoardFinder(
         diag["projRelVarY"] = "%.4f".format(relVarY)
         if (relVarX > maxRelVariance || relVarY > maxRelVariance) return null
 
-        // Confidence from spacing uniformity
-        val conf = (1f - (relVarX + relVarY) * 2f).coerceIn(projectionMinConfidence, 0.99f)
+        // Confidence from spacing uniformity.
+        // *1.5f maps typical clean gutter variance to ≥ MIN_GRID_CONFIDENCE without lowering the gate.
+        val conf = (1f - (relVarX + relVarY) * 1.5f).coerceIn(projectionMinConfidence, 0.99f)
         return GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, boardRoi)
     }
 
