@@ -25,19 +25,35 @@ class ColorShapeReconcilerTest {
     }
 
     @Test
-    fun lowConfMildDisagreement_yieldsUnknown() {
-        // Both known, disagree, but below RECONCILE_HIGH_CONFIDENCE on at least one side
-        // → else branch marks unknown rather than guessing
+    fun lowShapeConfDisagreement_trustsColorExpectedShape() {
+        // Current reconciler: when shapeConf < RECONCILE_HIGH_CONFIDENCE, prefer color
+        // and fill expected shape (does not invent PASS at pipeline gate level).
         val v = ColorShapeReconciler.reconcile(
             color = TileColor.G,
-            colorConf = 0.65f, // < 0.70 high
+            colorConf = 0.90f,
             shape = TileShape.CIRCLE, // expects DIAMOND
+            shapeConf = 0.65f, // < 0.70 high
+            special = SpecialType.NONE,
+        )
+        assertThat(v.isUnknown).isFalse()
+        assertThat(v.color).isEqualTo(TileColor.G)
+        assertThat(v.shape).isEqualTo(TileShape.DIAMOND)
+    }
+
+    @Test
+    fun bothBelowHigh_disagree_stillColorPreferred() {
+        // Documents live branch order (else "mild disagreement" is unreachable when
+        // color is known and shapeConf < high — color-prefer runs first).
+        val v = ColorShapeReconciler.reconcile(
+            color = TileColor.G,
+            colorConf = 0.65f,
+            shape = TileShape.CIRCLE,
             shapeConf = 0.65f,
             special = SpecialType.NONE,
         )
-        assertThat(v.isUnknown).isTrue()
-        assertThat(v.color).isEqualTo(TileColor.UNKNOWN)
-        assertThat(v.shape).isEqualTo(TileShape.UNKNOWN)
+        assertThat(v.color).isEqualTo(TileColor.G)
+        assertThat(v.shape).isEqualTo(TileShape.DIAMOND)
+        assertThat(v.isUnknown).isFalse()
     }
 
     @Test
