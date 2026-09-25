@@ -31,6 +31,40 @@ class OcclusionAndReconcileTest {
     }
 
     @Test
+    fun solidRedTile_notOccludedAsBanner() {
+        val cell = SyntheticFrames.solidCell(SyntheticFrames.COLOR_R)
+        val r = occlusion.detect(cell, 24, 24)
+        assertThat(r.occluded).isFalse()
+        assertThat(r.reason).isEqualTo("clear")
+    }
+
+    @Test
+    fun solidOrangeTile_notOccludedAsBanner() {
+        val cell = SyntheticFrames.solidCell(SyntheticFrames.COLOR_O)
+        val r = occlusion.detect(cell, 24, 24)
+        assertThat(r.occluded).isFalse()
+        assertThat(r.reason).isEqualTo("clear")
+    }
+
+    @Test
+    fun solidRedTileWithDarkBorder_notOccludedAsBanner() {
+        // Cell crop that includes a thin dark gutter must still count as a tile.
+        val w = 24
+        val h = 24
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            if (x < 2 || y < 2 || x >= w - 2 || y >= h - 2) {
+                SyntheticFrames.GUTTER
+            } else {
+                SyntheticFrames.COLOR_R
+            }
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isFalse()
+    }
+
+    @Test
     fun colorShapeContradiction_highConfidence_yieldsUnknown() {
         val vision = ColorShapeReconciler.reconcile(
             color = TileColor.B,
