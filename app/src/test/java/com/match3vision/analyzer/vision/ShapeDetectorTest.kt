@@ -43,4 +43,24 @@ class ShapeDetectorTest {
         assertThat(r.shape).isEqualTo(TileShape.CIRCLE)
         assertThat(r.confidence).isAtLeast(0.55f)
     }
+
+    @Test
+    fun solidWithDarkGutter_isUnknownNotCircle() {
+        // BoardFinder cell crops often include a thin dark gutter; must not become CIRCLE.
+        val w = 20
+        val h = 20
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            if (x < 2 || y < 2 || x >= w - 2 || y >= h - 2) {
+                SyntheticFrames.GUTTER
+            } else {
+                SyntheticFrames.COLOR_Y
+            }
+        }
+        val r = shape.detect(cell, w, h)
+        assertThat(r.shape).isEqualTo(TileShape.UNKNOWN)
+        assertThat(r.confidence).isLessThan(VisionThresholds.RECONCILE_HIGH_CONFIDENCE)
+    }
+
 }

@@ -84,10 +84,10 @@ class ShapeDetector(
         val relRadialVar = if (meanR > 1e-3) (varR / (meanR * meanR)).toFloat() else 1f
 
         // Solid rectangular blob filling most of the cell → no silhouette.
-        // Filled squares have circularity ≈ π/4 (~0.79) and elevated radial variance,
-        // so do NOT require circularity < 0.70 / relRadialVar < 0.06 (those never matched).
-        // Real carved circles leave empty corners → cellFill well below this threshold.
-        if (cellFill >= 0.82f && aspect in 0.85f..1.15f && bboxFill >= 0.85f) {
+        // Filled squares have circularity ≈ π/4 (~0.79); BoardFinder crops often include
+        // dark gutters and can be non-square, so do not gate on aspect. Real carved
+        // circles leave empty corners (cellFill typically ≪ 0.70) and stay classifiable.
+        if (cellFill >= 0.70f && bboxFill >= 0.85f) {
             return Result(TileShape.UNKNOWN, 0.35f)
         }
 
@@ -101,7 +101,9 @@ class ShapeDetector(
         relRadialVar: Float,
         cellFill: Float,
     ): Result {
-        if (circularity >= 0.65f && fill in 0.45f..0.95f && relRadialVar < 0.08f) {
+        if (circularity >= 0.65f && fill in 0.45f..0.95f && relRadialVar < 0.08f &&
+            cellFill < 0.70f
+        ) {
             return Result(TileShape.CIRCLE, circularity.coerceIn(0.55f, 0.98f))
         }
         if (circularity in 0.45f..0.75f && fill in 0.55f..0.92f &&
@@ -122,7 +124,7 @@ class ShapeDetector(
             return Result(TileShape.STAR, (0.55f + relRadialVar).coerceIn(0.55f, 0.92f))
         }
         return when {
-            circularity >= 0.55f -> Result(TileShape.CIRCLE, circularity * 0.8f)
+            circularity >= 0.55f && cellFill < 0.70f -> Result(TileShape.CIRCLE, circularity * 0.8f)
             relRadialVar >= 0.08f -> Result(TileShape.STAR, 0.50f)
             fill >= 0.70f && cellFill < 0.80f -> Result(TileShape.SQUARE, fill * 0.75f)
             else -> Result(TileShape.UNKNOWN, 0.30f)
