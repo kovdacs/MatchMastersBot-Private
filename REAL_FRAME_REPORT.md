@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25 (Europe/Vienna)  
 **Branch:** `main`  
-**CI:** analyzer-ci GREEN on `f539af0` (run 36145473559); follow-up may refresh HEAD  
+**CI:** analyzer-ci GREEN on `0d914cd` (run 36146083770)  
 **APK:** app-debug.apk artifact uploaded (~24.6 MB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
@@ -62,11 +62,18 @@ Scaffold: `data/vision/parity/pvp_board_reference.json` and
 | unknownCount | **N/A** |
 | PASS/HOLD | **N/A** |
 
-### REALISTIC_SYNTHETIC (canonical fixture)
+### REALISTIC_SYNTHETIC (canonical fixture) — CI run 36146083770
 
-Numerics are printed by `RealisticSyntheticVisionTest` / BoardFinder matrix in CI logs
-(`gridConf`, `boardConf`, `unknowns`, `gate`). Authored occlusion at (3,5) ⇒ ≥1 UNKNOWN.
-**PASS here ≠ VISION_REAL_WORLD_VALIDATED.**
+| Field | Value |
+|-------|-------|
+| gridConfidence | **0.9900** (PROJECTION) |
+| boardConfidence | **0.0000** (14 unknowns → penalty) |
+| unknownCount | **14** (authored occ(3,5) detected; others under noise/AA/quant) |
+| colorMatch (compared known) | **35/35** (verifiableGT=48) |
+| PASS/HOLD | **HOLD** (board confidence < 0.95) |
+
+Authored occlusion at (3,5): `unk=true occ=true`.  
+**HOLD/PASS on realistic synthetic ≠ VISION_REAL_WORLD_VALIDATED.**
 
 ## PASS / HOLD integrity
 
