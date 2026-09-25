@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-25 (Europe/Vienna)  
 **Branch work:** `vision/real-frame-robustness` → `main`  
+**CI:** analyzer-ci GREEN on `a73fa72` (run 36142513857)  
+**APK:** app-debug.apk artifact uploaded  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
 ## Real frame search result
