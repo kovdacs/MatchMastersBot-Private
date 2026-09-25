@@ -1,7 +1,6 @@
 package com.match3vision.analyzer.vision
 
 import com.google.common.truth.Truth.assertThat
-import com.google.common.truth.Truth.assertWithMessage
 import com.match3vision.analyzer.capture.ContentRoi
 import org.junit.Test
 
@@ -24,14 +23,28 @@ class VisionPipelineTest {
         // Diagnostics present
         assertThat(result.diagnostics).containsKey("method")
         // With solid palette cells + projection, expect few unknowns and PASS
-        assertWithMessage(
-            "unknownCount=%s validation=%s method=%s gridConf=%s diag=%s",
-            result.unknownCount,
-            result.validation,
-            result.method,
-            result.gridConfidence,
-            result.diagnostics,
-        ).that(result.unknownCount).isAtMost(1)
+        if (result.unknownCount > 1) {
+            val sb = StringBuilder()
+            sb.append("unknownCount=").append(result.unknownCount)
+                .append(" validation=").append(result.validation)
+                .append(" method=").append(result.method)
+                .append(" gridConf=").append(result.gridConfidence)
+                .append('\n')
+            for (r in 0 until 7) {
+                for (c in 0 until 7) {
+                    val cell = result.board.get(r, c)
+                    if (cell.isUnknown) {
+                        sb.append("UNK (").append(r).append(',').append(c).append(") occ=")
+                            .append(cell.occluded).append(" color=").append(cell.color)
+                            .append(" shape=").append(cell.shape)
+                            .append(" occKey=").append(result.diagnostics["occ_${r}_${c}"])
+                            .append('\n')
+                    }
+                }
+            }
+            sb.append("diag=").append(result.diagnostics)
+            throw AssertionError(sb.toString())
+        }
         assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
         assertThat(result.validation).isEqualTo(ValidationResult.Pass)
     }
