@@ -7,18 +7,23 @@ package com.match3vision.analyzer.vision
  * - **No interpolation** of occluded cells.
  * - Orange/red **banner text / textured overlay** must not be treated as valid tile content.
  * - Solid (near-uniform) warm fills are valid R/O game tiles, not banners.
+ * - Partial UI / dark overlays covering ≥ ~50% of the crop are occluded
+ *   (catches 50–70% partial occlusion without false-positive solid R/O).
  *
  * Pipeline short-circuit: crop → occlusion → if occluded UNKNOWN (skip color/shape/special).
  */
 class OcclusionDetector(
     private val darkLumaThreshold: Float = 28f,
     private val darkFractionThreshold: Float = 0.72f,
+    /** Partial dark / dim overlay (50–70% coverage class). */
+    private val partialDarkFractionThreshold: Float = 0.50f,
     private val bannerWarmFractionThreshold: Float = 0.50f,
     /**
      * Minimum RGB variance among warm (banner-hue) samples required to call
      * [banner_overlay]. Checker / multi-hue banner overlays are high; solid R/O tiles ~0.
      */
     private val bannerWarmColorVarianceMin: Float = 200f,
+    private val uiOverlayFractionThreshold: Float = 0.50f,
 ) {
 
     data class Result(
@@ -34,6 +39,7 @@ class OcclusionDetector(
 
         var dark = 0
         var warmBanner = 0
+        var uiOverlay = 0
         var samples = 0
         var warmSumR = 0.0
         var warmSumG = 0.0
@@ -67,6 +73,7 @@ class OcclusionDetector(
                     warmSumG2 += g * g
                     warmSumB2 += b * b
                 }
+                if (isUiOverlaySample(hsv)) uiOverlay++
                 samples++
                 x += stepX
             }
@@ -76,6 +83,7 @@ class OcclusionDetector(
         if (samples == 0) return Result(true, "no_samples", 1f)
         val darkFrac = dark.toFloat() / samples
         val bannerFrac = warmBanner.toFloat() / samples
+        val uiFrac = uiOverlay.toFloat() / samples
 
         if (darkFrac >= darkFractionThreshold) {
             return Result(true, "dark_cell", darkFrac.coerceIn(0f, 1f))
@@ -92,6 +100,16 @@ class OcclusionDetector(
             // Near-uniform warm fill → valid red/orange tile, not banner.
         }
 
+        // Partial dark overlay (50–70% class): dim cover without full-cell blackout.
+        if (darkFrac >= partialDarkFractionThreshold) {
+            return Result(true, "partial_dark", darkFrac.coerceIn(0f, 1f))
+        }
+
+        // Gray / white / washed blue UI chrome covering ≥ half the crop.
+        if (uiFrac >= uiOverlayFractionThreshold) {
+            return Result(true, "partial_ui_overlay", uiFrac.coerceIn(0f, 1f))
+        }
+
         // Near-uniform very dark mean
         val meanL = PixelMath.meanLuma(cellPixels)
         if (meanL < darkLumaThreshold * 0.85f) {
@@ -102,4 +120,18 @@ class OcclusionDetector(
     }
 
     private fun isBannerHue(h: Float): Boolean = h <= 45f || h >= 345f
+
+    /**
+     * UI chrome samples: gray/white (low sat, mid/high value) or light washed blue panels.
+     * High-sat game tiles (incl. solid R/O/B) do not match.
+     */
+    private fun isUiOverlaySample(hsv: FloatArray): Boolean {
+        val h = hsv[0]
+        val s = hsv[1]
+        val v = hsv[2]
+        if (s < 0.22f && v > 0.45f) return true // gray / white
+        // Washed blue UI strip (not saturated tile blue)
+        if (h in 185f..250f && s in 0.12f..0.48f && v > 0.55f) return true
+        return false
+    }
 }

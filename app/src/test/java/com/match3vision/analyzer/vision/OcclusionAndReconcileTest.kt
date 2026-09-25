@@ -126,4 +126,111 @@ class OcclusionAndReconcileTest {
         assertThat(applied).isEqualTo(SpecialType.NONE)
         assertThat(0.54f).isLessThan(VisionThresholds.SPECIAL_MIN_CONFIDENCE)
     }
+
+    // --- Expanded occlusion coverage (partial 50–70%, UI overlays, textured banner) ---
+
+    @Test
+    fun partialDarkOverlay_60percent_isOccluded() {
+        val w = 24
+        val h = 24
+        val cell = IntArray(w * h) { i ->
+            val y = i / w
+            // Top ~60% dark overlay, bottom solid blue tile
+            if (y < (h * 0.60f).toInt()) SyntheticFrames.DARK else SyntheticFrames.COLOR_B
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+        assertThat(r.reason).isAnyOf("partial_dark", "dark_cell", "mean_dark")
+    }
+
+    @Test
+    fun partialDarkOverlay_50percent_isOccluded() {
+        val w = 24
+        val h = 24
+        val cell = IntArray(w * h) { i ->
+            val y = i / w
+            if (y < h / 2) SyntheticFrames.DARK else SyntheticFrames.COLOR_G
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+    }
+
+    @Test
+    fun whiteUiOverlay_60percent_isOccluded() {
+        val w = 24
+        val h = 24
+        val white = SyntheticFrames.rgb(245, 245, 248)
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            if (x < (w * 0.60f).toInt()) white else SyntheticFrames.COLOR_G
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+        assertThat(r.reason).contains("ui")
+    }
+
+    @Test
+    fun grayUiOverlay_55percent_isOccluded() {
+        val w = 24
+        val h = 24
+        val gray = SyntheticFrames.rgb(160, 160, 165)
+        val cell = IntArray(w * h) { i ->
+            val y = i / w
+            if (y < (h * 0.55f).toInt()) gray else SyntheticFrames.COLOR_Y
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+    }
+
+    @Test
+    fun blueUiOverlay_60percent_isOccluded() {
+        // Washed blue chrome (not saturated tile blue)
+        val w = 24
+        val h = 24
+        val blueUi = SyntheticFrames.rgb(140, 180, 230) // lower sat than COLOR_B
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            if (x < (w * 0.60f).toInt()) blueUi else SyntheticFrames.COLOR_R
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+    }
+
+    @Test
+    fun texturedBanner_partial_isOccluded() {
+        val w = 24
+        val h = 24
+        val cell = IntArray(w * h) { i ->
+            val y = i / w
+            if (y < (h * 0.55f).toInt()) {
+                if ((i % 3) == 0) SyntheticFrames.BANNER_ORANGE else SyntheticFrames.BANNER_RED
+            } else {
+                SyntheticFrames.COLOR_G
+            }
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isTrue()
+    }
+
+    @Test
+    fun warmBannerFull_stillOccluded() {
+        val cell = SyntheticFrames.bannerCell()
+        val r = occlusion.detect(cell, 24, 24)
+        assertThat(r.occluded).isTrue()
+        assertThat(r.reason).contains("banner")
+    }
+
+    @Test
+    fun solidRed_stillClear_afterPartialFix() {
+        val r = occlusion.detect(SyntheticFrames.solidCell(SyntheticFrames.COLOR_R), 24, 24)
+        assertThat(r.occluded).isFalse()
+        assertThat(r.reason).isEqualTo("clear")
+    }
+
+    @Test
+    fun solidOrange_stillClear_afterPartialFix() {
+        val r = occlusion.detect(SyntheticFrames.solidCell(SyntheticFrames.COLOR_O), 24, 24)
+        assertThat(r.occluded).isFalse()
+        assertThat(r.reason).isEqualTo("clear")
+    }
 }

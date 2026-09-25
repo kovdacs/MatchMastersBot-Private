@@ -51,4 +51,49 @@ class VisionValidatorTest {
         val result = validator.validate(0.96f, 0.98f, 1)
         assertThat(result).isEqualTo(ValidationResult.Pass)
     }
+
+    // --- PASS/HOLD integrity: three gates unchanged ---
+
+    @Test
+    fun integrity_thresholdConstantsUnchanged() {
+        assertThat(VisionThresholds.MIN_GRID_CONFIDENCE).isEqualTo(0.98f)
+        assertThat(VisionThresholds.MIN_BOARD_CONFIDENCE).isEqualTo(0.95f)
+        assertThat(VisionThresholds.MAX_UNKNOWN_COUNT).isEqualTo(1)
+    }
+
+    @Test
+    fun integrity_gridJustBelowGate_holds() {
+        val result = validator.validate(0.99f, 0.979f, 0)
+        assertThat(result.isPass).isFalse()
+    }
+
+    @Test
+    fun integrity_boardJustBelowGate_holds() {
+        val result = validator.validate(0.949f, 0.99f, 0)
+        assertThat(result.isPass).isFalse()
+    }
+
+    @Test
+    fun integrity_unknownCountTwo_holdsEvenIfConfidencesPerfect() {
+        val result = validator.validate(1f, 1f, 2)
+        assertThat(result.isPass).isFalse()
+    }
+
+    @Test
+    fun integrity_exactGateBoundaries_pass() {
+        assertThat(validator.validate(0.95f, 0.98f, 1)).isEqualTo(ValidationResult.Pass)
+        assertThat(validator.validate(0.95f, 0.98f, 0)).isEqualTo(ValidationResult.Pass)
+    }
+
+    @Test
+    fun integrity_noForcedPassWhenAnyGateFails() {
+        val cases = listOf(
+            Triple(0.94f, 0.99f, 0),
+            Triple(0.99f, 0.97f, 0),
+            Triple(0.99f, 0.99f, 2),
+        )
+        for ((b, g, u) in cases) {
+            assertThat(validator.validate(b, g, u).isPass).isFalse()
+        }
+    }
 }

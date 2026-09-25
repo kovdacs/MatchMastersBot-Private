@@ -19,12 +19,24 @@ class VisionPipelineTest {
         assertThat(result.board.cells).hasLength(7)
         assertThat(result.board.cells[0]).hasLength(7)
         assertThat(result.method).isEqualTo(GridMethod.PROJECTION)
-        assertThat(result.unknownCount).isAtMost(1)
         // Diagnostics present
         assertThat(result.diagnostics).containsKey("method")
-        // With solid palette cells + projection, expect few unknowns and PASS
-        assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
-        assertThat(result.validation).isEqualTo(ValidationResult.Pass)
+        // Failure-path dump only (not verbose on success)
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.unknownCount <= 1,
+            "cleanBoard unknownCount must be ≤1",
+        )
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.gridConfidence >= VisionThresholds.MIN_GRID_CONFIDENCE,
+            "cleanBoard gridConfidence must be ≥ MIN_GRID_CONFIDENCE",
+        )
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.validation == ValidationResult.Pass,
+            "cleanBoard expected PASS",
+        )
     }
 
     @Test

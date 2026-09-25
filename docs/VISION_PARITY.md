@@ -1,7 +1,7 @@
 # Vision Parity — Android vs Python V3.1
 
 **Status:** `REFERENCE_PENDING`  
-**Date:** 2026-09-21 (Europe/Vienna)
+**Date:** 2026-09-25 (Europe/Vienna)
 
 ## Purpose
 
@@ -9,20 +9,28 @@ Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference 
 
 ## Reference availability
 
-No real Python V3.1 output fixtures are present in this repository. The scaffold at
-`app/src/main/assets/data/vision/parity/pvp_board_reference.json` therefore carries:
+**No real Python V3.1 output fixtures are present in this repository.**  
+**No real Match Masters board capture (`pvp_board.jpg`) is present.**
+
+Searches (private repo, match3-vision-ai trees, Google Drive exact + keyword, Gmail) found neither the JPEG nor a V3.1 dump. Do **not** invent READY board data or a fake dump.
+
+The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json` (and `data/vision/parity/pvp_board_reference.json`) therefore carries:
 
 ```json
 "status": "REFERENCE_PENDING"
 ```
 
-with null/empty field values. **Do not invent board data or expected numeric dumps.**
+with null/empty field values.
 
-When a real dump is added later:
+When a real dump **and** matching frame are added later:
 
-1. Replace the scaffold JSON (keep schema keys).
-2. Set `"status": "READY"`.
-3. Re-run `VisionParityComparator` against Android exports from `VisionResultExporter`.
+1. Place `pvp_board.jpg` under `app/src/test/resources/real_frames/`.
+2. Replace the scaffold JSON (keep schema keys).
+3. Set `"status": "READY"`.
+4. Re-run `VisionParityComparator` against Android exports from `VisionResultExporter`.
+5. Enable full assertions in `RealFrameVisionTest` (currently Assume-skips when missing).
+
+Comparator unit tests continue to cover `REFERENCE_PENDING` behavior and synthetic READY comparisons (synthetic only — not real V3.1).
 
 ## Comparison dimensions (separate metrics)
 
@@ -57,3 +65,11 @@ Required top-level fields:
 ## Safety
 
 Parity tooling is analyzer-only. It does not execute input or alter Decision AI behavior.
+
+## PASS / HOLD gates (unchanged)
+
+- `MIN_GRID_CONFIDENCE = 0.98`
+- `MIN_BOARD_CONFIDENCE = 0.95`
+- `MAX_UNKNOWN_COUNT = 1`
+
+BoardFinder projection confidence uses `* 1.5f` as **scoring calibration** so clean gutter variance maps to ≥ 0.98; this does **not** lower the gate.
