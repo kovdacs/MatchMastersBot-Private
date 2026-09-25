@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Match3 Vision Analyzer</string>
+    <string name="capture_channel_name">Screen capture</string>
+    <string name="capture_channel_desc">Foreground notification while analyzing the screen</string>
+    <string name="capture_notification_title">Match3 Vision Analyzer</string>
+    <string name="capture_notification_text">Capturing screen for analysis (no automatic input)</string>
+    <string name="action_stop">Stop</string>
+</resources>

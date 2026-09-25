@@ -1,0 +1,20 @@
+{
+  "status": "REFERENCE_PENDING",
+  "note": "No real Python V3.1 dump in repo. Do not invent board data. Fill when a real reference export is available.",
+  "source": null,
+  "pythonVersion": "V3.1",
+  "imageWidth": null,
+  "imageHeight": null,
+  "letterboxRoi": null,
+  "roiOffset": null,
+  "gridMethod": null,
+  "gridConfidence": null,
+  "xBoundaries": [],
+  "yBoundaries": [],
+  "cellBoxes": [],
+  "cells": [],
+  "unknownCount": null,
+  "gate": null,
+  "boardConfidence": null,
+  "confidence": null
+}

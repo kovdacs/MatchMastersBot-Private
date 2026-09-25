@@ -1,0 +1,209 @@
+package com.match3vision.analyzer.capture
+
+import android.content.Context
+import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.Image
+import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.DisplayMetrics
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import timber.log.Timber
+import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Owns [ImageReader] + [VirtualDisplay] for MediaProjection screen capture.
+ *
+ * Emits the latest [CaptureFrame] on [latestFrame]. Analyzer-only: no input injection.
+ */
+class ScreenCaptureManager(
+    private val context: Context,
+    private var config: CaptureConfig = CaptureConfig(),
+) {
+    private val _latestFrame = MutableStateFlow<CaptureFrame?>(null)
+    val latestFrame: StateFlow<CaptureFrame?> = _latestFrame.asStateFlow()
+
+    private val _isCapturing = MutableStateFlow(false)
+    val isCapturing: StateFlow<Boolean> = _isCapturing.asStateFlow()
+
+    private var mediaProjection: MediaProjection? = null
+    private var imageReader: ImageReader? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
+
+    private val running = AtomicBoolean(false)
+    private var lastEmitMs: Long = 0L
+    private var widthPx: Int = 0
+    private var heightPx: Int = 0
+    private var densityDpi: Int = 0
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Timber.i("MediaProjection stopped by system")
+            stop()
+        }
+    }
+
+    fun updateConfig(newConfig: CaptureConfig) {
+        config = newConfig
+    }
+
+    /**
+     * Starts capture using an already-authorized [MediaProjection].
+     * Caller must have obtained the projection from a user-approved intent result.
+     */
+    @Synchronized
+    fun start(projection: MediaProjection) {
+        if (running.get()) {
+            Timber.w("ScreenCaptureManager already running")
+            return
+        }
+        mediaProjection = projection
+        projection.registerCallback(projectionCallback, null)
+
+        val metrics = displayMetrics()
+        densityDpi = metrics.densityDpi
+        widthPx = metrics.widthPixels
+        heightPx = metrics.heightPixels
+
+        val thread = HandlerThread("Match3Capture").also { it.start() }
+        captureThread = thread
+        captureHandler = Handler(thread.looper)
+
+        val reader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, /*maxImages=*/3)
+        imageReader = reader
+        reader.setOnImageAvailableListener({ r -> onImageAvailable(r) }, captureHandler)
+
+        virtualDisplay = projection.createVirtualDisplay(
+            VIRTUAL_DISPLAY_NAME,
+            widthPx,
+            heightPx,
+            densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            reader.surface,
+            null,
+            captureHandler,
+        )
+
+        running.set(true)
+        _isCapturing.value = true
+        Timber.i("Capture started ${widthPx}x$heightPx @ ${config.targetFps} fps")
+    }
+
+    @Synchronized
+    fun stop() {
+        if (!running.getAndSet(false) && mediaProjection == null) {
+            _isCapturing.value = false
+            return
+        }
+        _isCapturing.value = false
+        try {
+            virtualDisplay?.release()
+        } catch (t: Throwable) {
+            Timber.w(t, "VirtualDisplay release")
+        }
+        virtualDisplay = null
+        try {
+            imageReader?.setOnImageAvailableListener(null, null)
+            imageReader?.close()
+        } catch (t: Throwable) {
+            Timber.w(t, "ImageReader close")
+        }
+        imageReader = null
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+            mediaProjection?.stop()
+        } catch (t: Throwable) {
+            Timber.w(t, "MediaProjection stop")
+        }
+        mediaProjection = null
+        captureThread?.quitSafely()
+        captureThread = null
+        captureHandler = null
+        Timber.i("Capture stopped")
+    }
+
+    /** Stops capture and clears the latest frame reference. */
+    fun release() {
+        stop()
+        _latestFrame.value = null
+    }
+
+    private fun onImageAvailable(reader: ImageReader) {
+        var image: Image? = null
+        try {
+            image = reader.acquireLatestImage() ?: return
+            val now = System.currentTimeMillis()
+            val interval = config.frameIntervalMs
+            if (now - lastEmitMs < interval) {
+                return
+            }
+            lastEmitMs = now
+
+            val plane = image.planes[0]
+            val buffer: ByteBuffer = plane.buffer
+            val pixelStride = plane.pixelStride
+            val rowStride = plane.rowStride
+            val rowPadding = rowStride - pixelStride * widthPx
+
+            val bitmapWidth = widthPx + rowPadding / pixelStride
+            val raw = Bitmap.createBitmap(bitmapWidth, heightPx, Bitmap.Config.ARGB_8888)
+            raw.copyPixelsFromBuffer(buffer)
+            val cropped = if (bitmapWidth > widthPx) {
+                Bitmap.createBitmap(raw, 0, 0, widthPx, heightPx).also {
+                    if (it !== raw) raw.recycle()
+                }
+            } else {
+                raw
+            }
+
+            val roi = LetterboxDetector.detect(
+                cropped,
+                lumaThreshold = config.letterboxLumaThreshold,
+                minBarRatio = config.letterboxBarMinRatio,
+            )
+
+            val frame = CaptureFrame(
+                width = widthPx,
+                height = heightPx,
+                timestampMs = now,
+                bitmap = cropped,
+                contentRoi = roi,
+            )
+            _latestFrame.value = frame
+        } catch (t: Throwable) {
+            Timber.e(t, "onImageAvailable failed")
+        } finally {
+            try {
+                image?.close()
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun displayMetrics(): DisplayMetrics {
+        val metrics = Resources.getSystem().displayMetrics
+        // Prefer window metrics from context when available
+        val dm = DisplayMetrics()
+        dm.setTo(metrics)
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+        if (wm != null) {
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(dm)
+        }
+        return dm
+    }
+
+    companion object {
+        const val VIRTUAL_DISPLAY_NAME = "Match3VisionAnalyzer"
+    }
+}
