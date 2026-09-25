@@ -35,7 +35,7 @@ class GridConfidenceCalibrationTest {
         )
         println("GridConfidence calibration (relVarX,relVarY) → conf → gate")
         println("| relVarX | relVarY | conf | gate | label |")
-        println("|---------|---------|------|------|-------|"))
+        println("|---------|---------|------|------|-------|")
         for ((vx, vy, label) in rows) {
             val conf = projectedConf(vx, vy)
             val g = gate(conf)
