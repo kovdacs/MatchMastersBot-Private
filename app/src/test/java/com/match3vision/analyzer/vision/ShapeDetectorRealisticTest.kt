@@ -64,6 +64,15 @@ class ShapeDetectorRealisticTest {
         assertThat(r.confidence).isLessThan(VisionThresholds.RECONCILE_HIGH_CONFIDENCE)
     }
 
+
+    @Test
+    fun confidenceNeverExceedsOne_onOffsetSquare() {
+        val (cell, w, h) = renderSquare(fg = SyntheticFrames.COLOR_P, offset = 1, blur = true)
+        val r = shape.detect(cell, w, h)
+        assertThat(r.confidence).isAtMost(1f)
+        assertThat(r.confidence).isAtLeast(0f)
+    }
+
     @Test
     fun emptyDark_isUnknown() {
         val cell = SyntheticFrames.darkCell(20, 20)

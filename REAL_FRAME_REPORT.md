@@ -51,6 +51,7 @@ Gates **unchanged**:
 BoardFinder `*1.5f` is scoring calibration only (documented + regression-tested), not a gate change. No forced-PASS / threshold-bypass hacks found or added.
 
 ## Fixes
+5. **ShapeDetector** — clamp fallback `circularity * 0.8f` confidence to [0,1] (discrete masks can yield circularity > 1; CI evidence conf≈2.51).
 
 1. **OcclusionDetector** — detect partial dark (≥50%) and gray/white/washed-blue UI overlays (≥50%) as occluded; textured banner path retained; solid R/O remain clear (regression tests).
 2. **REAL_FRAME infra** — `RealFrameLoader`, `RealFrameVisionTest` (Assume skip when missing), resources README.

@@ -124,9 +124,12 @@ class ShapeDetector(
             return Result(TileShape.STAR, (0.55f + relRadialVar).coerceIn(0.55f, 0.92f))
         }
         return when {
-            circularity >= 0.55f && cellFill < 0.60f -> Result(TileShape.CIRCLE, circularity * 0.8f)
+            // Circularity on discrete masks can exceed 1; always coerce confidence to [0,1].
+            circularity >= 0.55f && cellFill < 0.60f ->
+                Result(TileShape.CIRCLE, (circularity * 0.8f).coerceIn(0f, 1f))
             relRadialVar >= 0.08f -> Result(TileShape.STAR, 0.50f)
-            fill >= 0.70f && cellFill < 0.80f -> Result(TileShape.SQUARE, fill * 0.75f)
+            fill >= 0.70f && cellFill < 0.80f ->
+                Result(TileShape.SQUARE, (fill * 0.75f).coerceIn(0f, 1f))
             else -> Result(TileShape.UNKNOWN, 0.30f)
         }
     }
