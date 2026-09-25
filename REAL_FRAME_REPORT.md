@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-25 (Europe/Vienna)  
 **Branch:** `main`  
+**CI:** analyzer-ci GREEN on `f539af0` (run 36145473559); follow-up may refresh HEAD  
+**APK:** app-debug.apk artifact uploaded (~24.6 MB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
 ## Status flags (evidence-based)
