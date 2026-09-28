@@ -25,10 +25,10 @@ Wrong colors often reconciled as `B/STAR` (shape matched the polluted color).
 | Shape sampling | `SHAPE_INSET_FRAC=0.18` rectangular inset (heuristics unchanged) |
 | UNKNOWN taxonomy | `color \| shape \| special \| occlusion \| geometry/grid` via `UnknownReason` |
 
-Target: soft-GT color **≥75%** on VERIFIED cells (CI soft assert); structural PASS retained.
+**CI AFTER (run 36466586679):** soft-GT **41/41 (1.000)**; diagonal confusion matrix; structural PASS retained
+(`gridConf=0.9872`, `boardConf=1.0`, `unk=0`).
 
-See CI stdout from `SoftColorDiagnosticsTest` for the live confusion matrix and
-`SOFT_COLOR_BEFORE_AFTER` line.
+See CI stdout `SOFT_COLOR_BEFORE_AFTER before≈0.56(23/41) after=1.000(41/41)`.
 
 ## What we did **not** do
 
