@@ -1,13 +1,25 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Version:** `0.21.2-live-cells`  
+**Version:** `0.23.0-audit-pack`  
 **CI:** analyzer-ci on GitHub Actions (no JDK on box)  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)
 
-## Vision flags (evidence-based)
+## Evidence tiers (do not mix)
+
+See `docs/EVIDENCE_TIERS.md`:
+
+| Tier | Status (this pack) |
+|------|--------------------|
+| A runtime | Partial — prior device HOLD logs; no new live gesture proof |
+| B build/test | Target of this pack (CI unit + assembleDebug) |
+| C synthetic vision | Existing suite + fail-safe / frame-seq tests |
+| D real MM frame | `pvp_board.jpg` PASS in harness; soft color ~55% documented |
+| E real phone | **NOT proven** for live Move + dispatchGesture |
+
+## Vision flags
 
 | Flag | Value |
 |------|-------|
@@ -15,21 +27,17 @@
 | `REALISTIC_FIXTURE_AVAILABLE` | **YES** |
 | `PYTHON_REFERENCE_AVAILABLE` | **NO** |
 | `PARITY_VERIFIED` | **NO** |
-| `VISION_REAL_WORLD_VALIDATED` | **NO** (partial) |
+| `VISION_REAL_WORLD_VALIDATED` | **NO** (partial D only) |
 
-## Auto-play bubble UX + live grid/cells (0.21.2)
+## Safety
 
-- Big **INDÍTÁS** → minimal permission prompts (overlay + a11y + MediaProjection)
-- Floating movable bubble: **INDÍTÁS / SZÜNET / STOP**
-- Continuous loop only while bubble INDÍTÁS active; reuses Vision + Move Analysis + AutomaticInputEngine
-- Does **not** auto-start before bubble INDÍTÁS
-- **0.21.1:** live BoardFinder soft gutter recovery (gridConf≥0.98)
-- **0.21.2:** live cell dominance reconcile (unk≤1 with mushrooms/+3); bubble FUT accepts live frames; hide large analyzer UI during FUT
-- CI APK: `Match3Analyzer-<versionName>-<shortsha>.apk`
-- See `AUTO_PLAY_BUBBLE_V1.md` / `docs/LIVE_BOARD_CAPTURE.md`
+PASS/HOLD **unchanged** (0.98 / 0.95 / unk≤1). Input default OFF until INDÍTÁS.
+Fail-closed verify → pause. FrameSequenceGate: after gesture OLD/SAME forbidden.
 
-## Safety confirmation
+## Docs
 
-**Input default DISABLED** until bubble INDÍTÁS.  
-PASS/HOLD gates unchanged. Fail-closed verify → pause.  
-STOP removes bubble + stops capture/input.
+- `docs/AUDIT_CHAIN_GATES.md`
+- `docs/LIFECYCLE_MEMORY_REVIEW.md`
+- `docs/SOFT_COLOR_DIAGNOSTICS.md`
+- `docs/MUSHROOM_SPECIAL_PLAN.md`
+- `docs/STATUS_0.23.0_AUDIT_PACK_HU.md`

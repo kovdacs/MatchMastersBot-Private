@@ -392,35 +392,74 @@ class FloatingBubbleService : Service() {
                 }
                 val manager = CaptureService.managerOrNull()
                 val frame = manager?.latestFrame?.value
+                val seqGate = AutoPlaySession.frameSequenceGate
                 if (frame == null) {
+                    val miss = seqGate.evaluate(null)
                     AutoPlaySession.updateDiagnostics(
                         frameReceived = false,
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                        phase = "RÖGZÍTÉS",
+                        captureStatus = if (manager?.isCapturing?.value == true) "ON (no frame)" else "OFF",
+                        frameSequence = seqGate.statusText(),
                     )
+                    if (!miss.allow) {
+                        ctrl.onFailsafePause(miss.reason)
+                    }
                     AutoPlaySession.refreshFromController("vár képkockára…")
                     refreshBubbleUi()
                     delay(150L)
                     continue
                 }
-                // Prefer a fresh frame when possible; still allow first / same if only one.
+                val frameId = frame.toSequenceId()
+                val seqDecision = seqGate.evaluate(frameId)
+                if (!seqDecision.allow) {
+                    AutoPlaySession.updateDiagnostics(
+                        frameReceived = true,
+                        visionText = "HOLD — ${seqDecision.reason}",
+                        a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                        phase = "TARTÁS",
+                        frameSequence = "${seqDecision.verdict}",
+                        frameAgeMs = frame.ageMs(),
+                        captureStatus = "ON",
+                    )
+                    AutoPlaySession.refreshFromController(seqDecision.reason)
+                    refreshBubbleUi()
+                    delay(200L)
+                    continue
+                }
                 val useFrame = frame
                 try {
                     val vision = withContext(Dispatchers.Default) {
                         analyzeFrame(useFrame)
                     }
+                    val boardDet = vision.method.name + "/" +
+                        (vision.diagnostics["boardRoi"] ?: "roi?")
                     val cycle = withContext(Dispatchers.Default) {
                         ctrl.runCycleIfActive(vision)
                     }
                     if (cycle == null) {
-                        // Idle/Paused: do NOT stamp lastReason into STOP (was sticky stale).
                         AutoPlaySession.updateDiagnostics(
                             frameReceived = true,
                             a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                            unknownCount = vision.unknownCount,
+                            gridConfidence = vision.gridConfidence,
+                            boardConfidence = vision.boardConfidence,
+                            boardDetection = boardDet,
+                            frameSequence = "seq=${frame.sequence}",
+                            frameAgeMs = frame.ageMs(),
+                            captureStatus = "ON",
                         )
                         refreshBubbleUi()
                         delay(120L)
                         continue
                     }
+                    val phase = com.match3vision.analyzer.input.LoopPhaseLabels.fromCycle(
+                        mode = ctrl.mode,
+                        visionGate = cycle.visionGate,
+                        outcome = cycle.outcome,
+                        inputReady = cycle.inputReady,
+                        dispatched = cycle.executed is AutomaticInputEngine.ExecuteResult.Executed,
+                    ).labelHu
                     AutoPlaySession.updateDiagnostics(
                         frameReceived = true,
                         visionText = cycle.visionGate,
@@ -428,6 +467,14 @@ class FloatingBubbleService : Service() {
                         lastDispatch = cycle.lastDispatch,
                         stopReason = if (cycle.outcome == BotLoopOutcome.STOP) cycle.reason else null,
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                        phase = phase,
+                        unknownCount = vision.unknownCount,
+                        gridConfidence = vision.gridConfidence,
+                        boardConfidence = vision.boardConfidence,
+                        boardDetection = boardDet,
+                        frameSequence = "seq=${frame.sequence}/${seqDecision.verdict}",
+                        frameAgeMs = frame.ageMs(),
+                        captureStatus = "ON",
                     )
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
@@ -435,26 +482,35 @@ class FloatingBubbleService : Service() {
                         BotLoopOutcome.CONTINUE -> {
                             val executed = cycle.executed
                             if (executed is AutomaticInputEngine.ExecuteResult.Executed) {
-                                statusView?.text = "húzás #${ctrl.moveCount}"
+                                seqGate.markGestureDispatched(frameId)
+                                statusView?.text = "GESZTUS #${ctrl.moveCount}"
                                 val waitMs = cycle.animationWaitMs.coerceAtLeast(
                                     InputThresholds.ANIMATION_WAIT_MS,
                                 )
                                 delay(waitMs)
-                                // Wait for a newer capture frame when available.
-                                val startId = System.identityHashCode(useFrame)
                                 var waited = 0L
                                 var after = CaptureService.managerOrNull()?.latestFrame?.value
+                                var afterDecision = seqGate.evaluate(after?.toSequenceId())
                                 while (isActive && waited < 2_500L &&
-                                    after != null &&
-                                    System.identityHashCode(after) == startId
+                                    (after == null || !afterDecision.allow)
                                 ) {
                                     delay(100L)
                                     waited += 100L
                                     after = CaptureService.managerOrNull()?.latestFrame?.value
+                                    afterDecision = seqGate.evaluate(after?.toSequenceId())
                                 }
-                                val afterFrame = after ?: CaptureService.managerOrNull()?.latestFrame?.value
-                                if (afterFrame == null) {
-                                    ctrl.onFailsafePause("nincs húzás utáni képkocka")
+                                val afterFrame = after
+                                if (afterFrame == null || !afterDecision.allow) {
+                                    ctrl.onFailsafePause(
+                                        afterDecision.reason.ifBlank {
+                                            "nincs húzás utáni ÚJ képkocka"
+                                        },
+                                    )
+                                    AutoPlaySession.updateDiagnostics(
+                                        phase = "ELLENŐRZÉS",
+                                        frameSequence = afterDecision.verdict.name,
+                                        captureStatus = if (afterFrame == null) "MISSING" else "STALE",
+                                    )
                                     AutoPlaySession.refreshFromController()
                                     refreshBubbleUi()
                                     continue
@@ -462,6 +518,7 @@ class FloatingBubbleService : Service() {
                                 val afterVision = withContext(Dispatchers.Default) {
                                     analyzeFrame(afterFrame)
                                 }
+                                AutoPlaySession.updateDiagnostics(phase = "ELLENŐRZÉS")
                                 val fb = withContext(Dispatchers.Default) {
                                     ctrl.completeFeedback(executed.beforeBoardHash, afterVision)
                                 }
@@ -473,12 +530,12 @@ class FloatingBubbleService : Service() {
                                     delay(80L)
                                 }
                             } else {
-                                // CONTINUE without execute (shouldn't happen often) — brief pause.
                                 delay(120L)
                             }
                         }
                         BotLoopOutcome.HOLD -> {
                             // Soft HOLD (gates / board not ready): retry next frame.
+                            // Do not imply useful play — phase already TARTÁS.
                             delay(280L)
                         }
                         BotLoopOutcome.STOP -> {
@@ -487,7 +544,8 @@ class FloatingBubbleService : Service() {
                     }
                 } catch (t: Throwable) {
                     Timber.e(t, "auto-play loop error")
-                    ctrl.onFailsafePause("hiba: ${t.message}")
+                    ctrl.onFailsafePause("HIBA: ${t.message}")
+                    AutoPlaySession.updateDiagnostics(phase = "HIBA")
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
                     delay(500L)

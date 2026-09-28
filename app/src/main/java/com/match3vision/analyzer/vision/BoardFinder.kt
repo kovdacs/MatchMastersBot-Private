@@ -51,9 +51,12 @@ class BoardFinder(
             diag["projectionRejected"] = "no_peaks"
         }
 
+        // Fail-closed: 0.72 < MIN_GRID_CONFIDENCE (0.98) → VisionValidator HOLD.
+        // Do NOT raise this to pass the gate; fix ROI/projection/gutters instead.
         val fallback = GridGeometry.evenSplit(boardRoi, confidence = 0.72f)
         diag["method"] = GridMethod.EVEN_SPLIT.name
         diag["fallback"] = "EVEN_SPLIT"
+        diag["fallbackFailClosed"] = "0.72<MIN_GRID_0.98"
         return FindResult(fallback, diag)
     }
 

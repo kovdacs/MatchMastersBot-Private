@@ -28,6 +28,7 @@ object AutoPlaySession {
 
     data class Diagnostics(
         val mode: String = "IDLE",
+        val phase: String = "TÉTLEN",
         val capture: String = "OFF",
         val frame: String = "no frame",
         val vision: String = "—",
@@ -37,12 +38,27 @@ object AutoPlaySession {
         val inputReady: String = "NO",
         val lastDispatch: String = "NONE",
         val stopReason: String? = null,
+        // Vision HOLD detail (Hungarian UI — never imply useful play while HOLD-only)
+        val unknownCount: Int = -1,
+        val gridConfidence: Float = -1f,
+        val boardConfidence: Float = -1f,
+        val boardDetection: String = "—",
+        val frameSequence: String = "—",
+        val frameAgeMs: Long = -1L,
+        val captureStatus: String = "OFF",
     ) {
         fun bubbleLines(): String = buildString {
+            appendLine("FÁZIS: $phase")
             appendLine("MODE: $mode")
             appendLine("CAPTURE: $capture")
             appendLine("FRAME: $frame")
             appendLine("VISION: $vision")
+            if (vision.contains("HOLD", ignoreCase = true) || unknownCount >= 0) {
+                appendLine("  unk=$unknownCount grid=${fmt(gridConfidence)} board=${fmt(boardConfidence)}")
+                appendLine("  boardDet=$boardDetection")
+                appendLine("  frameSeq=$frameSequence ageMs=$frameAgeMs")
+                appendLine("  captureStatus=$captureStatus")
+            }
             appendLine("MOVE: $move")
             appendLine("INPUT: $input")
             appendLine("ACCESSIBILITY: $accessibility")
@@ -53,6 +69,9 @@ object AutoPlaySession {
                 append("STOP: $stopReason")
             }
         }
+
+        private fun fmt(v: Float): String =
+            if (v < 0f) "—" else "%.3f".format(v)
     }
 
     data class UiSnapshot(
@@ -91,6 +110,10 @@ object AutoPlaySession {
 
     /** Shared MediaProjection analysis freeze gate (Activity + bubble). */
     val frameGate: AnalysisFrameGate = AnalysisFrameGate()
+
+    /** Post-gesture NEW/SAME/OLD frame gate. */
+    val frameSequenceGate: com.match3vision.analyzer.capture.FrameSequenceGate =
+        com.match3vision.analyzer.capture.FrameSequenceGate()
 
     private val _ui = MutableStateFlow(UiSnapshot())
     val ui: StateFlow<UiSnapshot> = _ui.asStateFlow()
@@ -145,6 +168,14 @@ object AutoPlaySession {
         a11yConnected: Boolean? = null,
         /** When true, drop sticky STOP line (successful RUNNING / new session). */
         clearStopReason: Boolean = false,
+        phase: String? = null,
+        unknownCount: Int? = null,
+        gridConfidence: Float? = null,
+        boardConfidence: Float? = null,
+        boardDetection: String? = null,
+        frameSequence: String? = null,
+        frameAgeMs: Long? = null,
+        captureStatus: String? = null,
     ) {
         if (clearStopReason) {
             AutoPlayTrace.clearLastStop()
@@ -171,6 +202,14 @@ object AutoPlaySession {
                     lastDispatch = dispatchLabel,
                     stopReason = nextStop,
                     accessibility = if (connected) "CONNECTED" else "DISCONNECTED",
+                    phase = phase ?: cur.diagnostics.phase,
+                    unknownCount = unknownCount ?: cur.diagnostics.unknownCount,
+                    gridConfidence = gridConfidence ?: cur.diagnostics.gridConfidence,
+                    boardConfidence = boardConfidence ?: cur.diagnostics.boardConfidence,
+                    boardDetection = boardDetection ?: cur.diagnostics.boardDetection,
+                    frameSequence = frameSequence ?: cur.diagnostics.frameSequence,
+                    frameAgeMs = frameAgeMs ?: cur.diagnostics.frameAgeMs,
+                    captureStatus = captureStatus ?: cur.diagnostics.captureStatus,
                 ),
                 a11yConnected = connected,
                 captureOn = cur.captureReady,
@@ -237,6 +276,7 @@ object AutoPlaySession {
     fun beginNewSession() {
         controller.resetForNewSession()
         frameGate.setBubbleLoopRunning(false)
+        frameSequenceGate.reset()
         AutoPlayTrace.clearLastStop()
         _ui.update { cur ->
             cur.copy(diagnostics = cur.diagnostics.copy(stopReason = null))
@@ -253,6 +293,7 @@ object AutoPlaySession {
         }
         frameGate.setBubbleLoopRunning(false)
         frameGate.setBubbleOverlayOnly(false)
+        frameSequenceGate.reset()
         publish(statusText = "Leállítva", bubbleVisible = false)
     }
 

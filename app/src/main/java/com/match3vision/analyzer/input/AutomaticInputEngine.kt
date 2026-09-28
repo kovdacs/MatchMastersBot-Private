@@ -2,7 +2,6 @@ package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.evaluation.MoveEvaluation
-import com.match3vision.analyzer.vision.ValidationResult
 import com.match3vision.analyzer.vision.VisionResult
 import com.match3vision.analyzer.vision.VisionValidator
 
@@ -61,48 +60,27 @@ class AutomaticInputEngine(
     fun evaluateGate(
         vision: VisionResult,
         move: MoveEvaluation?,
+        a11yConnected: Boolean = true,
+        captureOk: Boolean = true,
+        hasFrame: Boolean = true,
+        frameAgeMs: Long = 0L,
+        frameSequenceDecision: com.match3vision.analyzer.capture.FrameSequenceGate.Decision? = null,
     ): GateDecision {
-        if (!enableSwitch.isEnabled()) {
-            return GateDecision(false, HOLD_INPUT_DISABLED)
-        }
-        if (!executor.isReady()) {
-            return GateDecision(false, HOLD_INPUT_CHANNEL_NOT_READY)
-        }
-        if (!vision.validation.isPass) {
-            val reason = (vision.validation as? ValidationResult.Hold)?.reason
-                ?: HOLD_VISION_BLOCKED
-            return GateDecision(false, reason)
-        }
-        val thresholdGate = visionValidator.validate(
-            boardConfidence = vision.boardConfidence,
-            gridConfidence = vision.gridConfidence,
-            unknownCount = vision.unknownCount,
+        val fs = GestureFailSafe.evaluate(
+            GestureFailSafe.Context(
+                vision = vision,
+                move = move,
+                inputEnabled = enableSwitch.isEnabled(),
+                executorReady = executor.isReady(),
+                a11yConnected = a11yConnected,
+                captureOk = captureOk,
+                hasFrame = hasFrame,
+                frameAgeMs = frameAgeMs,
+                frameSequenceDecision = frameSequenceDecision,
+                minMoveConfidence = minMoveConfidence,
+            ),
         )
-        if (thresholdGate is ValidationResult.Hold) {
-            return GateDecision(false, thresholdGate.reason)
-        }
-        if (vision.unknownCount > InputThresholds.MAX_UNKNOWN_COUNT) {
-            return GateDecision(false, HOLD_TOO_MANY_UNKNOWN)
-        }
-        if (move == null) {
-            return GateDecision(false, HOLD_NO_LEGAL_MOVE)
-        }
-        if (!move.expectedValue.isFinite() || move.expectedValue == Float.NEGATIVE_INFINITY) {
-            return GateDecision(false, HOLD_NO_LEGAL_MOVE)
-        }
-        // Note: MoveEvaluation.uncertain is often true after cascade refill (UNKNOWN
-        // tiles). That is expected simulation metadata — do NOT hard-block here.
-        // Vision unknown / invalid post-input frames use FAIL-SAFE STOP in feedback.
-        if (move.confidence < minMoveConfidence) {
-            return GateDecision(
-                false,
-                "HOLD — move confidence %.3f < %.3f".format(move.confidence, minMoveConfidence),
-            )
-        }
-        if (!vision.grid.isMonotonic()) {
-            return GateDecision(false, HOLD_GRID_INVALID)
-        }
-        return GateDecision(true, "OK")
+        return GateDecision(fs.allow, fs.reason)
     }
 
     /**

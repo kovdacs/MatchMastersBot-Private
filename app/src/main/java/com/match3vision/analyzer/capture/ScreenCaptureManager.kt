@@ -42,6 +42,7 @@ class ScreenCaptureManager(
 
     private val running = AtomicBoolean(false)
     private var lastEmitMs: Long = 0L
+    private var frameSequence: Long = 0L
     private var widthPx: Int = 0
     private var heightPx: Int = 0
     private var densityDpi: Int = 0
@@ -135,7 +136,15 @@ class ScreenCaptureManager(
     /** Stops capture and clears the latest frame reference. */
     fun release() {
         stop()
+        val prev = _latestFrame.value
         _latestFrame.value = null
+        frameSequence = 0L
+        if (prev != null && !prev.bitmap.isRecycled) {
+            try {
+                prev.bitmap.recycle()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     private fun onImageAvailable(reader: ImageReader) {
@@ -179,14 +188,24 @@ class ScreenCaptureManager(
                 minBarRatio = config.letterboxBarMinRatio,
             )
 
+            val prev = _latestFrame.value
             val frame = CaptureFrame(
                 width = widthPx,
                 height = heightPx,
                 timestampMs = now,
                 bitmap = cropped,
                 contentRoi = roi,
+                sequence = ++frameSequence,
             )
             _latestFrame.value = frame
+            // Recycle previous bitmap after swap (avoid MediaProjection leak).
+            if (prev != null && prev.bitmap !== cropped && !prev.bitmap.isRecycled) {
+                try {
+                    prev.bitmap.recycle()
+                } catch (t: Throwable) {
+                    Timber.w(t, "prev bitmap recycle")
+                }
+            }
         } catch (t: Throwable) {
             Timber.e(t, "onImageAvailable failed")
         } finally {
