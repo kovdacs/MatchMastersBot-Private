@@ -77,8 +77,14 @@ data class AnalyzerUiState(
  * Analyze last frame uses the **real** last captured bitmap (no fake image).
  * Decision output is display-only unless the user explicitly enables
  * Input + One-Step Smoke and taps Run (max 1 auto swipe).
+ *
+ * Must expose a Java-visible `(Application)` constructor for
+ * `AndroidViewModelFactory` / `by viewModels()`. Kotlin default params alone
+ * only emit the full primary ctor + DefaultConstructorMarker overload — that
+ * caused cold-start Instantiation crash on device (white screen ~2s then exit).
+ * `@JvmOverloads` restores the Application-only overload factory needs.
  */
-class AnalyzerViewModel(
+class AnalyzerViewModel @JvmOverloads constructor(
     application: Application,
     private val frameAnalyzer: VisionFrameAnalyzer = VisionFrameAnalyzer(),
     private val orchestrator: AnalysisOrchestrator = AnalysisOrchestrator(),
