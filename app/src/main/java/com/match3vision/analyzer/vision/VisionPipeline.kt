@@ -94,9 +94,13 @@ class VisionPipeline(
             return CellVision.unknown(occluded = true, confidence = 0f)
         }
 
-        val color = colorDetector.detect(crop)
-        val shape = shapeDetector.detect(crop, cw, ch)
-        val special = specialDetector.detect(crop, cw, ch)
+        // After occlusion clears, classify on an inset crop so purple gutters /
+        // board chrome do not dominate ColorDetector hue votes (blue/purple bias)
+        // or ShapeDetector fill stats. Occlusion still used the full cell.
+        val (inner, iw, ih) = insetCellCrop(crop, cw, ch, CELL_CLASSIFY_INSET_FRAC)
+        val color = colorDetector.detect(inner)
+        val shape = shapeDetector.detect(inner, iw, ih)
+        val special = specialDetector.detect(inner, iw, ih)
 
         return ColorShapeReconciler.reconcile(
             color = color.color,
@@ -105,6 +109,35 @@ class VisionPipeline(
             shapeConf = shape.confidence,
             special = special.special,
         )
+    }
+
+    /**
+     * Trim [frac] of width/height from each side of a cell buffer (row-major).
+     * Returns (pixels, width, height); falls back to the original if too small.
+     */
+    private fun insetCellCrop(
+        cellPixels: IntArray,
+        cellWidth: Int,
+        cellHeight: Int,
+        frac: Float,
+    ): Triple<IntArray, Int, Int> {
+        val ix = (cellWidth * frac).toInt().coerceAtLeast(0)
+        val iy = (cellHeight * frac).toInt().coerceAtLeast(0)
+        if (cellWidth <= ix * 2 + 4 || cellHeight <= iy * 2 + 4) {
+            return Triple(cellPixels, cellWidth, cellHeight)
+        }
+        val left = ix
+        val top = iy
+        val right = cellWidth - ix
+        val bottom = cellHeight - iy
+        val nw = right - left
+        val nh = bottom - top
+        val out = IntArray(nw * nh)
+        for (y in 0 until nh) {
+            val src = (top + y) * cellWidth + left
+            System.arraycopy(cellPixels, src, out, y * nw, nw)
+        }
+        return Triple(out, nw, nh)
     }
 
     /**
@@ -127,5 +160,13 @@ class VisionPipeline(
             (mean + methodBonus - unknownPenalty)
         }
         return base.coerceIn(0f, 1f)
+    }
+
+    companion object {
+        /**
+         * Inset for color/shape/special after occlusion. Keeps hue voting on the
+         * gem body; occlusion still sees full cell (with inner partial_dark).
+         */
+        const val CELL_CLASSIFY_INSET_FRAC = 0.12f
     }
 }

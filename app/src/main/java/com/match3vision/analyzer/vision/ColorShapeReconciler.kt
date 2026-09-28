@@ -22,10 +22,26 @@ object ColorShapeReconciler {
         TileColor.O to TileShape.HEX,
     )
 
+    /**
+     * Acceptable shapes per color. Orange MM gems are inverted triangles in capture
+     * but classic palette also uses HEX — both are consistent (not contradictions).
+     */
+    private val ACCEPTABLE: Map<TileColor, Set<TileShape>> = mapOf(
+        TileColor.B to setOf(TileShape.STAR),
+        TileColor.R to setOf(TileShape.CIRCLE),
+        TileColor.Y to setOf(TileShape.TRIANGLE),
+        TileColor.G to setOf(TileShape.DIAMOND),
+        TileColor.P to setOf(TileShape.SQUARE),
+        TileColor.O to setOf(TileShape.HEX, TileShape.TRIANGLE),
+    )
+
     fun expectedShape(color: TileColor): TileShape? = EXPECTED[color]
 
     fun expectedColor(shape: TileShape): TileColor? =
         EXPECTED.entries.firstOrNull { it.value == shape }?.key
+
+    private fun isAcceptable(color: TileColor, shape: TileShape): Boolean =
+        ACCEPTABLE[color]?.contains(shape) == true
 
     /**
      * @return reconciled [CellVision] (non-occluded path). Special is passed through.
@@ -46,7 +62,7 @@ object ColorShapeReconciler {
 
         // Both known and disagree with high confidence → UNKNOWN
         if (color != TileColor.UNKNOWN && shape != TileShape.UNKNOWN &&
-            expectedForColor != null && expectedForColor != shape &&
+            !isAcceptable(color, shape) &&
             colorConf >= high && shapeConf >= high
         ) {
             return CellVision(
@@ -67,7 +83,7 @@ object ColorShapeReconciler {
 
         when {
             color != TileColor.UNKNOWN && shape != TileShape.UNKNOWN &&
-                expectedForColor == shape -> {
+                isAcceptable(color, shape) -> {
                 finalColor = color
                 finalShape = shape
                 conf = (colorConf * 0.55f + shapeConf * 0.45f).coerceIn(0f, 1f)

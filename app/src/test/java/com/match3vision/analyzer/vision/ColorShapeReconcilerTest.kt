@@ -135,4 +135,18 @@ class ColorShapeReconcilerTest {
         assertThat(v.isUnknown).isTrue()
         assertThat(v.special).isEqualTo(SpecialType.NONE)
     }
+
+    @Test
+    fun orangeTriangle_isAcceptableNotUnknown() {
+        val vision = ColorShapeReconciler.reconcile(
+            color = TileColor.O,
+            colorConf = 0.9f,
+            shape = TileShape.TRIANGLE,
+            shapeConf = 0.88f,
+            special = SpecialType.NONE,
+        )
+        assertThat(vision.isUnknown).isFalse()
+        assertThat(vision.color).isEqualTo(TileColor.O)
+        assertThat(vision.shape).isEqualTo(TileShape.TRIANGLE)
+    }
 }
