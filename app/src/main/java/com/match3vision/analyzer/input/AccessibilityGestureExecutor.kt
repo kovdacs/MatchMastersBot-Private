@@ -3,12 +3,10 @@ package com.match3vision.analyzer.input
 /**
  * Production [InputGestureExecutor] backed by [MatchMastersAccessibilityService].
  *
- * Enable gate (all required):
- * 1. User enables the system AccessibilityService for this app.
- * 2. [InputEnableSwitch] explicitly set to enabled (default DISABLED).
- * 3. Service instance connected ([MatchMastersAccessibilityService.isConnected]).
- *
- * Without (1)+(3), [isReady] is false → AutomaticInputEngine HOLDs (no input).
+ * Ready when the system AccessibilityService is connected
+ * ([MatchMastersAccessibilityService.isConnected] / instance non-null).
+ * Auto-play still layers [InputEnableSwitch]; isolated [AutomaticTouchTest]
+ * dispatches after explicit bubble «TESZT ÉRINTÉS» without Vision gates.
  */
 class AccessibilityGestureExecutor(
     private val serviceProvider: () -> MatchMastersAccessibilityService? =

@@ -35,6 +35,7 @@ import timber.log.Timber
  * Small movable SYSTEM_ALERT_WINDOW bubble:
  * INDÍTÁS → continuous Vision→Move→swipe→re-analyze
  * SZÜNET → pause loop
+ * TESZT ÉRINTÉS → isolated fixed-coordinate touch (no Vision / no play loop)
  * STOP → remove bubble + stop capture/input
  *
  * Does **not** auto-start the loop; user must tap INDÍTÁS on the bubble.
@@ -50,6 +51,7 @@ class FloatingBubbleService : Service() {
     private var statusView: TextView? = null
     private var startBtn: Button? = null
     private var pauseBtn: Button? = null
+    private var touchTestBtn: Button? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -123,6 +125,12 @@ class FloatingBubbleService : Service() {
             isAllCaps = false
             setOnClickListener { pauseLoopFromBubble() }
         }
+        touchTestBtn = Button(this).apply {
+            text = "TESZT ÉRINTÉS"
+            textSize = 10f
+            isAllCaps = false
+            setOnClickListener { runTouchTestFromBubble() }
+        }
         val stopBtn = Button(this).apply {
             text = "STOP"
             textSize = 11f
@@ -133,6 +141,7 @@ class FloatingBubbleService : Service() {
         root.addView(statusView)
         root.addView(startBtn)
         root.addView(pauseBtn)
+        root.addView(touchTestBtn)
         root.addView(stopBtn)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -153,9 +162,9 @@ class FloatingBubbleService : Service() {
             gravity = Gravity.TOP or Gravity.END
             x = (8 * density).toInt()
             y = (120 * density).toInt()
-            width = (118 * density).toInt()
+            width = (132 * density).toInt()
         }
-        // Drag only from title so INDÍTÁS / SZÜNET / STOP still receive clicks.
+        // Drag only from title so INDÍTÁS / SZÜNET / TESZT ÉRINTÉS / STOP still receive clicks.
         attachDrag(title, root, params)
         layoutParams = params
         bubbleView = root
@@ -205,6 +214,7 @@ class FloatingBubbleService : Service() {
         statusView = null
         startBtn = null
         pauseBtn = null
+        touchTestBtn = null
     }
 
     private fun startLoopFromBubble() {
@@ -239,6 +249,33 @@ class FloatingBubbleService : Service() {
         CaptureService.stop(this)
         removeBubble()
         stopSelf()
+    }
+
+
+    /**
+     * Isolated AUTOMATIC TOUCH TEST — one fixed-coordinate gesture, no Vision / play loop.
+     */
+    private fun runTouchTestFromBubble() {
+        // Keep Match Masters visible so the user can see the touch.
+        sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
+        val dm = resources.displayMetrics
+        val w = dm.widthPixels
+        val h = dm.heightPixels
+        Timber.i("TOUCH_TEST: bubble TESZT ÉRINTÉS pressed screen=%dx%d", w, h)
+        val result = AutoPlaySession.touchTest.runOnce(w, h)
+        val coord =
+            "(${result.startX.toInt()},${result.startY.toInt()})→(${result.endX.toInt()},${result.endY.toInt()})"
+        val label = if (result.success) {
+            "érintés OK $coord"
+        } else {
+            "érintés FAIL: ${result.reason.take(48)}"
+        }
+        statusView?.text = label
+        AutoPlaySession.publish(statusText = label)
+        Timber.i("TOUCH_TEST: result success=%s reason=%s", result.success, result.reason)
+        for (line in AutoPlaySession.touchTest.logger().lines().takeLast(12)) {
+            Timber.i("TOUCH_TEST_LOG: %s", line)
+        }
     }
 
     private fun ensureLoopRunning() {

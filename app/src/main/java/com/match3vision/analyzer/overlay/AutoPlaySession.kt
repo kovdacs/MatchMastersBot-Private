@@ -4,6 +4,7 @@ import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutomaticInputEngine
+import com.match3vision.analyzer.input.AutomaticTouchTest
 import com.match3vision.analyzer.input.InputEnableSwitch
 import com.match3vision.analyzer.input.InputLoopController
 import com.match3vision.analyzer.orchestration.AnalysisOrchestrator
@@ -42,6 +43,9 @@ object AutoPlaySession {
         enableSwitch = enableSwitch,
         inputLoop = inputLoop,
     )
+
+    /** Isolated touch test (bubble TESZT ÉRINTÉS) — no Vision. */
+    val touchTest: AutomaticTouchTest = AutomaticTouchTest()
 
     val frameAnalyzer: VisionFrameAnalyzer = VisionFrameAnalyzer()
     val orchestrator: AnalysisOrchestrator = AnalysisOrchestrator()
