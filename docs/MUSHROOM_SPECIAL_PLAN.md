@@ -1,8 +1,8 @@
 # Special: Purple Mushroom +3 — recognition plan
 
 **Status:** appearance identified on REAL_FRAME GT; model **not** invented yet.  
-**Location:** `pvp_board.jpg` cell **(4,1)** 0-based — note: “Purple Mushroom +3”.  
-**Current:** `SpecialType` has no `MUSHROOM` / `PLUS3`; cell remains UNVERIFIED / often UNKNOWN or purple misread.
+**Location:** `pvp_board.jpg` cell **(4,1)** 0-based — “Purple Mushroom +3”.  
+**Current:** `SpecialType` has no `MUSHROOM` / `PLUS3`; GT marks color/shape **UNVERIFIED**.
 
 ## Appearance (from human GT + frame)
 
@@ -10,18 +10,26 @@
 - “+3” badge overlay (score modifier), bright text/icon on tile.
 - Occupies one 7×7 cell inside playfield ROI.
 
-## Plan (do not ship blind types)
+## Labeled crops required (do not ship blind types)
 
-1. **Capture crops** of (4,1) from primary + any future live diag dumps (RGB/HSV/luma).
-2. Add `SpecialType.MUSHROOM_PLUS3` (or `SCORE_MUSHROOM`) **only after** ≥N labeled crops.
-3. `SpecialDetector`: bright “+”/digit lobe + purple body mask; require
-   `SPECIAL_MIN_CONFIDENCE` — else NONE.
-4. `ColorShapeReconciler`: if special=MUSHROOM → color may be UNKNOWN without counting as
-   board-unknown **only if** policy approved (default: still unknown for match logic).
-5. `MoveEvaluator`: +3 is scoring metadata — do **not** treat as clear-special (bomb/lightning)
-   until rules are confirmed from gameplay.
+| # | Crop | Source | Label |
+|---|------|--------|-------|
+| 1 | Full cell `(4,1)` | `pvp_board.jpg` | `MUSHROOM_PLUS3` |
+| 2 | Center-disk body only `(4,1)` | same | `MUSHROOM_BODY` |
+| 3 | +3 badge ROI (corner of cell) | same | `PLUS3_BADGE` |
+| 4–N | ≥3 more mushroom/+3 cells | other real frames or live `LiveCellDiagnostics` dumps | `MUSHROOM_PLUS3` |
 
-## Non-goals this pass
+Each crop package should include: PNG/JPEG crop, mean RGB/HSV/luma, human label, frame id, cell `(r,c)`.
 
+## After crops exist
+
+1. Add `SpecialType.MUSHROOM_PLUS3` (or `SCORE_MUSHROOM`).
+2. `SpecialDetector`: bright “+”/digit lobe + purple body mask; require `SPECIAL_MIN_CONFIDENCE`.
+3. Reconciler / match policy: explicit decision whether mushroom counts as board-unknown.
+4. `MoveEvaluator`: +3 is scoring metadata — not a clear-special until rules confirmed.
+
+## Non-goals (0.23.1)
+
+- No ad-hoc mushroom recognition.
 - No threshold loosen.
-- No guessed combo tables for mushroom.
+- No guessed combo tables.

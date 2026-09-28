@@ -1,7 +1,7 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Version:** `0.23.0-audit-pack`  
+**Version:** `0.23.1-vision-stab`  
 **CI:** analyzer-ci on GitHub Actions (no JDK on box)  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
@@ -15,8 +15,8 @@ See `docs/EVIDENCE_TIERS.md`:
 |------|--------------------|
 | A runtime | Partial — prior device HOLD logs; no new live gesture proof |
 | B build/test | Target of this pack (CI unit + assembleDebug) |
-| C synthetic vision | Existing suite + fail-safe / frame-seq tests |
-| D real MM frame | `pvp_board.jpg` PASS in harness; soft color ~55% documented |
+| C synthetic vision | Existing suite + center-weighted color tests |
+| D real MM frame | `pvp_board.jpg` — vision-stab soft color improvement |
 | E real phone | **NOT proven** for live Move + dispatchGesture |
 
 ## Vision flags
@@ -32,12 +32,8 @@ See `docs/EVIDENCE_TIERS.md`:
 ## Safety
 
 PASS/HOLD **unchanged** (0.98 / 0.95 / unk≤1). Input default OFF until INDÍTÁS.
-Fail-closed verify → pause. FrameSequenceGate: after gesture OLD/SAME forbidden.
 
-## Docs
+## 0.23.1 focus
 
-- `docs/AUDIT_CHAIN_GATES.md`
-- `docs/LIFECYCLE_MEMORY_REVIEW.md`
-- `docs/SOFT_COLOR_DIAGNOSTICS.md`
-- `docs/MUSHROOM_SPECIAL_PLAN.md`
-- `docs/STATUS_0.23.0_AUDIT_PACK_HU.md`
+Center-weighted color + robust RGB/HSV/brightness + shape inset sampling + soft-GT
+confusion matrix + UNKNOWN taxonomy. No Input/Accessibility changes.

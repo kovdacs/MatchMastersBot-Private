@@ -154,4 +154,54 @@ class ColorDetectorTest {
             mix(PixelMath.blue(a), PixelMath.blue(b)),
         )
     }
+
+    @Test
+    fun centerWeighted_ignoresBluePlayfieldBleed_aroundRedGem() {
+        // Full cell mostly blue "playfield"; red gem only in center disk.
+        val w = 40
+        val h = 40
+        val cell = IntArray(w * h) { SyntheticFrames.COLOR_B }
+        val cx = w / 2
+        val cy = h / 2
+        val r = (minOf(w, h) * ColorDetector.CENTER_RADIUS_FRAC * 0.85f).toInt().coerceAtLeast(3)
+        for (y in (cy - r)..(cy + r)) {
+            for (x in (cx - r)..(cx + r)) {
+                val dx = x - cx
+                val dy = y - cy
+                if (dx * dx + dy * dy <= r * r) {
+                    cell[y * w + x] = SyntheticFrames.COLOR_R
+                }
+            }
+        }
+        val result = detector.detect(cell, w, h)
+        assertThat(result.color).isEqualTo(TileColor.R)
+        assertThat(result.confidence).isAtLeast(0.55f)
+    }
+
+    @Test
+    fun centerWeighted_medianHue_orangeNotRed_withSpecular() {
+        val w = 32
+        val h = 32
+        val orange = SyntheticFrames.COLOR_O
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            when {
+                x in 0..2 || y in 0..2 || x >= w - 3 || y >= h - 3 ->
+                    SyntheticFrames.COLOR_B // gutter bleed
+                x in 14..17 && y in 14..17 ->
+                    PixelMath.rgb(255, 255, 255) // specular
+                else -> orange
+            }
+        }
+        val result = detector.detect(cell, w, h)
+        assertThat(result.color).isEqualTo(TileColor.O)
+    }
+
+    @Test
+    fun thresholds_unchanged_byVisionStab() {
+        assertThat(VisionThresholds.MIN_GRID_CONFIDENCE).isEqualTo(0.98f)
+        assertThat(VisionThresholds.MIN_BOARD_CONFIDENCE).isEqualTo(0.95f)
+        assertThat(VisionThresholds.MAX_UNKNOWN_COUNT).isEqualTo(1)
+    }
 }

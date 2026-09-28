@@ -112,8 +112,10 @@ class RealFrameVisionTest {
         println(
             "REAL_FRAME softGt colorMatch=${soft.matches}/${soft.compared} " +
                 "(verifiableGT=${soft.verifiableGt}) rate=${"%.3f".format(soft.rate)} " +
-                "provenance=${RealFrameHumanGroundTruth.PROVENANCE}",
+                "baseline_0.23.0≈0.56 provenance=${RealFrameHumanGroundTruth.PROVENANCE}",
         )
+        // Soft improvement is asserted in SoftColorDiagnosticsTest (strict VERIFIED rate).
+        // Do not loosen PASS gates here.
 
         val mush = result.board.get(4, 1)
         println(

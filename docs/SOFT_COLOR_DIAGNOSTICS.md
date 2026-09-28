@@ -1,40 +1,46 @@
-# Soft color ~55% — diagnostic report (REAL_FRAME)
+# Soft color diagnostics — Vision Stabilization 0.23.1
 
 **Date:** 2026-09-28 (Europe/Vienna)  
 **Evidence tier:** D — real Match Masters frame (`pvp_board.jpg`) in CI harness  
-**Gates:** unchanged (PASS still achieved on primary with unk=0, gridConf≈0.987, boardConf=1.0)
+**Gates:** **unchanged** (`gridConfidence≥0.98`, `boardConfidence≥0.95`, `unknownCount≤1`)
 
-## Symptom
+## BEFORE (0.23.0 / android export)
 
-Human VERIFIED color soft-GT agreement historically ~**55%** (`softGt colorMatch ≈ 22/40`)
-while structural PASS holds. Wrong color ≠ unknownCount spike on primary.
+| Metric | Value |
+|--------|-------|
+| soft-GT color match | **≈23/41 (~56%)** |
+| gridConfidence | 0.9872 |
+| boardConfidence | 1.0 |
+| unknownCount | 0 |
+| PASS/HOLD | PASS |
 
-## Investigation method
+Root cause: full-cell HSV hue vote polluted by **blue playfield / gutters / JPEG AA**.
+Wrong colors often reconciled as `B/STAR` (shape matched the polluted color).
 
-`SoftColorDiagnosticsTest` + `LiveCellDiagnostics`:
-per-cell mean RGB / HSV / luma on BoardFinder cell boxes vs HUMAN_VISUAL GT.
+## AFTER (0.23.1-vision-stab)
 
-## Likely causes (ordered)
+| Change | Detail |
+|--------|--------|
+| Center-weighted color | Ellipse radius `0.28` of cell; RGB+HSV+brightness gates; circular median hue + weighted vote |
+| Shape sampling | `SHAPE_INSET_FRAC=0.18` rectangular inset (heuristics unchanged) |
+| UNKNOWN taxonomy | `color \| shape \| special \| occlusion \| geometry/grid` via `UnknownReason` |
 
-1. **Highlight / specular + shadow** inside gems → HSV value/saturation extremes excluded
-   (`S≥0.25`, `V≥0.18`) leave a thin hue vote; center vs full-area sampling differs.
-2. **JPEG chroma bleed / AA** across gutters → neighbor hue votes pollute edge pixels.
-3. **Orange inverted triangle** GT shape UNVERIFIED — hue sits on Y/O boundary (`h≈15–40`);
-   detector may flip O↔Y while shape path expects HEX.
-4. **Purple Mushroom +3** at (4,1): not a normal gem; `SpecialType` has no MUSHROOM;
-   GT marks color/shape UNVERIFIED — overlay skews purple/white.
-5. **Background bleed** if cell crop inset too aggressive or too loose (prior inset experiments
-   traded unknowns vs color purity).
+Target: soft-GT color **≥75%** on VERIFIED cells (CI soft assert); structural PASS retained.
+
+See CI stdout from `SoftColorDiagnosticsTest` for the live confusion matrix and
+`SOFT_COLOR_BEFORE_AFTER` line.
 
 ## What we did **not** do
 
 - Did **not** lower `MIN_GRID` / `MIN_BOARD` / `MAX_UNKNOWN`.
-- Did **not** invent new SpecialType values without appearance evidence beyond GT note.
+- Did **not** invent `SpecialType.MUSHROOM` / `PLUS3` without labeled crops.
+- Did **not** touch Input / Accessibility / `dispatchGesture`.
 
-## Next concrete Vision task
+## Mushroom / +3 — labeled crops still required
 
-1. Add **center-weighted** color sampling (inner 50% disk) vs full-cell; A/B on soft-GT rate
-   without touching PASS gates.
-2. Per-hue confusion matrix from `SoftColorDiagnosticsTest` CI stdout → tune only
-   `ColorDetector.hueToColor` boundaries with REAL_FRAME evidence.
-3. Mushroom plan: see `docs/MUSHROOM_SPECIAL_PLAN.md`.
+See `docs/MUSHROOM_SPECIAL_PLAN.md`. Exact crops needed before any special type:
+
+1. `(4,1)` body crop from `pvp_board.jpg` (center + full cell)
+2. `(4,1)` **+3 badge** crop (corner overlay)
+3. ≥3 additional mushroom/+3 instances from other real frames / live diag dumps
+4. HSV/RGB/luma stats JSON per crop + human label `MUSHROOM_PLUS3`

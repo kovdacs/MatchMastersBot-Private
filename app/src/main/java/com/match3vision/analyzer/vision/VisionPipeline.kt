@@ -121,20 +121,60 @@ class VisionPipeline(
         val occ = occlusionDetector.detect(crop, cw, ch)
         if (occ.occluded) {
             diag["occ_${row}_${col}"] = occ.reason
+            diag["unkReason_${row}_${col}"] = "occlusion"
             return CellVision.unknown(occluded = true, confidence = 0f)
         }
 
-        val color = colorDetector.detect(crop)
-        val shape = shapeDetector.detect(crop, cw, ch)
+        // Color: center-weighted robust sampling (detector applies center disk).
+        val color = colorDetector.detect(crop, cw, ch)
+
+        // Shape: rectangular inset so gutters / playfield bleed do not invent
+        // false STAR/SQUARE silhouettes. Shape heuristics themselves unchanged.
+        val (shapePixels, shapeW, shapeH) = insetCrop(crop, cw, ch, SHAPE_INSET_FRAC)
+        val shape = shapeDetector.detect(shapePixels, shapeW, shapeH)
+
+        // Special overlays (+ badges) often sit near edges — keep full cell.
         val special = specialDetector.detect(crop, cw, ch)
 
-        return ColorShapeReconciler.reconcile(
+        val reconciled = ColorShapeReconciler.reconcile(
             color = color.color,
             colorConf = color.confidence,
             shape = shape.shape,
             shapeConf = shape.confidence,
             special = special.special,
         )
+        if (reconciled.isUnknown) {
+            diag["unkReason_${row}_${col}"] = UnknownReason.diagnose(
+                color = color.color,
+                shape = shape.shape,
+                special = special.special,
+                occluded = false,
+                cellW = cw,
+                cellH = ch,
+            )
+        }
+        return reconciled
+    }
+
+    /**
+     * Inset a cell buffer by [frac] of width/height on each side.
+     * Used for shape sampling only (color uses center-disk inside [ColorDetector]).
+     */
+    private fun insetCrop(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        frac: Float,
+    ): Triple<IntArray, Int, Int> {
+        if (width < 6 || height < 6 || frac <= 0f) return Triple(pixels, width, height)
+        val dx = (width * frac).toInt().coerceAtLeast(1)
+        val dy = (height * frac).toInt().coerceAtLeast(1)
+        val left = dx
+        val top = dy
+        val right = (width - dx).coerceAtLeast(left + 3)
+        val bottom = (height - dy).coerceAtLeast(top + 3)
+        val (out, size) = PixelMath.crop(pixels, width, height, left, top, right, bottom)
+        return Triple(out, size.first, size.second)
     }
 
     /**
@@ -171,5 +211,10 @@ class VisionPipeline(
     companion object {
         /** unk at/above this with PASS-level gridConf → overlay/self-UI suspect. */
         const val SUSPECT_OVERLAY_UNKNOWN_MIN = 20
+        /**
+         * Shape crop inset as fraction of cell size per side (~inner 64% linear).
+         * Keeps gutters out of silhouette moments without changing ShapeDetector.
+         */
+        const val SHAPE_INSET_FRAC = 0.18f
     }
 }

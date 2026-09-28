@@ -73,12 +73,20 @@ object LiveCellDiagnostics {
                 val cell = result.board.get(r, c)
                 val reason = when {
                     !cell.isUnknown -> ""
-                    cell.occluded -> "occluded:" + (result.diagnostics["occ_${r}_${c}"] ?: "?")
-                    cell.color == TileColor.UNKNOWN && cell.shape == TileShape.UNKNOWN ->
-                        "color+shape UNKNOWN"
-                    cell.color == TileColor.UNKNOWN -> "color UNKNOWN"
-                    cell.shape == TileShape.UNKNOWN -> "shape UNKNOWN"
-                    else -> "isUnknown flag"
+                    else -> {
+                        val fromPipe = result.diagnostics["unkReason_${r}_${c}"]
+                        if (!fromPipe.isNullOrBlank()) {
+                            fromPipe
+                        } else {
+                            UnknownReason.diagnose(
+                                color = cell.color,
+                                shape = cell.shape,
+                                special = cell.special,
+                                occluded = cell.occluded,
+                                gridMethod = result.method,
+                            )
+                        }
+                    }
                 }
                 var rgb: Triple<Int, Int, Int>? = null
                 var hsv: Triple<Float, Float, Float>? = null
