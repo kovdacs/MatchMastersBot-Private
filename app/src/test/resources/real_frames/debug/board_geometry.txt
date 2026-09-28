@@ -1,8 +1,11 @@
 pvp_board.jpg board geometry (BoardFinder separator_square snap)
 image: 1080x2400
-board ROI xywh: 20,1203,1040,1040
-board ROI LTRB: LTRB(20,1203,1060,2243)
-sepBottom: 1129
-chromeInset: 74 (side/14)
+board ROI xywh: 20,1206,1040,1040
+board ROI LTRB: LTRB(20,1206,1060,2246)
+sepBottom (CI): 1132
+playfieldTop (CI): 1206
 playfieldSnap: separator_square
+method (CI analyzer-ci 36411389880): PROJECTION
+gridConf=0.9665 boardConf=0.4754 unknowns=2 softGt colorMatch=24/40 gate=HOLD
 notes: near-square playfield below Time Left separator; Android toolbar may intersect bottom row
+prior broken ROI was LTRB(0,88,1080,2400) EVEN_SPLIT gridConf=0.72
