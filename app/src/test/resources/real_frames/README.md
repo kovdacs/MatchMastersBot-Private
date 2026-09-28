@@ -40,3 +40,15 @@ CI Temurin 17 loads JPEG via `javax.imageio.ImageIO` in `RealFrameLoader` (no An
 - Pipeline expects 7×7; primary may have bottom row partially cropped by system screenshot toolbar.
 - Overlays / FX / volume UI → expect HOLD and elevated unknowns; do not loosen PASS/HOLD gates.
 - One real frame (plus occluded secondaries) ≠ full real-world validation; Python V3.1 dump still absent → `PARITY_VERIFIED=NO`.
+
+## Debug overlays
+
+`debug/` — BoardFinder ROI visualization for primary `pvp_board.jpg` (not GT):
+
+| File | Contents |
+|------|----------|
+| `pvp_board_roi_overlay.jpg` | Full frame with green board ROI + yellow 7×7 EVEN_SPLIT lines |
+| `pvp_board_roi_crop.jpg` | Cropped board ROI |
+| `board_geometry.txt` | Documented LTRB / xywh from separator_square snap |
+
+Regenerate via BoardFinder playfield snap (tall portrait → dark separator under timer → square side≈width).

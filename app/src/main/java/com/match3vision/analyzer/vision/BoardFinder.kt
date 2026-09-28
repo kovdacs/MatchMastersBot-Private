@@ -58,7 +58,9 @@ class BoardFinder(
     }
 
     /**
-     * Prefer content ROI; optionally shrink away from near-black margins still inside content.
+     * Prefer content ROI; optionally shrink away from near-black margins still inside content,
+     * then (on tall portrait UI frames) snap to a near-square 7×7 playfield below the
+     * dark board separator so header/timer/RULES/toolbar are excluded.
      * Coordinates stay in **frame** space (letterbox does not shift relative geometry).
      */
     private fun refineBoardRoi(
@@ -105,14 +107,187 @@ class BoardFinder(
         }
         if (bannerTrim > 0) diag["bannerTrimPx"] = bannerTrim.toString()
 
-        val area = (right - left) * (bottom - top)
+        val trimmed = ContentRoi(left, top, right, bottom)
+        val playfield = snapSquarePlayfield(pixels, width, height, trimmed, diag)
+        val area = playfield.width() * playfield.height()
         val contentArea = cw * ch
-        if (contentArea > 0 && area.toFloat() / contentArea < 0.45f) {
+        if (contentArea > 0 && area.toFloat() / contentArea < 0.20f) {
             diag["boardRefine"] = "over_trim_reverted"
             return content
         }
-        diag["boardRefine"] = if (bannerTrim > 0) "dark_and_banner_trim" else "inner_dark_trim"
+        val snapped = diag["playfieldSnap"] == "separator_square"
+        val refineTag = when {
+            snapped && bannerTrim > 0 -> "dark_banner_playfield"
+            snapped -> "dark_playfield"
+            bannerTrim > 0 -> "dark_and_banner_trim"
+            else -> "inner_dark_trim"
+        }
+        diag["boardRefine"] = refineTag
+        return playfield
+    }
+
+    /**
+     * On tall portrait frames (header + board + footer), the 7×7 gem grid is a near-square
+     * region below a dark purple separator under the timer. Snap ROI to that square so
+     * projection/EVEN_SPLIT are not diluted by UI chrome.
+     *
+     * No-op when content is already board-like (aspect ≤ [TALL_ASPECT_THRESHOLD]) — keeps
+     * synthetic letterboxed unit fixtures unchanged.
+     */
+    private fun snapSquarePlayfield(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        roi: ContentRoi,
+        diag: MutableMap<String, String>,
+    ): ContentRoi {
+        val cw = roi.width()
+        val ch = roi.height()
+        if (cw < GridGeometry.GRID_SIZE * 8 || ch < cw * TALL_ASPECT_THRESHOLD) {
+            return roi
+        }
+
+        // Side rim: darker purple board margin inside mid-luma side chrome.
+        // Probe the lower-middle band (typical playfield), not the avatar header.
+        var left = roi.left
+        var right = roi.right
+        val midTop = roi.top + (ch * 45) / 100
+        val midBottom = (roi.top + (ch * 75) / 100).coerceAtMost(roi.bottom)
+        if (midBottom > midTop + GridGeometry.GRID_SIZE * 4) {
+            val rimThr = 32f
+            val left0 = left
+            while (left < right - 1 && colMeanLuma(pixels, width, left, midTop, midBottom) >= rimThr) {
+                left++
+            }
+            if (left >= right - GridGeometry.GRID_SIZE * 4 ||
+                colMeanLuma(pixels, width, left, midTop, midBottom) >= rimThr
+            ) {
+                left = left0
+            }
+            var r = right - 1
+            while (r > left + 1 && colMeanLuma(pixels, width, r, midTop, midBottom) >= rimThr) {
+                r--
+            }
+            if (r <= left + GridGeometry.GRID_SIZE * 4 ||
+                colMeanLuma(pixels, width, r, midTop, midBottom) >= rimThr
+            ) {
+                right = roi.right
+            } else {
+                right = r + 1
+            }
+        }
+        val side = right - left
+        if (side < GridGeometry.GRID_SIZE * 8) return roi
+
+        val sepBottom = findDarkSeparatorBottom(pixels, width, left, right, roi.top, roi.bottom)
+        if (sepBottom == null) {
+            diag["playfieldSnap"] = "no_separator"
+            return roi
+        }
+
+        // Skip thin board-chrome / empty padding under the separator (~½ cell).
+        // Without this, EVEN_SPLIT/PROJECTION lock onto the frame border instead of gem gutters.
+        val chromeInset = (side / 14).coerceAtLeast(1)
+        var top = (sepBottom + chromeInset).coerceAtMost(roi.bottom - side)
+        if (top < sepBottom) top = sepBottom
+
+        var bottom = top + side
+        if (bottom > roi.bottom) {
+            // Prefer keeping square height by shifting up if footer clips
+            val shift = bottom - roi.bottom
+            top = (top - shift).coerceAtLeast(sepBottom)
+            bottom = top + side
+            if (bottom > roi.bottom) {
+                bottom = roi.bottom
+            }
+        }
+        if (bottom - top < side * 9 / 10) {
+            diag["playfieldSnap"] = "square_too_short"
+            return roi
+        }
+
+        diag["playfieldSnap"] = "separator_square"
+        diag["playfieldSepBottom"] = sepBottom.toString()
+        diag["playfieldTop"] = top.toString()
         return ContentRoi(left, top, right, bottom)
+    }
+
+    /**
+     * Dark purple horizontal separator under the PvP timer (near-full width, very low luma).
+     * Returns the first row *below* the darkest qualifying run in the upper half of [roi].
+     */
+    private fun findDarkSeparatorBottom(
+        pixels: IntArray,
+        width: Int,
+        left: Int,
+        right: Int,
+        roiTop: Int,
+        roiBottom: Int,
+    ): Int? {
+        val h = roiBottom - roiTop
+        if (h < 32) return null
+        val searchEnd = roiTop + (h * 55) / 100
+        val minRun = 12
+        val lumaCut = 22f
+        var bestMean = Float.MAX_VALUE
+        var bestEnd = -1
+        var y = roiTop + h / 12 // skip extreme top status chrome
+        while (y < searchEnd) {
+            val luma = rowMeanLuma(pixels, width, y, left, right)
+            if (luma < lumaCut && rowBlueishFraction(pixels, width, y, left, right) > 0.75f) {
+                val y0 = y
+                var sum = 0f
+                var n = 0
+                while (y < searchEnd &&
+                    rowMeanLuma(pixels, width, y, left, right) < lumaCut &&
+                    rowBlueishFraction(pixels, width, y, left, right) > 0.75f
+                ) {
+                    sum += rowMeanLuma(pixels, width, y, left, right)
+                    n++
+                    y++
+                }
+                if (n >= minRun) {
+                    val mean = sum / n
+                    if (mean < bestMean) {
+                        bestMean = mean
+                        bestEnd = y0 + n // first row below run
+                    }
+                }
+            } else {
+                y++
+            }
+        }
+        return if (bestEnd > 0) bestEnd else null
+    }
+
+    /** Fraction of sampled pixels with blue channel dominant (purple/cyan UI / board chrome). */
+    private fun rowBlueishFraction(
+        pixels: IntArray,
+        width: Int,
+        y: Int,
+        left: Int,
+        right: Int,
+    ): Float {
+        var hit = 0
+        var n = 0
+        var x = left
+        val step = PixelMath.sampleStep(right - left, 32)
+        while (x < right) {
+            val p = pixels[y * width + x]
+            val r = PixelMath.red(p)
+            val g = PixelMath.green(p)
+            val b = PixelMath.blue(p)
+            val luma = PixelMath.luma(p)
+            if (luma < 60 && b > r && b > g) hit++
+            n++
+            x += step
+        }
+        return if (n == 0) 0f else hit.toFloat() / n
+    }
+
+    companion object {
+        /** Content taller than this × width is treated as portrait UI+board (snap playfield). */
+        const val TALL_ASPECT_THRESHOLD = 1.25f
     }
 
     private fun rowWarmBannerFraction(

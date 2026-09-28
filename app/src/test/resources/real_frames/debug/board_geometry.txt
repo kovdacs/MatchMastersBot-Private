@@ -1,0 +1,8 @@
+pvp_board.jpg board geometry (BoardFinder separator_square snap)
+image: 1080x2400
+board ROI xywh: 20,1203,1040,1040
+board ROI LTRB: LTRB(20,1203,1060,2243)
+sepBottom: 1129
+chromeInset: 74 (side/14)
+playfieldSnap: separator_square
+notes: near-square playfield below Time Left separator; Android toolbar may intersect bottom row
