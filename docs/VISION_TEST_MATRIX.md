@@ -6,9 +6,9 @@
 
 | Test | Input type | Expected | Actual | Result |
 |------|------------|----------|--------|--------|
-| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + diagnostics; soft gate fields | Filled by CI logs | RUN (when present) |
-| RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | Filled by CI logs | RUN (soft) |
-| RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | Filled by CI logs | RUN (soft) |
+| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + diagnostics; soft gate fields | gridConf=0.7200 boardConf=0.4812 unk=1 EVEN_SPLIT **HOLD** (run 36407224555) | RUN |
+| RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | softGt 12/41 rate=0.293 | RUN (soft) |
+| RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | showdown HOLD; activate FX AIOOBE soft; mid_volume HOLD (ran=2 err=1) | RUN (soft) |
 | RealFrameVisionTest.realFrame_harness_reportsMissingClearly | REAL_FRAME presence marker | Available → assert true; missing → Assume skip | Available | RUN |
 | RealisticSyntheticVisionTest.realisticSynthetic_alwaysRuns_pipelineDiagnostics | REALISTIC_SYNTHETIC | 7×7, ≥1 unknown from authored occlusion, color match ≥70% on VERIFIED cells; dump numerics | Filled by CI logs | RUN (always) |
 | RealisticSyntheticVisionTest.realisticSynthetic_groundTruth_fromConstructionNotDetector | REALISTIC_SYNTHETIC GT | GT from construction params; (3,5) occluded UNKNOWN; shape UNVERIFIED | Authored | PASS (intent) |

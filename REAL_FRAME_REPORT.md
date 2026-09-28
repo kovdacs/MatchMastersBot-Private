@@ -2,8 +2,9 @@
 
 **Date:** 2026-09-28 (Europe/Vienna)  
 **Branch:** `main`  
-**CI:** pending fill after analyzer-ci on this commit  
-**APK:** pending fill  
+**Commit:** `0c5b707` (harness) + docs follow-up  
+**CI:** analyzer-ci **SUCCESS** on `0c5b707` — run **36407224555**  
+**APK:** app-debug.apk artifact uploaded (**24,624,329** bytes on disk ≈ 23.5 MiB; artifact zip ≈ 8.6 MiB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
 ## Status flags (evidence-based)
@@ -16,7 +17,7 @@
 | `PARITY_VERIFIED` | **NO** |
 | `VISION_REAL_WORLD_VALIDATED` | **NO** (partial evidence only — see below) |
 
-One real early-match frame + occluded secondaries ≠ full real-world validation. No Python V3.1 dump. Possible bottom-row crop from Android screenshot toolbar. Treat as **PARTIAL evidence**, flag stays **NO** until cleaner full 7×7 + parity dump.
+One early-match frame + occluded secondaries ≠ full real-world validation. BoardFinder fell back to EVEN_SPLIT on full-ish ROI (0,88,1080,2400) — not a tight 7×7 board crop. No Python V3.1 dump. Possible bottom-row crop from Android screenshot toolbar. Soft GT color match only 12/41. Treat as **PARTIAL evidence**; flag stays **NO**.
 
 ## 1. Reference recovery
 
@@ -50,30 +51,36 @@ Checked in (2026-09-28):
 `Frame IntArray` → `BoardFinder` → 7×7 crops → `OcclusionDetector` → `ColorDetector` →
 `ShapeDetector` → `SpecialDetector` → `ColorShapeReconciler` → `VisionValidator` (PASS/HOLD).
 
-## Numeric results
+## Numeric results (CI run 36407224555)
 
 ### Real frame (`pvp_board.jpg`) — PRIMARY
 
 | Field | Value |
 |-------|-------|
-| gridConfidence | **PENDING_CI** |
-| boardConfidence | **PENDING_CI** |
-| unknownCount | **PENDING_CI** |
-| PASS/HOLD | **PENDING_CI** |
-| board dims (BoardFinder ROI) | **PENDING_CI** |
-| softGt colorMatch | **PENDING_CI** |
+| frame | **1080×2400** |
+| boardRoi (BoardFinder) | **LTRB(0,88,1080,2400)** → dims **1080×2312** (not a tight board crop) |
+| gridMethod | **EVEN_SPLIT** (projection rejected: `no_peaks` / projRelVarY=0.1409) |
+| gridConfidence | **0.7200** |
+| boardConfidence | **0.4812** |
+| unknownCount | **1** |
+| PASS/HOLD | **HOLD** (grid confidence 0.720 < 0.980) |
+| softGt colorMatch | **12/41** (verifiableGT=41, rate=0.293) |
+| mushroom (4,1) detector | color=B shape=STAR special=NONE (GT: unmapped Mushroom +3) |
+| row6 detector | mostly P/B; last cell UNKNOWN — GT UNVERIFIED (toolbar crop) |
 
-Caveats: Android screenshot toolbar may clip bottom UI / last board row. Pipeline still emits 7×7; GT row 6 (0-based) = UNVERIFIED. Mushroom +3 not in `SpecialType` enum → soft UNKNOWN.
+Caveats: Android screenshot toolbar may clip bottom UI / last board row. Pipeline still emits 7×7 cells over a too-tall ROI. Mushroom +3 not in `SpecialType` enum.
 
 ### Secondary frames — soft diagnostics only
 
-| Frame | Expected | Value |
-|-------|----------|-------|
-| showdown overlay | HOLD / high unknowns OK | **PENDING_CI** |
-| activate FX | HOLD / high unknowns OK | **PENDING_CI** |
-| mid volume | HOLD / high unknowns OK | **PENDING_CI** |
+| Frame | Result |
+|-------|--------|
+| showdown overlay | **HOLD** gridConf=0.7200 boardConf=0.3154 unknowns=3 EVEN_SPLIT |
+| activate FX | **ERROR** `ArrayIndexOutOfBoundsException` (Index -1 / length 50120) — soft-documented, CI not failed |
+| mid volume | **HOLD** gridConf=0.7200 boardConf=0.5781 unknowns=0 EVEN_SPLIT |
 
-### REALISTIC_SYNTHETIC (canonical fixture) — prior CI run 36146083770
+Secondary ran=2 errored=1 of 3.
+
+### REALISTIC_SYNTHETIC (canonical fixture) — same CI run
 
 | Field | Value |
 |-------|-------|
@@ -93,7 +100,7 @@ Gates **unchanged**:
 - `MIN_BOARD_CONFIDENCE = 0.95`
 - `MAX_UNKNOWN_COUNT = 1`
 
-No bypass. Prefer documenting HOLD/unknowns on real frames over loosening gates or hacking detectors.
+No bypass. Prefer documenting HOLD/unknowns / FX exceptions on real frames over loosening gates or hacking detectors. **No production detector changes** in this milestone.
 
 ## Parity
 
@@ -101,8 +108,9 @@ No bypass. Prefer documenting HOLD/unknowns on real frames over loosening gates 
 
 ## Limitations
 
+- BoardFinder did not lock a tight board ROI on these captures (full-width EVEN_SPLIT fallback) → low gridConf → HOLD; soft GT colors poor.
 - Primary may have bottom row cropped by Android screenshot toolbar.
-- Secondaries intentionally occluded (overlay / FX / volume) — expect HOLD.
+- Secondaries intentionally occluded (overlay / FX / volume); ACTIVATE_FX currently crashes cell analysis (AIOOBE) — documented soft.
 - Mushroom special not modeled in `SpecialType`.
 - Orange inverted triangles vs reconciler O→HEX expectation.
 - No Python V3.1 dump → no Android↔Python parity.
@@ -110,7 +118,8 @@ No bypass. Prefer documenting HOLD/unknowns on real frames over loosening gates 
 
 ## Next milestone
 
-1. Cleaner full 7×7 capture without system screenshot overlays.
-2. Real Python V3.1 dump for the same frame → set reference READY → parity comparator.
-3. Only then reconsider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED=YES`.
-4. Do **not** add input automation / DecisionEngine / AccessibilityService.
+1. Cleaner full 7×7 capture without system screenshot overlays; improve BoardFinder ROI for tall MM UI (without loosening PASS/HOLD gates).
+2. Investigate ACTIVATE_FX AIOOBE (Index -1) with a targeted unit fixture — only if proven safe.
+3. Real Python V3.1 dump for the same frame → set reference READY → parity comparator.
+4. Only then reconsider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED=YES`.
+5. Do **not** add input automation / DecisionEngine / AccessibilityService.
