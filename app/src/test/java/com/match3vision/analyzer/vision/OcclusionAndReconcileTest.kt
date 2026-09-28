@@ -233,4 +233,27 @@ class OcclusionAndReconcileTest {
         assertThat(r.occluded).isFalse()
         assertThat(r.reason).isEqualTo("clear")
     }
+
+    @Test
+    fun sparseTriangleOnDarkBoard_notPartialDark() {
+        // Yellow triangle-like gem (~35% fill) on purple board — full-cell darkFrac
+        // can exceed 0.50, but the gem body in the center must not be partial_dark.
+        val w = 40
+        val h = 40
+        val purple = SyntheticFrames.rgb(40, 20, 70)
+        val yellow = SyntheticFrames.COLOR_Y
+        val cell = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            // Inverted triangle pointing up in center
+            val cy = y - 8
+            val half = ((cy.coerceAtLeast(0)) * (w / 2 - 4)) / (h - 16).coerceAtLeast(1)
+            val left = w / 2 - half
+            val right = w / 2 + half
+            if (cy in 0 until (h - 16) && x in left..right) yellow else purple
+        }
+        val r = occlusion.detect(cell, w, h)
+        assertThat(r.occluded).isFalse()
+        assertThat(r.reason).isEqualTo("clear")
+    }
 }

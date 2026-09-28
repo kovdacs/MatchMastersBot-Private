@@ -101,8 +101,12 @@ class OcclusionDetector(
         }
 
         // Partial dark overlay (50–70% class): dim cover without full-cell blackout.
-        if (darkFrac >= partialDarkFractionThreshold) {
-            return Result(true, "partial_dark", darkFrac.coerceIn(0f, 1f))
+        // Use the **inner** crop for this check so purple board gutters around sparse
+        // gems (triangles/stars) do not count as occlusion — real overlays still cover
+        // the center and remain flagged (see OcclusionAndReconcileTest).
+        val innerDarkFrac = innerRegionDarkFraction(cellPixels, cellWidth, cellHeight)
+        if (innerDarkFrac >= partialDarkFractionThreshold) {
+            return Result(true, "partial_dark", innerDarkFrac.coerceIn(0f, 1f))
         }
 
         // Gray / white / washed blue UI chrome covering ≥ half the crop.
@@ -117,6 +121,40 @@ class OcclusionDetector(
         }
 
         return Result(false, "clear", 1f - darkFrac)
+    }
+
+
+    /**
+     * Dark fraction on the central 70%×70% of the cell
+     * (edge gutters excluded).
+     */
+    private fun innerRegionDarkFraction(cellPixels: IntArray, cellWidth: Int, cellHeight: Int): Float {
+        if (cellWidth < 4 || cellHeight < 4) {
+            // Too small for a meaningful inner window — do not trip partial_dark here
+            // (full-cell dark_cell / mean_dark still apply above/below).
+            return 0f
+        }
+        val marginX = ((1f - 0.70f) * 0.5f * cellWidth).toInt().coerceAtLeast(0)
+        val marginY = ((1f - 0.70f) * 0.5f * cellHeight).toInt().coerceAtLeast(0)
+        val x0 = marginX
+        val y0 = marginY
+        val x1 = (cellWidth - marginX).coerceAtLeast(x0 + 1)
+        val y1 = (cellHeight - marginY).coerceAtLeast(y0 + 1)
+        val stepX = PixelMath.sampleStep(x1 - x0, 24)
+        val stepY = PixelMath.sampleStep(y1 - y0, 24)
+        var dark = 0
+        var samples = 0
+        var y = y0
+        while (y < y1) {
+            var x = x0
+            while (x < x1) {
+                if (PixelMath.luma(cellPixels[y * cellWidth + x]) <= darkLumaThreshold) dark++
+                samples++
+                x += stepX
+            }
+            y += stepY
+        }
+        return if (samples == 0) 1f else dark.toFloat() / samples
     }
 
     private fun isBannerHue(h: Float): Boolean = h <= 45f || h >= 345f
