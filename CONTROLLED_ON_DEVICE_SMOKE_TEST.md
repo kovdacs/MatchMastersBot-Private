@@ -59,9 +59,12 @@ Without this, the smoke run HOLDs with `input channel not ready`.
 1. Open **Match3 Vision Analyzer**.
 2. Confirm UI shows Input/Smoke **off** (default).
 3. Tap **Start** → grant notification (if asked) → grant **screen capture**.
-4. Switch to Match Masters / open a **live PvP board** (stable, fully visible).
-5. Return to the analyzer (picture-in-picture / recents) so capture still sees the board  
-   **or** use split-screen so the board is visible under the MediaProjection virtual display.
+4. Switch to Match Masters / open a **live PvP board** (stable, fully visible).  
+   While the analyzer is in the background, frames are **accepted**.
+5. Return to the analyzer — analysis bitmap is **frozen** on the last board frame  
+   (MediaProjection would otherwise capture our own UI → unk≈42, boardConf=0).  
+   Prefer **split-screen / PiP** so the board stays visible for post-swipe verify.  
+   See `docs/LIVE_BOARD_CAPTURE.md`.
 6. In **CONTROLLED ONE-STEP SMOKE**:
    - Toggle **Enable Input (safety)** ON.
    - Toggle **Enable One-Step Smoke** ON.

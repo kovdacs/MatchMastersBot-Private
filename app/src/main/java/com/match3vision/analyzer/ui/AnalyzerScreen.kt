@@ -98,9 +98,11 @@ fun AnalyzerScreen(
                 Text(
                     "1. Kapcsold be: Automatikus húzás engedélyezése\n" +
                         "2. Kapcsold be: Egy lépéses próba\n" +
-                        "3. Indítsd a rögzítést, nyisd meg a Match Masters táblát\n" +
-                        "4. Nyomd meg: Futtatás (max. 1 húzás)\n" +
-                        "5. Új próba előtt: Visszaállítás",
+                        "3. Indítsd a rögzítést, válts Match Mastersre (tábla látszik)\n" +
+                        "4. Gyere vissza ide — a tábla-kép FAGYASZTVA marad\n" +
+                        "   (vagy használd az osztott képernyőt / PiP-et)\n" +
+                        "5. Nyomd meg: Futtatás (max. 1 húzás)\n" +
+                        "6. Új próba előtt: Visszaállítás",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                 )
@@ -233,6 +235,11 @@ private fun StatusCard(state: AnalyzerUiState) {
             Text(state.statusMessage)
             Text("Képkocka méret: ${state.frameWidth}×${state.frameHeight}")
             Text("Tartalom ROI: ${state.contentRoiText}")
+            Text(
+                "Elemző képkocka: ${state.frameGateText}",
+                fontWeight = FontWeight.Medium,
+                color = if (state.analysisFrameFrozen) Color(0xFF1565C0) else Color(0xFF2E7D32),
+            )
             Text("Fogadott képkockák: ${state.frameCount}")
         }
     }

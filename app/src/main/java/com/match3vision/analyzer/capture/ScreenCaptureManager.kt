@@ -153,18 +153,25 @@ class ScreenCaptureManager(
             val buffer: ByteBuffer = plane.buffer
             val pixelStride = plane.pixelStride
             val rowStride = plane.rowStride
-            val rowPadding = rowStride - pixelStride * widthPx
 
-            val bitmapWidth = widthPx + rowPadding / pixelStride
-            val raw = Bitmap.createBitmap(bitmapWidth, heightPx, Bitmap.Config.ARGB_8888)
-            raw.copyPixelsFromBuffer(buffer)
-            val cropped = if (bitmapWidth > widthPx) {
-                Bitmap.createBitmap(raw, 0, 0, widthPx, heightPx).also {
-                    if (it !== raw) raw.recycle()
+            // Explicit RGBA_8888 → packed ARGB ints. copyPixelsFromBuffer is
+            // brittle across devices when ImageReader format ≠ Bitmap memory layout;
+            // wrong channels yield high gridConf (luma gutters OK) but unk≈all cells.
+            val argb = IntArray(widthPx * heightPx)
+            var dst = 0
+            for (row in 0 until heightPx) {
+                var pos = row * rowStride
+                for (col in 0 until widthPx) {
+                    val r = buffer.get(pos).toInt() and 0xFF
+                    val g = buffer.get(pos + 1).toInt() and 0xFF
+                    val b = buffer.get(pos + 2).toInt() and 0xFF
+                    val a = buffer.get(pos + 3).toInt() and 0xFF
+                    argb[dst++] = (a shl 24) or (r shl 16) or (g shl 8) or b
+                    pos += pixelStride
                 }
-            } else {
-                raw
             }
+            val cropped = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+            cropped.setPixels(argb, 0, widthPx, 0, 0, widthPx, heightPx)
 
             val roi = LetterboxDetector.detect(
                 cropped,

@@ -47,7 +47,8 @@ class VisionPipeline(
         }
         val board = VisionBoard(cells)
         val unknownCount = board.unknownCount()
-        val boardConf = boardConfidence(board, grid)
+        val mean = board.meanConfidence()
+        val boardConf = boardConfidence(board, grid, mean, unknownCount)
         val gridConf = grid.confidence
         // Combined confidence: blend board + grid (board-weighted)
         val combined = (boardConf * 0.6f + gridConf * 0.4f).coerceIn(0f, 1f)
@@ -57,6 +58,35 @@ class VisionPipeline(
         diag["boardConfidence"] = "%.4f".format(boardConf)
         diag["gridConfidence"] = "%.4f".format(gridConf)
         diag["validation"] = if (validation.isPass) "PASS" else "HOLD"
+        diag["meanCellConf"] = "%.4f".format(mean)
+        diag["boardConfPath"] = if (
+            unknownCount <= VisionThresholds.MAX_UNKNOWN_COUNT && mean >= 0.55f
+        ) {
+            "high"
+        } else {
+            "penalty"
+        }
+        // Aggregate occlusion reasons (live unk≈42 usually means overlay / self-UI).
+        val occCounts = linkedMapOf<String, Int>()
+        for ((k, v) in diag) {
+            if (k.startsWith("occ_")) {
+                occCounts[v] = (occCounts[v] ?: 0) + 1
+            }
+        }
+        if (occCounts.isNotEmpty()) {
+            diag["occSummary"] = occCounts.entries.joinToString(",") { "${it.key}=${it.value}" }
+        }
+        // High grid + nearly-all unknown: board geometry OK but cell content is not
+        // gem-like (analyzer UI / floating overlay / FX covering playfield).
+        if (unknownCount >= SUSPECT_OVERLAY_UNKNOWN_MIN &&
+            gridConf >= VisionThresholds.MIN_GRID_CONFIDENCE
+        ) {
+            diag["suspectOverlayOrSelfUi"] = "true"
+            diag["suspectHint"] =
+                "gridConf high but unk=$unknownCount — prefer frame without analyzer UI " +
+                    "covering the board (freeze while Activity resumed; split-screen/PiP). " +
+                    "MediaProjection captures composed screen including overlays."
+        }
 
         return VisionResult(
             board = board,
@@ -112,9 +142,12 @@ class VisionPipeline(
      * and few unknowns, push toward 1.0; otherwise mean cell confidence with
      * unknown penalty.
      */
-    private fun boardConfidence(board: VisionBoard, grid: GridGeometry): Float {
-        val mean = board.meanConfidence()
-        val unknowns = board.unknownCount()
+    private fun boardConfidence(
+        board: VisionBoard,
+        grid: GridGeometry,
+        mean: Float = board.meanConfidence(),
+        unknowns: Int = board.unknownCount(),
+    ): Float {
         val unknownPenalty = unknowns * 0.08f
         val methodBonus = when (grid.method) {
             GridMethod.PROJECTION -> 0.05f
@@ -125,11 +158,18 @@ class VisionPipeline(
         // Mean ≥0.55 matches observed known-cell conf on clean PROJECTION grids
         // (detectors are conservative on JPEG gems); high path unk penalty is lighter
         // because MAX_UNKNOWN_COUNT is enforced separately by VisionValidator.
+        // When nearly all cells are UNKNOWN (mean≈0, unk≫1), penalty path clamps to 0
+        // — that is expected, not a separate formula bug (see suspectOverlayOrSelfUi).
         val base = if (unknowns <= VisionThresholds.MAX_UNKNOWN_COUNT && mean >= 0.55f) {
             (0.90f + mean * 0.10f + methodBonus - unknowns * 0.04f)
         } else {
             (mean + methodBonus - unknownPenalty)
         }
         return base.coerceIn(0f, 1f)
+    }
+
+    companion object {
+        /** unk at/above this with PASS-level gridConf → overlay/self-UI suspect. */
+        const val SUSPECT_OVERLAY_UNKNOWN_MIN = 20
     }
 }

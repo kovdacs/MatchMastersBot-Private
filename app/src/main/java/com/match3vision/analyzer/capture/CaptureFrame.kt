@@ -8,7 +8,7 @@ import android.graphics.Bitmap
  * @property width Frame width in pixels.
  * @property height Frame height in pixels.
  * @property timestampMs Capture time ([System.currentTimeMillis]).
- * @property bitmap RGBA bitmap owned by the caller after emission.
+ * @property bitmap ARGB_8888 bitmap (packed from MediaProjection RGBA_8888) owned by the caller after emission.
  * @property contentRoi Optional content rectangle after letterbox detection.
  */
 data class CaptureFrame(

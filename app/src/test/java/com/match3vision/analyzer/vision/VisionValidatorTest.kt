@@ -111,4 +111,18 @@ class VisionValidatorTest {
 
         assertThat(validator.validate(0.90f, 0.90f, 5).isPass).isFalse()
     }
+
+    @Test
+    fun highUnknown_reportedBeforeBoardConf() {
+        // Live HOLD often had boardConf=0 masking unk=42; unknown is checked first now.
+        val result = validator.validate(
+            boardConfidence = 0.0f,
+            gridConfidence = 0.99f,
+            unknownCount = 42,
+        )
+        assertThat(result.isPass).isFalse()
+        val hold = result as ValidationResult.Hold
+        assertThat(hold.reason).contains("unknownCount")
+        assertThat(hold.reason).doesNotContain("board confidence")
+    }
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
+import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.capture.ContentRoi
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutomaticInputEngine
@@ -66,6 +67,9 @@ data class AnalyzerUiState(
     val smokeStatusText: String = "Próba: KI (alapértelmezett)",
     val smokeLogText: String = "",
     val smokeRunning: Boolean = false,
+    /** Analysis bitmap freeze status (MediaProjection self-UI guard). */
+    val frameGateText: String = "FAGYASZTVA (indítás)",
+    val analysisFrameFrozen: Boolean = true,
 ) {
     companion object {
         const val SUBTITLE = "Elemző + egylépéses próba (bevitel alapból KI)"
@@ -103,6 +107,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         ),
         logger = smokeLogger,
     )
+    private val frameGate = AnalysisFrameGate()
 
     private val _uiState = MutableStateFlow(AnalyzerUiState())
     val uiState: StateFlow<AnalyzerUiState> = _uiState.asStateFlow()
@@ -153,6 +158,25 @@ class AnalyzerViewModel @JvmOverloads constructor(
                 statusMessage = "Leállítva",
                 lastFrameBitmap = null,
                 lastContentRoi = null,
+            )
+        }
+    }
+
+    /**
+     * Call from Activity onResume/onPause.
+     * When the analyzer UI is foreground, MediaProjection frames are our own panel —
+     * freeze the last board frame captured while paused (Match Masters visible).
+     */
+    fun onAnalyzerUiForeground(foreground: Boolean) {
+        frameGate.setAnalyzerUiForeground(foreground)
+        smokeLogger.log(
+            "FRAME_GATE — analyzerUiForeground=$foreground acceptLive=${frameGate.shouldAcceptLiveFrame()} " +
+                "status=${frameGate.statusText()}",
+        )
+        _uiState.update {
+            it.copy(
+                frameGateText = frameGate.statusText(),
+                analysisFrameFrozen = !frameGate.shouldAcceptLiveFrame(),
             )
         }
     }
@@ -217,8 +241,19 @@ class AnalyzerViewModel @JvmOverloads constructor(
                     }
                     is OneStepSmokeController.StepResult.AwaitingFeedback -> {
                         publishSmokeUi(
-                            "Próba: húzás elküldve — várakozás ${step.animationWaitMs} ms…",
+                            "Próba: húzás elküldve — várakozás ${step.animationWaitMs} ms… " +
+                                "(tábla legyen látható: osztott képernyő / PiP)",
                         )
+                        // Temporarily accept live frames so post-swipe board can update.
+                        // Fullscreen analyzer UI still covers the board — split-screen/PiP required.
+                        frameGate.setForceAcceptLive(true)
+                        _uiState.update {
+                            it.copy(
+                                frameGateText = frameGate.statusText(),
+                                analysisFrameFrozen = false,
+                            )
+                        }
+                        try {
                         delay(step.animationWaitMs)
                         // Prefer a newer frame than the one we swiped on.
                         val startCount = _uiState.value.frameCount
@@ -255,6 +290,15 @@ class AnalyzerViewModel @JvmOverloads constructor(
                                 publishSmokeUi("Próba LEÁLLÍTVA: ${fb.reason}")
                             is OneStepSmokeController.StepResult.AwaitingFeedback ->
                                 publishSmokeUi("Próba: váratlan várakozó állapot")
+                        }
+                        } finally {
+                            frameGate.setForceAcceptLive(false)
+                            _uiState.update {
+                                it.copy(
+                                    frameGateText = frameGate.statusText(),
+                                    analysisFrameFrozen = !frameGate.shouldAcceptLiveFrame(),
+                                )
+                            }
                         }
                     }
                 }
@@ -313,7 +357,9 @@ class AnalyzerViewModel @JvmOverloads constructor(
                 visionStatusText = "Látás: ${dbg.gate} · ${dbg.gridMethod} · unk=${dbg.unknownCount} · " +
                     "board=${"%.2f".format(dbg.boardConfidence)} grid=${"%.2f".format(dbg.gridConfidence)}",
                 visionDebugText = "ROI ${dbg.roiText} · cells=${dbg.cellLabels.size}" +
-                    (dbg.holdReason?.let { r -> " · $r" } ?: ""),
+                    (dbg.holdReason?.let { r -> " · $r" } ?: "") +
+                    (frameAnalysis.result.diagnostics["suspectHint"]?.let { " · $it" } ?: "") +
+                    (frameAnalysis.result.diagnostics["occSummary"]?.let { " · occ{$it}" } ?: ""),
                 boardGridLabels = dbg.cellLabels,
                 gateHold = hold,
                 holdMessage = if (hold) {
@@ -366,17 +412,35 @@ class AnalyzerViewModel @JvmOverloads constructor(
     }
 
     private fun publishFrame(frame: CaptureFrame) {
+        val accept = frameGate.shouldAcceptLiveFrame()
+        frameGate.onFrameOffered(accept)
         _uiState.update { state ->
-            state.copy(
-                status = AnalyzerStatus.Capturing,
-                statusMessage = "Rögzítés ${frame.width}×${frame.height}",
-                frameWidth = frame.width,
-                frameHeight = frame.height,
-                contentRoiText = formatRoi(frame.contentRoi),
-                frameCount = state.frameCount + 1,
-                lastFrameBitmap = frame.bitmap,
-                lastContentRoi = frame.contentRoi,
-            )
+            if (accept) {
+                state.copy(
+                    status = AnalyzerStatus.Capturing,
+                    statusMessage = "Rögzítés ${frame.width}×${frame.height}",
+                    frameWidth = frame.width,
+                    frameHeight = frame.height,
+                    contentRoiText = formatRoi(frame.contentRoi),
+                    frameCount = state.frameCount + 1,
+                    lastFrameBitmap = frame.bitmap,
+                    lastContentRoi = frame.contentRoi,
+                    frameGateText = frameGate.statusText(),
+                    analysisFrameFrozen = false,
+                )
+            } else {
+                // Keep last board bitmap; still show that capture is flowing.
+                state.copy(
+                    status = AnalyzerStatus.Capturing,
+                    statusMessage = "Rögzítés ${frame.width}×${frame.height} (képkocka fagyasztva)",
+                    frameWidth = frame.width,
+                    frameHeight = frame.height,
+                    contentRoiText = formatRoi(state.lastContentRoi ?: frame.contentRoi),
+                    frameCount = state.frameCount + 1,
+                    frameGateText = frameGate.statusText(),
+                    analysisFrameFrozen = true,
+                )
+            }
         }
     }
 

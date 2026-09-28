@@ -63,6 +63,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Freeze analysis bitmap: MediaProjection would otherwise feed our own UI.
+        viewModel.onAnalyzerUiForeground(true)
+    }
+
+    override fun onPause() {
+        // Accept live frames while user views Match Masters / split-screen board.
+        viewModel.onAnalyzerUiForeground(false)
+        super.onPause()
+    }
+
     private fun requestCapturePermission() {
         if (Build.VERSION.SDK_INT >= 33) {
             val granted = ContextCompat.checkSelfPermission(
