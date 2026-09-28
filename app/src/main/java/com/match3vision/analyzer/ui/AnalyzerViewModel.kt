@@ -6,8 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
-import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.overlay.AutoPlaySession
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.InputEnableSwitch
@@ -107,7 +107,8 @@ class AnalyzerViewModel @JvmOverloads constructor(
         ),
         logger = smokeLogger,
     )
-    private val frameGate = AnalysisFrameGate()
+    /** Shared with FloatingBubbleService — bubble FUT always accepts live frames. */
+    private val frameGate get() = AutoPlaySession.frameGate
 
     private val _uiState = MutableStateFlow(AnalyzerUiState())
     val uiState: StateFlow<AnalyzerUiState> = _uiState.asStateFlow()
@@ -394,6 +395,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         observeJob = viewModelScope.launch {
             var lastSeen: CaptureFrame? = null
             while (isActive) {
+                AutoPlaySession.syncFrameGateFromMode()
                 val manager = CaptureService.managerOrNull()
                 val frame = manager?.latestFrame?.value
                 if (frame != null && frame !== lastSeen) {

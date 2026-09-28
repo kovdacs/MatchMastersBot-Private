@@ -12,6 +12,8 @@ import org.junit.Test
  * 2) Mild boardRoi mis-snap (bubble / side-chrome): gridConf≈0.972 < 0.98 while
  *    board is clear — soft gutter re-pick must lift ≥ MIN_GRID without loosening gates
  *    or changing the clean REAL_FRAME first-pass (golden 0.9872).
+ * 3) Live cell HOLD unk=2: purple square / mushroom misread as STAR at high conf —
+ *    dominance reconcile must keep unk≤1 on clear PvP without loosening MAX_UNKNOWN.
  */
 class LiveBoardFrameRegressionTest {
 
@@ -167,6 +169,59 @@ class LiveBoardFrameRegressionTest {
                 "boardConf=${"%.4f".format(result.boardConfidence)} " +
                 "recover=${result.diagnostics["gridRecover"]} " +
                 "unk=${result.unknownCount}",
+        )
+    }
+
+    @Test
+    fun realFrame_clearBoard_unknownAtMostOne_includingMushroom() {
+        Assume.assumeTrue(RealFrameLoader.resourceExists())
+        val frame = RealFrameLoader.loadFromResource()!!
+        val result = pipeline.analyze(
+            frame.pixels, frame.width, frame.height,
+            ContentRoi.full(frame.width, frame.height),
+        )
+        assertThat(VisionThresholds.MAX_UNKNOWN_COUNT).isEqualTo(1)
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.validation.isPass,
+            "clear PvP (mushroom +3 present) must PASS with unk≤1",
+        )
+        assertThat(result.unknownCount).isAtMost(VisionThresholds.MAX_UNKNOWN_COUNT)
+        assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
+        assertThat(result.boardConfidence).isAtLeast(VisionThresholds.MIN_BOARD_CONFIDENCE)
+        // Purple square that used to be high-conf STAR contradiction must be known.
+        val r5c6 = result.board.get(5, 6)
+        assertThat(r5c6.isUnknown).isFalse()
+        assertThat(r5c6.color).isEqualTo(TileColor.P)
+        assertThat(r5c6.shape).isEqualTo(TileShape.SQUARE)
+        // Mushroom cell must not alone consume the unknown budget as UNKNOWN.
+        val mush = result.board.get(4, 1)
+        assertThat(mush.isUnknown).isFalse()
+        println(
+            "LIVE_CELLS unk=${result.unknownCount} gate=PASS " +
+                "r5c6=${r5c6.color}/${r5c6.shape} mush=${mush.color}/${mush.shape} " +
+                "boardConf=${"%.4f".format(result.boardConfidence)}",
+        )
+    }
+
+    @Test
+    fun realFrame_misSnapRoi_stillUnknownAtMostOne() {
+        Assume.assumeTrue(RealFrameLoader.resourceExists())
+        val frame = RealFrameLoader.loadFromResource()!!
+        val misRoi = ContentRoi(7, 1206, 1047, 2246)
+        val result = pipeline.analyze(frame.pixels, frame.width, frame.height, misRoi)
+        assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
+        assertThat(result.unknownCount).isAtMost(VisionThresholds.MAX_UNKNOWN_COUNT)
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.validation.isPass,
+            "soft-recovered live mis-snap must PASS with unk≤1 (gates unchanged)",
+        )
+        println(
+            "LIVE_CELLS_MISSNAP unk=${result.unknownCount} gate=PASS " +
+                "grid=${"%.4f".format(result.gridConfidence)} " +
+                "board=${"%.4f".format(result.boardConfidence)} " +
+                "recover=${result.diagnostics["gridRecover"]}",
         )
     }
 

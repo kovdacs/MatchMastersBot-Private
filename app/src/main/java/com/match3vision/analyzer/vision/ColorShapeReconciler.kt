@@ -9,7 +9,10 @@ package com.match3vision.analyzer.vision
  * - purple → square
  * - orange → hex/gem
  *
- * High-confidence contradiction → UNKNOWN.
+ * High-confidence near-tie contradiction → UNKNOWN.
+ * When one channel clearly dominates (e.g. strong purple on a mushroom/+3
+ * booster vs a false STAR silhouette), prefer the stronger channel so typical
+ * clear PvP boards stay within [VisionThresholds.MAX_UNKNOWN_COUNT].
  */
 object ColorShapeReconciler {
 
@@ -34,6 +37,12 @@ object ColorShapeReconciler {
         TileColor.P to setOf(TileShape.SQUARE),
         TileColor.O to setOf(TileShape.HEX, TileShape.TRIANGLE),
     )
+
+    /**
+     * Minimum |colorConf − shapeConf| to trust the stronger channel on a
+     * high-confidence disagreement. Near-ties (e.g. 0.95 vs 0.92) stay UNKNOWN.
+     */
+    const val DOMINANCE_MARGIN = 0.08f
 
     fun expectedShape(color: TileColor): TileShape? = EXPECTED[color]
 
@@ -60,19 +69,27 @@ object ColorShapeReconciler {
         val expectedForColor = EXPECTED[color]
         val high = VisionThresholds.RECONCILE_HIGH_CONFIDENCE
 
-        // Both known and disagree with high confidence → UNKNOWN
+        // Both known and disagree with high confidence
         if (color != TileColor.UNKNOWN && shape != TileShape.UNKNOWN &&
             !isAcceptable(color, shape) &&
             colorConf >= high && shapeConf >= high
         ) {
-            return CellVision(
-                color = TileColor.UNKNOWN,
-                shape = TileShape.UNKNOWN,
-                special = SpecialType.NONE,
-                occluded = false,
-                confidence = minOf(colorConf, shapeConf),
-                isUnknown = true,
-            )
+            val margin = colorConf - shapeConf
+            return when {
+                // Stronger color (mushrooms/+3 boosters, purple squares misread as STAR)
+                margin >= DOMINANCE_MARGIN -> trustColor(color, colorConf, expectedForColor, special)
+                // Stronger shape
+                -margin >= DOMINANCE_MARGIN -> trustShape(shape, shapeConf, special)
+                // Near-tie → UNKNOWN (keeps B@0.95+CIRCLE@0.92 unknown)
+                else -> CellVision(
+                    color = TileColor.UNKNOWN,
+                    shape = TileShape.UNKNOWN,
+                    special = SpecialType.NONE,
+                    occluded = false,
+                    confidence = minOf(colorConf, shapeConf),
+                    isUnknown = true,
+                )
+            }
         }
 
         // Prefer consistent pair; if shape unknown, trust color (+ expected shape soft)
@@ -113,6 +130,41 @@ object ColorShapeReconciler {
             special = if (unknown) SpecialType.NONE else special,
             occluded = false,
             confidence = conf.coerceIn(0f, 1f),
+            isUnknown = unknown,
+        )
+    }
+
+    private fun trustColor(
+        color: TileColor,
+        colorConf: Float,
+        expectedForColor: TileShape?,
+        special: SpecialType,
+    ): CellVision {
+        val shape = expectedForColor ?: TileShape.UNKNOWN
+        val unknown = shape == TileShape.UNKNOWN
+        return CellVision(
+            color = color,
+            shape = shape,
+            special = if (unknown) SpecialType.NONE else special,
+            occluded = false,
+            confidence = (colorConf * 0.85f).coerceIn(0f, 1f),
+            isUnknown = unknown,
+        )
+    }
+
+    private fun trustShape(
+        shape: TileShape,
+        shapeConf: Float,
+        special: SpecialType,
+    ): CellVision {
+        val color = expectedColor(shape) ?: TileColor.UNKNOWN
+        val unknown = color == TileColor.UNKNOWN
+        return CellVision(
+            color = color,
+            shape = shape,
+            special = if (unknown) SpecialType.NONE else special,
+            occluded = false,
+            confidence = (shapeConf * 0.85f).coerceIn(0f, 1f),
             isUnknown = unknown,
         )
     }

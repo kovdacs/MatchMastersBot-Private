@@ -1,7 +1,7 @@
 # AUTO-PLAY BUBBLE UX V1
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Version:** `0.21.1-live-grid` (UX from 0.21.0)  
+**Version:** `0.21.2-live-cells` (UX from 0.21.0)  
 **Package:** `com.match3vision.analyzer.overlay` + `input.AutoPlayController`
 
 ## User flow (Hungarian UI)

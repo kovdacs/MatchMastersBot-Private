@@ -6,8 +6,8 @@
 
 | Test | Input type | Expected | Actual | Result |
 |------|------------|----------|--------|--------|
-| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + **PASS** regression (grid≥0.98 board≥0.95 unk≤1) | gridConf=0.9872 boardConf=0.9696 unk=1 PROJECTION **PASS** (run 36414665548) | PASS |
-| RealFrameExportTest.realFrame_pvpBoard_androidExport_matchesGoldenAndSchema | REAL_FRAME → Android export golden | PASS + schema + key numerics/cells vs `pvp_board_android_export.json`; ANDROID_EXPORT only | gridConf=0.9872 boardConf=0.9696 unk=1 PASS (run 36416924508) | PASS |
+| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + **PASS** regression (grid≥0.98 board≥0.95 unk≤1) | gridConf=0.9872 boardConf=1.0 unk=0 PROJECTION **PASS** (0.21.2-live-cells) | PASS |
+| RealFrameExportTest.realFrame_pvpBoard_androidExport_matchesGoldenAndSchema | REAL_FRAME → Android export golden | PASS + schema + key numerics/cells vs `pvp_board_android_export.json`; ANDROID_EXPORT only | gridConf=0.9872 boardConf=1.0 unk=0 PASS (0.21.2-live-cells) | PASS |
 | RealFrameExportTest.goldenClasspath_isAndroidExport_notPythonReady | Golden JSON classpath | status ANDROID_EXPORT; not READY; PARITY_VERIFIED=NO | — | PASS (intent) |
 | RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | softGt 22/40 rate=0.550 (run 36414665548) | RUN (soft) |
 | RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | showdown HOLD; activate FX HOLD; mid_volume PASS (ran=3 err=0) | RUN (soft) |

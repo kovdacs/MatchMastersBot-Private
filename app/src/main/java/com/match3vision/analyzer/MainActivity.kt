@@ -2,7 +2,10 @@ package com.match3vision.analyzer
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -36,6 +39,15 @@ class MainActivity : ComponentActivity() {
     private var pendingAfterOverlay = false
     private var pendingAfterA11y = false
 
+    private val minimizeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == FloatingBubbleService.ACTION_MINIMIZE_ANALYZER) {
+                // Large analyzer panels cover MediaProjection — background so Match Masters shows.
+                moveTaskToBack(true)
+            }
+        }
+    }
+
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -51,6 +63,8 @@ class MainActivity : ComponentActivity() {
                 Toast.LENGTH_LONG,
             ).show()
             Timber.i("MediaProjection granted — CaptureService + bubble starting")
+            // Leave playfield visible for MediaProjection (bubble is small).
+            moveTaskToBack(true)
         } else {
             viewModel.onCapturePermissionDenied()
             AutoPlaySession.publish(captureReady = false, statusText = "Képernyőrögzítés elutasítva")
@@ -80,6 +94,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val filter = IntentFilter(FloatingBubbleService.ACTION_MINIMIZE_ANALYZER)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(minimizeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(minimizeReceiver, filter)
+        }
         refreshPermissionFlags()
         setContent {
             Match3VisionTheme {
@@ -118,6 +139,14 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         viewModel.onAnalyzerUiForeground(false)
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(minimizeReceiver)
+        } catch (_: Throwable) {
+        }
+        super.onDestroy()
     }
 
     /** Big INDÍTÁS — request only missing permissions, then capture + bubble. */
@@ -168,6 +197,7 @@ class MainActivity : ComponentActivity() {
                 "Buborék kész — nyisd meg a Match Masters-t, majd buborék INDÍTÁS",
                 Toast.LENGTH_LONG,
             ).show()
+            moveTaskToBack(true)
             return
         }
         launchProjectionPermission()

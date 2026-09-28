@@ -141,9 +141,9 @@ class RealFrameExportTest {
         assertThat(text).doesNotContain("\"status\": \"READY\"")
         assertThat(text).contains("PARITY_VERIFIED=NO")
         assertThat(text).contains("\"gate\": \"PASS\"")
-        assertThat(text).contains("\"unknownCount\": 1")
+        assertThat(text).contains("\"unknownCount\": 0")
         assertThat(text).contains("\"gridConfidence\": 0.9872")
-        assertThat(text).contains("\"boardConfidence\": 0.9696")
+        assertThat(text).contains("\"boardConfidence\": 1.0")
         REQUIRED_SCHEMA_KEYS.forEach { key ->
             assertThat(text).contains("\"$key\"")
         }
@@ -250,8 +250,8 @@ class RealFrameExportTest {
         const val GOLDEN_RESOURCE = "real_frames/pvp_board_android_export.json"
 
         const val EXPECTED_GRID_CONF = 0.9872f
-        const val EXPECTED_BOARD_CONF = 0.9696f
-        const val EXPECTED_UNKNOWN = 1
+        const val EXPECTED_BOARD_CONF = 1.0000f
+        const val EXPECTED_UNKNOWN = 0
         const val EXPECTED_ROI_LEFT = 20
         const val EXPECTED_ROI_TOP = 1206
         const val EXPECTED_ROI_RIGHT = 1060

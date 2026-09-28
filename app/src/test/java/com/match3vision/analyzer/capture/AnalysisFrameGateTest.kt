@@ -43,6 +43,30 @@ class AnalysisFrameGateTest {
     }
 
     @Test
+    fun bubbleLoopRunning_acceptsLiveEvenWhenForeground() {
+        val gate = AnalysisFrameGate()
+        gate.setAnalyzerUiForeground(true)
+        assertThat(gate.shouldAcceptLiveFrame()).isFalse()
+        gate.setBubbleLoopRunning(true)
+        assertThat(gate.shouldAcceptLiveFrame()).isTrue()
+        assertThat(gate.statusText()).contains("buborék FUT")
+        gate.setBubbleLoopRunning(false)
+        assertThat(gate.shouldAcceptLiveFrame()).isFalse()
+    }
+
+    @Test
+    fun bubbleOverlayOnly_zeroAccepted_acceptsLive() {
+        val gate = AnalysisFrameGate()
+        gate.setAnalyzerUiForeground(true)
+        gate.setBubbleOverlayOnly(true)
+        assertThat(gate.acceptedFrameCount).isEqualTo(0)
+        assertThat(gate.shouldAcceptLiveFrame()).isTrue()
+        gate.onFrameOffered(accepted = true)
+        // After first accept, foreground without loop still freezes
+        assertThat(gate.shouldAcceptLiveFrame()).isFalse()
+    }
+
+    @Test
     fun counters_trackAcceptedAndDiscarded() {
         val gate = AnalysisFrameGate()
         gate.onFrameOffered(accepted = false)

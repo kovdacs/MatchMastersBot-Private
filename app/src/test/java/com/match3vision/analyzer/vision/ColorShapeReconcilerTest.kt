@@ -11,7 +11,8 @@ import org.junit.Test
 class ColorShapeReconcilerTest {
 
     @Test
-    fun highConfContradiction_yieldsUnknown() {
+    fun highConfNearTieContradiction_yieldsUnknown() {
+        // Near-tie (margin < DOMINANCE_MARGIN) stays UNKNOWN.
         val v = ColorShapeReconciler.reconcile(
             color = TileColor.B,
             colorConf = 0.95f,
@@ -22,6 +23,36 @@ class ColorShapeReconcilerTest {
         assertThat(v.isUnknown).isTrue()
         assertThat(v.color).isEqualTo(TileColor.UNKNOWN)
         assertThat(v.shape).isEqualTo(TileShape.UNKNOWN)
+    }
+
+    @Test
+    fun highConfDominantColor_trustsColorExpectedShape() {
+        // Live PvP: purple square / mushroom misread as STAR — color dominates.
+        val v = ColorShapeReconciler.reconcile(
+            color = TileColor.P,
+            colorConf = 0.91f,
+            shape = TileShape.STAR,
+            shapeConf = 0.714f,
+            special = SpecialType.NONE,
+        )
+        assertThat(v.isUnknown).isFalse()
+        assertThat(v.color).isEqualTo(TileColor.P)
+        assertThat(v.shape).isEqualTo(TileShape.SQUARE)
+        assertThat(0.91f - 0.714f).isAtLeast(ColorShapeReconciler.DOMINANCE_MARGIN)
+    }
+
+    @Test
+    fun highConfDominantShape_trustsShapeExpectedColor() {
+        val v = ColorShapeReconciler.reconcile(
+            color = TileColor.B,
+            colorConf = 0.72f,
+            shape = TileShape.CIRCLE,
+            shapeConf = 0.90f,
+            special = SpecialType.NONE,
+        )
+        assertThat(v.isUnknown).isFalse()
+        assertThat(v.shape).isEqualTo(TileShape.CIRCLE)
+        assertThat(v.color).isEqualTo(TileColor.R)
     }
 
     @Test

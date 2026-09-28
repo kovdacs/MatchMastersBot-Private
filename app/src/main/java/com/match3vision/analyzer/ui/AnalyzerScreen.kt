@@ -52,6 +52,19 @@ fun AnalyzerScreen(
     val auto by AutoPlaySession.ui.collectAsStateWithLifecycle()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        // During bubble FUT: hide huge debug overlays so MediaProjection sees Match Masters
+        // (Activity may briefly resume; compact panel + bubble only).
+        if (auto.compactUi || auto.mode == AutoPlayController.Mode.RUNNING) {
+            CompactRunningPanel(
+                mode = auto.mode,
+                statusText = auto.statusText,
+                moveCount = auto.moveCount,
+                frameGateText = state.frameGateText,
+                frameCount = state.frameCount,
+                onStop = onStopCapture,
+            )
+            return@Surface
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -348,6 +361,50 @@ private fun FramePreview(bitmap: Bitmap?) {
             )
         } else {
             Text("Még nincs képkocka", color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+private fun CompactRunningPanel(
+    mode: AutoPlayController.Mode,
+    statusText: String,
+    moveCount: Int,
+    frameGateText: String,
+    frameCount: Long,
+    onStop: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Auto fut — nagy UI elrejtve",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            "Mód: ${autoModeHu(mode)} · húzások=$moveCount",
+            fontWeight = FontWeight.Medium,
+        )
+        Text(statusText, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Elemző képkocka: $frameGateText",
+            color = Color(0xFF2E7D32),
+            fontWeight = FontWeight.Medium,
+        )
+        Text("Fogadott képkockák: $frameCount")
+        Text(
+            "A buborék kis overlay. Nyisd meg a Match Masters-t a háttérben.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
+            Text("STOP — buborék + rögzítés leállítása")
         }
     }
 }

@@ -214,13 +214,18 @@ class FloatingBubbleService : Service() {
             refreshBubbleUi()
             return
         }
+        AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("fut")
         refreshBubbleUi()
+        // Prefer Match Masters visible: ask analyzer Activity to background itself.
+        // Large Compose debug panels must not cover MediaProjection during FUT.
+        sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
         ensureLoopRunning()
     }
 
     private fun pauseLoopFromBubble() {
         AutoPlaySession.controller.onBubblePause()
+        AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("szünet")
         refreshBubbleUi()
     }
@@ -229,6 +234,7 @@ class FloatingBubbleService : Service() {
         loopJob?.cancel()
         loopJob = null
         AutoPlaySession.controller.onBubbleStop("bubble STOP")
+        AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.endSession()
         CaptureService.stop(this)
         removeBubble()
@@ -371,6 +377,8 @@ class FloatingBubbleService : Service() {
         const val ACTION_STOP_ALL = "com.match3vision.analyzer.overlay.STOP_ALL"
         const val ACTION_START_LOOP = "com.match3vision.analyzer.overlay.START_LOOP"
         const val ACTION_PAUSE_LOOP = "com.match3vision.analyzer.overlay.PAUSE_LOOP"
+        /** Bubble FUT → analyzer Activity should moveTaskToBack / compact UI. */
+        const val ACTION_MINIMIZE_ANALYZER = "com.match3vision.analyzer.overlay.MINIMIZE_ANALYZER"
 
         @Volatile
         private var instance: FloatingBubbleService? = null

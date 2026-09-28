@@ -1,5 +1,6 @@
 package com.match3vision.analyzer.overlay
 
+import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutomaticInputEngine
@@ -27,6 +28,8 @@ object AutoPlaySession {
         val a11yReady: Boolean = false,
         val overlayReady: Boolean = false,
         val captureReady: Boolean = false,
+        /** True while loop RUNNING — analyzer UI should stay compact / backgrounded. */
+        val compactUi: Boolean = false,
     )
 
     private val enableSwitch = InputEnableSwitch.disabledByDefault()
@@ -43,6 +46,9 @@ object AutoPlaySession {
     val frameAnalyzer: VisionFrameAnalyzer = VisionFrameAnalyzer()
     val orchestrator: AnalysisOrchestrator = AnalysisOrchestrator()
 
+    /** Shared MediaProjection analysis freeze gate (Activity + bubble). */
+    val frameGate: AnalysisFrameGate = AnalysisFrameGate()
+
     private val _ui = MutableStateFlow(UiSnapshot())
     val ui: StateFlow<UiSnapshot> = _ui.asStateFlow()
 
@@ -53,16 +59,20 @@ object AutoPlaySession {
         overlayReady: Boolean? = null,
         captureReady: Boolean? = null,
     ) {
+        val visible = bubbleVisible ?: _ui.value.bubbleVisible
+        frameGate.setBubbleOverlayOnly(visible)
+        frameGate.setBubbleLoopRunning(controller.mode == AutoPlayController.Mode.RUNNING)
         _ui.update { cur ->
             cur.copy(
                 mode = controller.mode,
                 statusText = statusText ?: controller.lastReason,
                 moveCount = controller.moveCount,
                 holdCount = controller.holdCount,
-                bubbleVisible = bubbleVisible ?: cur.bubbleVisible,
+                bubbleVisible = visible,
                 a11yReady = a11yReady ?: cur.a11yReady,
                 overlayReady = overlayReady ?: cur.overlayReady,
                 captureReady = captureReady ?: cur.captureReady,
+                compactUi = controller.mode == AutoPlayController.Mode.RUNNING,
             )
         }
     }
@@ -73,6 +83,7 @@ object AutoPlaySession {
 
     fun beginNewSession() {
         controller.resetForNewSession()
+        frameGate.setBubbleLoopRunning(false)
         publish(
             statusText = "Kész — buborék INDÍTÁS indítja a kört",
             bubbleVisible = true,
@@ -83,6 +94,15 @@ object AutoPlaySession {
         if (controller.mode != AutoPlayController.Mode.STOPPED) {
             controller.onBubbleStop("session end")
         }
+        frameGate.setBubbleLoopRunning(false)
+        frameGate.setBubbleOverlayOnly(false)
         publish(statusText = "Leállítva", bubbleVisible = false)
+    }
+
+    /** Sync gate flags after bubble START / PAUSE / STOP. */
+    fun syncFrameGateFromMode() {
+        frameGate.setBubbleLoopRunning(controller.mode == AutoPlayController.Mode.RUNNING)
+        frameGate.setBubbleOverlayOnly(_ui.value.bubbleVisible)
+        _ui.update { it.copy(mode = controller.mode, compactUi = controller.mode == AutoPlayController.Mode.RUNNING) }
     }
 }

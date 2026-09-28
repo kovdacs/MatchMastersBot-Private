@@ -17,7 +17,7 @@
 | `PARITY_VERIFIED` | **NO** |
 | `VISION_REAL_WORLD_VALIDATED` | **NO** (partial evidence only — see below) |
 
-One early-match frame + occluded secondaries ≠ full real-world validation. Primary now locks square playfield ROI + PROJECTION with gate **PASS** (gridConf 0.9872, boardConf 0.9696, unk=1). Soft GT color still ~55%. No Python V3.1 dump. One early-match frame ≠ full real-world validation — flag stays **NO**.
+One early-match frame + occluded secondaries ≠ full real-world validation. Primary now locks square playfield ROI + PROJECTION with gate **PASS** (gridConf 0.9872, boardConf 1.0, unk=0). Soft GT color still ~55%. No Python V3.1 dump. One early-match frame ≠ full real-world validation — flag stays **NO**.
 
 ## 1. Reference recovery
 
@@ -61,8 +61,8 @@ Checked in (2026-09-28):
 | boardRoi (BoardFinder) | **LTRB(20,1206,1060,2246)** → dims **1040×1040** (`separator_square`) |
 | gridMethod | **PROJECTION** |
 | gridConfidence | **0.9872** (projRelVarX=0.0033, projRelVarY=0.0052) |
-| boardConfidence | **0.9696** |
-| unknownCount | **1** |
+| boardConfidence | **1.0000** |
+| unknownCount | **0** |
 | PASS/HOLD | **PASS** |
 | softGt colorMatch | **22/40** (verifiableGT=41, rate=0.550) |
 
@@ -74,9 +74,9 @@ ROI snap / MIN_GRID=0.98 / MIN_BOARD=0.95 / MAX_UNKNOWN=1 / ACTIVATE_FX fixtures
 
 | Frame | Result |
 |-------|--------|
-| showdown overlay | **HOLD** gridConf=0.9836 boardConf=0.0000 unknowns=16 PROJECTION |
+| showdown overlay | **HOLD** gridConf=0.9836 boardConf=0.0000 unknowns≈15 PROJECTION |
 | activate FX | **HOLD** gridConf=0.9892 boardConf=0.0000 unknowns=14 PROJECTION (no longer AIOOBE) |
-| mid volume | **PASS** gridConf=0.9900 boardConf=1.0000 unknowns=0 PROJECTION |
+| mid volume | **HOLD** gridConf≈0.9888 boardConf≈0.51 unknowns=2 PROJECTION (soft secondary) |
 
 Secondary ran=3 errored=0 of 3.
 
@@ -112,7 +112,7 @@ Gates unchanged (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Production chang
 | Contents | boardRoi, 8× x/yBoundaries, 49 cellBoxes (LTRB + centerX/Y), 49 cells (color/shape/special/occlusion/confidence/isUnknown/finalTile/centers), gridConfidence, boardConfidence, unknownCount, validation/gate **PASS** |
 | Status field | `ANDROID_EXPORT` — **not** a Python V3.1 dump |
 
-Regression: `RealFrameExportTest` fails if primary no longer PASS, key numerics drift (gridConf≈0.9872, boardConf≈0.9696, unk=1), cell labels drift, or export schema keys go missing.
+Regression: `RealFrameExportTest` fails if primary no longer PASS, key numerics drift (gridConf≈0.9872, boardConf≈1.0, unk=0), cell labels drift, or export schema keys go missing.
 
 **Android export only.** `REFERENCE_PENDING=YES`; `PYTHON_REFERENCE_AVAILABLE=NO`; `PARITY_VERIFIED` remains **NO** (do not invent READY / fake V3.1).
 

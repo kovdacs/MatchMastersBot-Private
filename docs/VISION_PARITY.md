@@ -2,7 +2,7 @@
 
 **Status:** `REFERENCE_PENDING`  
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Tip context:** REAL_FRAME PASS + Android export golden on `pvp_board.jpg` (gridConf 0.9872, boardConf 0.9696, unk 1) — CI run 36416924508 / export `33a876d`; hunt tip `df89ece`.
+**Tip context:** REAL_FRAME PASS + Android export golden on `pvp_board.jpg` (gridConf 0.9872, boardConf 1.0, unk 0) — CI run 36416924508 / export `33a876d`; hunt tip `df89ece`.
 
 ## Flags
 
