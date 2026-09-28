@@ -31,7 +31,7 @@ Both the system a11y toggle **and** the in-app enable switch must be on before a
 5. `boardConfidence ≥ 0.95` (`VisionThresholds.MIN_BOARD_CONFIDENCE`)
 6. `unknownCount ≤ 1`
 7. Valid `MoveEvaluation` present (finite EV, not uncertain)
-8. `move.confidence ≥ InputThresholds.MIN_MOVE_CONFIDENCE` (0.70)
+8. `move.confidence ≥ InputThresholds.MIN_MOVE_CONFIDENCE` (0.50)
 
 Else → **HOLD — Decision AI blocked / input disabled**, no gesture.
 

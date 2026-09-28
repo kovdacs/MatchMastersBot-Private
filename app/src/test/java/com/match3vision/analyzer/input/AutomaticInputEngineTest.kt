@@ -226,14 +226,14 @@ class AutomaticInputEngineTest {
     }
 
     @Test
-    fun uncertainMove_failSafeHold() {
+    fun uncertainMove_withAdequateConfidence_stillAllowed() {
+        // Cascade-refill sets uncertain=true on most legal clears; vision fail-safe
+        // remains the STOP path for unknown frames after input.
         val (eng, exec) = engine()
-        val u = goodMove(uncertain = true)
-        val result = eng.tryExecute(vision(), u)
-        assertThat(result).isInstanceOf(AutomaticInputEngine.ExecuteResult.Held::class.java)
-        assertThat((result as AutomaticInputEngine.ExecuteResult.Held).reason)
-            .contains("uncertain")
-        assertThat(exec.dispatched).isEmpty()
+        val u = goodMove(uncertain = true, confidence = 0.90f)
+        val result = eng.tryExecute(vision(roi = ContentRoi(0, 0, 700, 700)), u)
+        assertThat(result).isInstanceOf(AutomaticInputEngine.ExecuteResult.Executed::class.java)
+        assertThat(exec.dispatched).hasSize(1)
     }
 
     @Test

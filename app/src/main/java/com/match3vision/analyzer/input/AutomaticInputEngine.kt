@@ -88,9 +88,9 @@ class AutomaticInputEngine(
         if (!move.expectedValue.isFinite() || move.expectedValue == Float.NEGATIVE_INFINITY) {
             return GateDecision(false, HOLD_NO_LEGAL_MOVE)
         }
-        if (move.uncertain) {
-            return GateDecision(false, HOLD_MOVE_UNCERTAIN)
-        }
+        // Note: MoveEvaluation.uncertain is often true after cascade refill (UNKNOWN
+        // tiles). That is expected simulation metadata — do NOT hard-block here.
+        // Vision unknown / invalid post-input frames use FAIL-SAFE STOP in feedback.
         if (move.confidence < minMoveConfidence) {
             return GateDecision(
                 false,

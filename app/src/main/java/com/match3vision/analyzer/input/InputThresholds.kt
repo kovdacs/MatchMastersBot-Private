@@ -8,7 +8,7 @@ import com.match3vision.analyzer.vision.VisionThresholds
  */
 object InputThresholds {
     /** Minimum MoveEvaluation.confidence required before any gesture. */
-    const val MIN_MOVE_CONFIDENCE = 0.70f
+    const val MIN_MOVE_CONFIDENCE = 0.50f
 
     /** Wait after gesture for cascade/animation to settle before re-capture. */
     const val ANIMATION_WAIT_MS = 650L

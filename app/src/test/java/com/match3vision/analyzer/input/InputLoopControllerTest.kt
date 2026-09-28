@@ -95,6 +95,7 @@ class InputLoopControllerTest {
 
         val before = vision()
         val cycle = ctrl.runAnalyzeAndMaybeInput(before)
+        assertThat(cycle.reason).isNotEmpty()
         assertThat(cycle.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
         assertThat(cycle.executed)
             .isInstanceOf(AutomaticInputEngine.ExecuteResult.Executed::class.java)
