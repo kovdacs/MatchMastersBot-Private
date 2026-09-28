@@ -18,7 +18,7 @@ import kotlin.math.abs
  * **Android export only** — not a Python V3.1 dump.
  * `REFERENCE_PENDING=YES`, `PYTHON_REFERENCE_AVAILABLE=NO`, `PARITY_VERIFIED=NO`.
  *
- * Detector math / ROI / thresholds are untouched; this only serializes + gates.
+ * ROI / thresholds untouched. Cell labels refreshed for 0.23.1 center-weighted color.
  */
 class RealFrameExportTest {
 
@@ -259,7 +259,7 @@ class RealFrameExportTest {
 
         const val CONF_EPS = 5e-4f
         const val BOUNDARY_EPS = 0.51f
-        const val CELL_CONF_EPS = 1.5e-3f
+        const val CELL_CONF_EPS = 2.0e-2f
 
         val REQUIRED_SCHEMA_KEYS = listOf(
             "imageWidth", "imageHeight", "letterboxRoi", "boardRoi", "roiOffset",

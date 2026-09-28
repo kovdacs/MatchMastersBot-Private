@@ -77,8 +77,7 @@ class SoftColorDiagnosticsTest {
         for (g in gt) {
             val cell = result.board.get(g.row, g.col)
             val det = if (cell.isUnknown) TileColor.UNKNOWN else cell.color
-            val gi = colors.indexOf(g.color)
-            val di = colors.indexOf(det).coerceAtLeast(colors.indexOf(TileColor.UNKNOWN))
+            val di = colors.indexOf(det).let { if (it >= 0) it else colors.indexOf(TileColor.UNKNOWN) }
             matrix[g.color]!![di]++
             if (det == g.color) {
                 match++
