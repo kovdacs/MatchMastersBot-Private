@@ -143,7 +143,12 @@ object AutoPlaySession {
         lastDispatch: StartupReadinessGate.LastDispatch? = null,
         stopReason: String? = null,
         a11yConnected: Boolean? = null,
+        /** When true, drop sticky STOP line (successful RUNNING / new session). */
+        clearStopReason: Boolean = false,
     ) {
+        if (clearStopReason) {
+            AutoPlayTrace.clearLastStop()
+        }
         _ui.update { cur ->
             val connected = a11yConnected ?: cur.a11yReady
             val dispatchLabel = when (lastDispatch) {
@@ -152,6 +157,11 @@ object AutoPlaySession {
                 StartupReadinessGate.LastDispatch.NONE -> "NONE"
                 null -> cur.diagnostics.lastDispatch
             }
+            val nextStop = resolveStopReason(
+                previous = cur.diagnostics.stopReason,
+                explicit = stopReason,
+                clear = clearStopReason,
+            )
             val diag = rebuildDiagnostics(
                 base = cur.diagnostics.copy(
                     frame = frameReceived?.let { if (it) "received" else "no frame" }
@@ -159,8 +169,7 @@ object AutoPlaySession {
                     vision = visionText ?: cur.diagnostics.vision,
                     move = moveText ?: cur.diagnostics.move,
                     lastDispatch = dispatchLabel,
-                    stopReason = stopReason ?: cur.diagnostics.stopReason
-                        ?: AutoPlayTrace.lastStopReason,
+                    stopReason = nextStop,
                     accessibility = if (connected) "CONNECTED" else "DISCONNECTED",
                 ),
                 a11yConnected = connected,
@@ -203,13 +212,35 @@ object AutoPlaySession {
             input = if (inputEnabled) "ENABLED" else "DISABLED",
             accessibility = if (a11yConnected) "CONNECTED" else "DISCONNECTED",
             inputReady = if (gate.inputReady) "YES" else "NO",
-            stopReason = base.stopReason ?: AutoPlayTrace.lastStopReason,
+            // Never re-infect a cleared STOP while RUNNING (stale ACCESSIBILITY: DISCONNECTED).
+            stopReason = resolveStopReason(
+                previous = base.stopReason,
+                explicit = null,
+                clear = false,
+            ),
         )
     }
+
+    /** @see DiagnosticsStopDisplay.resolve */
+    internal fun resolveStopReason(
+        previous: String?,
+        explicit: String?,
+        clear: Boolean,
+    ): String? = DiagnosticsStopDisplay.resolve(
+        mode = controller.mode,
+        previous = previous,
+        explicit = explicit,
+        clear = clear,
+        traceLast = AutoPlayTrace.lastStopReason,
+    )
 
     fun beginNewSession() {
         controller.resetForNewSession()
         frameGate.setBubbleLoopRunning(false)
+        AutoPlayTrace.clearLastStop()
+        _ui.update { cur ->
+            cur.copy(diagnostics = cur.diagnostics.copy(stopReason = null))
+        }
         publish(
             statusText = "Kész — fő INDÍTÁS indítja a kört (buborék kontroll)",
             bubbleVisible = true,

@@ -94,6 +94,8 @@ class AutoPlayController(
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
         lastReason = "fut — felismerés→lépés→húzás"
+        // Drop stale STOP (e.g. prior ACCESSIBILITY: DISCONNECTED) once we are healthy RUNNING.
+        AutoPlayTrace.clearLastStop()
         AutoPlayTrace.log("MODE RUNNING", "input ENABLED a11y=CONNECTED")
         return true
     }

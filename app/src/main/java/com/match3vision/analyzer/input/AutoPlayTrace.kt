@@ -45,6 +45,11 @@ object AutoPlayTrace {
         ring.toList().takeLast(max)
     }
 
+    /** Clear retained STOP line without wiping the trace ring. */
+    fun clearLastStop() {
+        lastStopReason = null
+    }
+
     fun clear() {
         synchronized(ring) { ring.clear() }
         lastStopReason = null

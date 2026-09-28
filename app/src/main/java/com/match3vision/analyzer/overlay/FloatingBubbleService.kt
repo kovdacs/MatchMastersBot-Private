@@ -247,7 +247,7 @@ class FloatingBubbleService : Service() {
         }
         AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("fut")
-        AutoPlaySession.updateDiagnostics(a11yConnected = a11y)
+        AutoPlaySession.updateDiagnostics(a11yConnected = a11y, clearStopReason = true)
         refreshBubbleUi()
         // Prefer Match Masters visible: ask analyzer Activity to background itself.
         sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
@@ -412,10 +412,10 @@ class FloatingBubbleService : Service() {
                         ctrl.runCycleIfActive(vision)
                     }
                     if (cycle == null) {
+                        // Idle/Paused: do NOT stamp lastReason into STOP (was sticky stale).
                         AutoPlaySession.updateDiagnostics(
                             frameReceived = true,
                             a11yConnected = MatchMastersAccessibilityService.isConnected(),
-                            stopReason = ctrl.lastReason,
                         )
                         refreshBubbleUi()
                         delay(120L)
