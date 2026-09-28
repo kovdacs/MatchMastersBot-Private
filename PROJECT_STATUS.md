@@ -1,7 +1,7 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Version:** `0.24.0-live-pipeline`  
+**Version:** `0.24.1-live-pipeline`  
 **CI:** analyzer-ci on GitHub Actions (no JDK on box)  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  

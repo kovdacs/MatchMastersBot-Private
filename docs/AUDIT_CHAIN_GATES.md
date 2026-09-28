@@ -1,6 +1,6 @@
 # Audit chain — START → … → dispatch → feedback
 
-**Version:** 0.24.0-live-pipeline  
+**Version:** 0.24.1-live-pipeline  
 **Date:** 2026-09-28 (Europe/Vienna)  
 **Gates unchanged:** `MIN_GRID_CONFIDENCE=0.98`, `MIN_BOARD_CONFIDENCE=0.95`, `MAX_UNKNOWN_COUNT=1`
 

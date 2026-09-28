@@ -18,7 +18,7 @@ import kotlin.math.abs
  * **Android export only** — not a Python V3.1 dump.
  * `REFERENCE_PENDING=YES`, `PYTHON_REFERENCE_AVAILABLE=NO`, `PARITY_VERIFIED=NO`.
  *
- * ROI / thresholds untouched. Cell labels refreshed for 0.23.1 center-weighted color.
+ * ROI / thresholds untouched. Cell labels refreshed for 0.24.1 specials tighten (fewer false BOMB/ARROW).
  */
 class RealFrameExportTest {
 

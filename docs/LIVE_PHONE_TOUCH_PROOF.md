@@ -5,7 +5,7 @@ Until **you** capture evidence below, mark **LIVE PHONE / FIRST TOUCH / VERIFY**
 
 ## Prerequisites
 
-1. Install CI APK: `Match3Analyzer-0.24.0-live-pipeline-<sha>.apk` (unique name from Actions artifact).
+1. Install CI APK: `Match3Analyzer-0.24.1-live-pipeline-<sha>.apk` (unique name from Actions artifact).
 2. Enable **Kisegítő lehetőségek** → Match3 Analyzer AccessibilityService.
 3. Grant overlay + MediaProjection when prompted.
 4. Open **Match Masters** PvP board (playfield fully visible).
@@ -38,7 +38,7 @@ Until **you** capture evidence below, mark **LIVE PHONE / FIRST TOUCH / VERIFY**
 ### Instrumented APK steps (optional)
 
 ```bash
-adb install -r Match3Analyzer-0.24.0-live-pipeline-<sha>.apk
+adb install -r Match3Analyzer-0.24.1-live-pipeline-<sha>.apk
 adb shell am start -n com.match3vision.analyzer/.MainActivity
 adb logcat -s AutoPlayTrace:I TOUCH_A11Y:I TOUCH_TEST:I FloatingBubbleService:I
 ```

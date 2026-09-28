@@ -89,8 +89,6 @@ class RestartCycleTest {
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
         assertThat(ctrl.runCycleIfActive(vision())).isNotNull()
     }
-}
-
     @Test
     fun a11yDisconnect_blocksStart_reconnectAllowsStart() {
         val exec = RecordingInputGestureExecutor(ready = true)
@@ -116,4 +114,4 @@ class RestartCycleTest {
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
         assertThat(sw.isEnabled()).isTrue()
     }
-
+}
