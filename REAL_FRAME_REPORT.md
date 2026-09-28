@@ -1,9 +1,9 @@
 # REAL_FRAME_REPORT
 
-**Date:** 2026-09-28 (Europe/Vienna)  
+**Date:** 2026-09-28 (Europe/Vienna)
 **Branch:** `main`  
-**Commit:** `0c5b707` (harness) + docs follow-up  
-**CI:** analyzer-ci **SUCCESS** on `0c5b707` — run **36407224555**  
+**Commit:** `e0fc877` (gutter outlier re-pick + inner partial_dark + boardConf high-path calib)
+**CI:** analyzer-ci **SUCCESS** on `e0fc877` — run **36414665548**
 **APK:** app-debug.apk artifact uploaded (**24,624,329** bytes on disk ≈ 23.5 MiB; artifact zip ≈ 8.6 MiB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
@@ -17,7 +17,7 @@
 | `PARITY_VERIFIED` | **NO** |
 | `VISION_REAL_WORLD_VALIDATED` | **NO** (partial evidence only — see below) |
 
-One early-match frame + occluded secondaries ≠ full real-world validation. BoardFinder fell back to EVEN_SPLIT on full-ish ROI (0,88,1080,2400) — not a tight 7×7 board crop. No Python V3.1 dump. Possible bottom-row crop from Android screenshot toolbar. Soft GT color match only 12/41. Treat as **PARTIAL evidence**; flag stays **NO**.
+One early-match frame + occluded secondaries ≠ full real-world validation. Primary now locks square playfield ROI + PROJECTION with gate **PASS** (gridConf 0.9872, boardConf 0.9696, unk=1). Soft GT color still ~55%. No Python V3.1 dump. One early-match frame ≠ full real-world validation — flag stays **NO**.
 
 ## 1. Reference recovery
 
@@ -51,34 +51,34 @@ Checked in (2026-09-28):
 `Frame IntArray` → `BoardFinder` → 7×7 crops → `OcclusionDetector` → `ColorDetector` →
 `ShapeDetector` → `SpecialDetector` → `ColorShapeReconciler` → `VisionValidator` (PASS/HOLD).
 
-## Numeric results (CI run 36407224555)
+## Numeric results (CI run 36414665548)
 
 ### Real frame (`pvp_board.jpg`) — PRIMARY
 
 | Field | Value |
 |-------|-------|
 | frame | **1080×2400** |
-| boardRoi (BoardFinder) | **LTRB(0,88,1080,2400)** → dims **1080×2312** (not a tight board crop) |
-| gridMethod | **EVEN_SPLIT** (projection rejected: `no_peaks` / projRelVarY=0.1409) |
-| gridConfidence | **0.7200** |
-| boardConfidence | **0.4812** |
+| boardRoi (BoardFinder) | **LTRB(20,1206,1060,2246)** → dims **1040×1040** (`separator_square`) |
+| gridMethod | **PROJECTION** |
+| gridConfidence | **0.9872** (projRelVarX=0.0033, projRelVarY=0.0052) |
+| boardConfidence | **0.9696** |
 | unknownCount | **1** |
-| PASS/HOLD | **HOLD** (grid confidence 0.720 < 0.980) |
-| softGt colorMatch | **12/41** (verifiableGT=41, rate=0.293) |
-| mushroom (4,1) detector | color=B shape=STAR special=NONE (GT: unmapped Mushroom +3) |
-| row6 detector | mostly P/B; last cell UNKNOWN — GT UNVERIFIED (toolbar crop) |
+| PASS/HOLD | **PASS** |
+| softGt colorMatch | **22/40** (verifiableGT=41, rate=0.550) |
 
-Caveats: Android screenshot toolbar may clip bottom UI / last board row. Pipeline still emits 7×7 cells over a too-tall ROI. Mushroom +3 not in `SpecialType` enum.
+Diagnosis: abs-max projection locked Xg6 on a gem-edge (−31px) and Yg6 on a toolbar energy spike; spacing variance kept gridConf at 0.9665. Outlier re-pick toward ideal period fixed gutters (Xg6 −3, Yg6 −1). Inner-70% `partial_dark` cleared false occlusion on sparse gems. BoardConf high-path mean floor 0.55 + lighter unk penalty so typical JPEG cell means clear MIN_BOARD without lowering 0.95.
+
+ROI snap / MIN_GRID=0.98 / MIN_BOARD=0.95 / MAX_UNKNOWN=1 / ACTIVATE_FX fixtures **untouched**.
 
 ### Secondary frames — soft diagnostics only
 
 | Frame | Result |
 |-------|--------|
-| showdown overlay | **HOLD** gridConf=0.7200 boardConf=0.3154 unknowns=3 EVEN_SPLIT |
-| activate FX | **ERROR** `ArrayIndexOutOfBoundsException` (Index -1 / length 50120) — soft-documented, CI not failed |
-| mid volume | **HOLD** gridConf=0.7200 boardConf=0.5781 unknowns=0 EVEN_SPLIT |
+| showdown overlay | **HOLD** gridConf=0.9836 boardConf=0.0000 unknowns=16 PROJECTION |
+| activate FX | **HOLD** gridConf=0.9892 boardConf=0.0000 unknowns=14 PROJECTION (no longer AIOOBE) |
+| mid volume | **PASS** gridConf=0.9900 boardConf=1.0000 unknowns=0 PROJECTION |
 
-Secondary ran=2 errored=1 of 3.
+Secondary ran=3 errored=0 of 3.
 
 ### REALISTIC_SYNTHETIC (canonical fixture) — same CI run
 
@@ -88,7 +88,8 @@ Secondary ran=2 errored=1 of 3.
 | boardConfidence | **0.0000** (14 unknowns → penalty) |
 | unknownCount | **14** |
 | colorMatch (compared known) | **35/35** (verifiableGT=48) |
-| PASS/HOLD | **HOLD** (board confidence < 0.95) |
+| PASS/HOLD | **HOLD** (board confidence < 0.95)
+
 
 **HOLD/PASS on realistic synthetic ≠ VISION_REAL_WORLD_VALIDATED.**
 
@@ -100,7 +101,7 @@ Gates **unchanged**:
 - `MIN_BOARD_CONFIDENCE = 0.95`
 - `MAX_UNKNOWN_COUNT = 1`
 
-No bypass. Prefer documenting HOLD/unknowns / FX exceptions on real frames over loosening gates or hacking detectors. **No production detector changes** in this milestone.
+Gates unchanged (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Production changes are projection peak outlier re-pick, inner `partial_dark`, O+TRIANGLE accept, and boardConf high-path calibration (not gate constants).
 
 ## Parity
 

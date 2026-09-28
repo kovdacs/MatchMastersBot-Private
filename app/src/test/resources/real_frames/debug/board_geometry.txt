@@ -5,7 +5,9 @@ board ROI LTRB: LTRB(20,1206,1060,2246)
 sepBottom (CI): 1132
 playfieldTop (CI): 1206
 playfieldSnap: separator_square
-method (CI analyzer-ci 36411389880): PROJECTION
-gridConf=0.9665 boardConf=0.4754 unknowns=2 softGt colorMatch=24/40 gate=HOLD
-notes: near-square playfield below Time Left separator; Android toolbar may intersect bottom row
-prior broken ROI was LTRB(0,88,1080,2400) EVEN_SPLIT gridConf=0.72
+method (CI analyzer-ci 36414665548): PROJECTION
+gridConf=0.9872 boardConf=0.9696 unknowns=1 softGt colorMatch=22/40 gate=PASS
+projRelVarX=0.0033 projRelVarY=0.0052
+guttersX=1:-10,2:+2,3:-7,4:+5,5:-4,6:-3 guttersY=1:-9,2:+12,3:+14,4:+15,5:-3,6:-1
+notes: outlier-aware gutter re-pick (Xg6/Yg6); inner partial_dark; boardConf high-path calibrated
+prior HOLD gridConf=0.9665 (abs-max false peaks Xg6=-31 Yg6 toolbar)
