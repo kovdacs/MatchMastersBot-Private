@@ -2,7 +2,7 @@
 
 **Status:** `REFERENCE_PENDING`  
 **Date:** 2026-09-28 (Europe/Vienna)  
-**Tip context:** REAL_FRAME PASS + Android export golden on `pvp_board.jpg` (gridConf 0.9872, boardConf 0.9696, unk 1) — CI run 36416924508 / tip `33a876d`.
+**Tip context:** REAL_FRAME PASS + Android export golden on `pvp_board.jpg` (gridConf 0.9872, boardConf 0.9696, unk 1) — CI run 36416924508 / export `33a876d`; hunt tip `df89ece`.
 
 ## Flags
 
@@ -22,19 +22,36 @@ Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference 
 **Do not** treat REALISTIC_SYNTHETIC ↔ SYNTHETIC_UNIT agreement as “parity verified”.  
 **Do not** invent a Python V3.1 dump from detector output or human GT.
 
-## Reference hunt (this milestone)
+## Reference hunt / SEARCH_LOG (exhaustive, 2026-09-28 CEST)
 
-Searched (2026-09-28):
+Tip at hunt start: `df89ece` (main; REAL_FRAME PASS + Android export `33a876d`).  
+**Do not invent** READY dumps / fake VERIFIED. Thresholds/ROI/detectors untouched this round.
 
-| Scope | Result |
-|-------|--------|
-| Working tree (`data/vision/parity/`, assets, docs, tests) | Scaffold JSON only (`status: REFERENCE_PENDING`) |
-| Keywords: `V3.1`, `v3_1`, `python`, `parity`, `pvp_board_reference`, `match3`, `vision dump` | Docs + comparator scaffold; **no dump** |
-| File types: `*.py`, `*.ipynb`, `*.pkl`, truth dumps | **None** in tree or any git blob |
-| Branches / tags | `main`, `vision/real-frame-robustness` (merged lineage); **no tags**; no Python artifacts on either |
-| Git history (`--all`, deleted files, object names) | Parity infra added in `167ecfd`; always `REFERENCE_PENDING`; **never** a READY dump |
+### Commands / scopes executed
 
-**Finding:** `PYTHON_REFERENCE_AVAILABLE=NO` → remain **`REFERENCE_PENDING`**. Do not invent READY dumps, fake parity numbers, or fake Python outputs.
+| # | Scope / command | Result |
+|---|-----------------|--------|
+| 1 | Working tree: `data/vision/parity/`, `app/src/main/assets/data/vision/parity/`, `app/src/test/resources/vision/parity/`, docs, tests | Scaffold JSON only (`status: REFERENCE_PENDING`, empty `cells`/`boundaries`) |
+| 2 | Keywords: `V3.1`, `v3_1`, `python`, `parity`, `pvp_board`, `ground truth`, `match3 vision`, `REFERENCE_PENDING`, `PARITY_VERIFIED` | Docs + comparator scaffold + HUMAN_VISUAL soft GT notes; **no Python dump** |
+| 3 | File types in tree + `git rev-list --all --objects`: `*.py`, `*.ipynb`, `*.pkl`, `*.npy`, `*.pt`, `*.onnx`, `*.h5` | **None** ever added (32 commits, all objects) |
+| 4 | Branches / tags / remote refs | Remote: `main` only (`df89ece`). Local stale `vision/real-frame-robustness` (merged lineage). **No tags**. No Python artifacts on either tip |
+| 5 | Git history: `git log --all`, deleted-file summary, every historical `pvp_board_reference.json` (`9636c07` → tip) | Always `"status": "REFERENCE_PENDING"`; **never** `"READY"` with filled cells |
+| 6 | `git log -p -- '*.json'` for `"status": "READY"` Python dumps | Only ANDROID_EXPORT / HUMAN_VISUAL / REFERENCE_PENDING / synthetic construction GT — **no V3.1 READY** |
+| 7 | CI: `gh run list` analyzer-ci (30+ runs); `gh api .../actions/artifacts` | **Unique artifact name:** `app-debug-apk` only. No python-dump / test-result zip artifacts |
+| 8 | `gh run download 36416924508 -n app-debug-apk`; unzip `assets/data/vision/parity/pvp_board_reference.json` | Still `REFERENCE_PENDING` scaffold (505 bytes) inside APK |
+| 9 | Related repos: `gh repo list kovdacs` | Only `MatchMastersBot-Private` + `grok-github-build-test` (no Match Masters / vision dumps) |
+| 10 | `gh api users/kovdacs/gists` | **0 gists** |
+| 11 | `gh search code --owner=kovdacs` for V3.1 / v3_1 / pythonVersion / pvp_board_reference | No additional hits beyond this private repo docs/scaffold |
+| 12 | PRs / issues / releases | **None** |
+| 13 | External URL scan in docs/status markdown (`gist`, `colab`, `drive`, `dropbox`, `huggingface`, `s3`, `pastebin`) | **No** linked dump URLs |
+| 14 | Android export golden `data/vision/real_frames/pvp_board_android_export.json` | `status: ANDROID_EXPORT` — explicitly **not** Python V3.1; left untouched |
+| 15 | `human_ground_truth.json` | `HUMAN_VISUAL` soft GT — provenance forbids treating as Python V3.1 |
+
+### Finding
+
+`PYTHON_REFERENCE_AVAILABLE=NO` → remain **`REFERENCE_PENDING`**, **`PARITY_VERIFIED=NO`**.  
+No 49-cell Android↔V3.1 parity test can be enabled without inventing data.  
+REAL_FRAME PASS gate + Android export regression stay green; no detector/threshold/ROI changes this round.
 
 ## Reference availability
 
