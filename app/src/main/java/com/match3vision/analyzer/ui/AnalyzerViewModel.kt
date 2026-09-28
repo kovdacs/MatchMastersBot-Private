@@ -38,14 +38,14 @@ enum class AnalyzerStatus {
 
 data class AnalyzerUiState(
     val status: AnalyzerStatus = AnalyzerStatus.Idle,
-    val statusMessage: String = "Idle",
+    val statusMessage: String = "Tétlen",
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
     val contentRoiText: String = "—",
     val frameCount: Long = 0,
     val lastFrameBitmap: Bitmap? = null,
     val lastContentRoi: ContentRoi? = null,
-    val visionStatusText: String = "Vision: —",
+    val visionStatusText: String = "Látás: —",
     val visionDebugText: String = "",
     val boardGridLabels: List<String> = emptyList(),
     val gateHold: Boolean = false,
@@ -63,12 +63,12 @@ data class AnalyzerUiState(
     val smokeEnabled: Boolean = false,
     val smokePhase: String = "IDLE",
     val smokeSwipeCount: Int = 0,
-    val smokeStatusText: String = "Smoke: DISABLED (default)",
+    val smokeStatusText: String = "Próba: KI (alapértelmezett)",
     val smokeLogText: String = "",
     val smokeRunning: Boolean = false,
 ) {
     companion object {
-        const val SUBTITLE = "Analyzer + controlled one-step smoke (input DEFAULT DISABLED)"
+        const val SUBTITLE = "Elemző + egylépéses próba (bevitel alapból KI)"
     }
 }
 
@@ -113,14 +113,14 @@ class AnalyzerViewModel @JvmOverloads constructor(
 
     init {
         smokeLogger.log("APP_START — InputEnableSwitch=DISABLED SmokeEnableSwitch=DISABLED")
-        publishSmokeUi("Smoke: DISABLED (default) — enable switches then Run One-Step")
+        publishSmokeUi("Próba: KI (alapértelmezett) — kapcsold be a kapcsolókat, majd Futtatás")
     }
 
     fun onStartRequested() {
         _uiState.update {
             it.copy(
                 status = AnalyzerStatus.AwaitingPermission,
-                statusMessage = "Awaiting MediaProjection permission…",
+                statusMessage = "Képernyőrögzítés engedélyére vár…",
             )
         }
     }
@@ -129,7 +129,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         _uiState.update {
             it.copy(
                 status = AnalyzerStatus.Error,
-                statusMessage = "Screen capture permission denied",
+                statusMessage = "Képernyőrögzítés engedély elutasítva",
             )
         }
     }
@@ -138,7 +138,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         _uiState.update {
             it.copy(
                 status = AnalyzerStatus.Capturing,
-                statusMessage = "Capturing…",
+                statusMessage = "Rögzítés…",
             )
         }
         startObservingFrames()
@@ -150,7 +150,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         _uiState.update {
             it.copy(
                 status = AnalyzerStatus.Stopped,
-                statusMessage = "Stopped",
+                statusMessage = "Leállítva",
                 lastFrameBitmap = null,
                 lastContentRoi = null,
             )
@@ -161,8 +161,8 @@ class AnalyzerViewModel @JvmOverloads constructor(
         inputEnableSwitch.setEnabled(enabled)
         smokeLogger.log("UI — InputEnableSwitch=${if (enabled) "ENABLED" else "DISABLED"}")
         publishSmokeUi(
-            if (enabled) "Input: ENABLED (still needs Smoke + a11y + Run)"
-            else "Input: DISABLED",
+            if (enabled) "Bevitel: BE (kell még Próba + kisegítő + Futtatás)"
+            else "Bevitel: KI",
         )
     }
 
@@ -170,14 +170,14 @@ class AnalyzerViewModel @JvmOverloads constructor(
         smokeEnableSwitch.setEnabled(enabled)
         smokeLogger.log("UI — SmokeEnableSwitch=${if (enabled) "ENABLED" else "DISABLED"}")
         publishSmokeUi(
-            if (enabled) "Smoke: ENABLED (max 1 swipe; tap Run One-Step)"
-            else "Smoke: DISABLED",
+            if (enabled) "Próba: BE (max. 1 húzás; nyomd meg: Futtatás)"
+            else "Próba: KI",
         )
     }
 
     fun resetSmokeSession() {
         smokeController.resetSession()
-        publishSmokeUi("Smoke: session reset — ready for one swipe")
+        publishSmokeUi("Próba: visszaállítva — kész egy húzásra")
     }
 
     /**
@@ -190,12 +190,12 @@ class AnalyzerViewModel @JvmOverloads constructor(
         val bitmap = _uiState.value.lastFrameBitmap
         val roi = _uiState.value.lastContentRoi
         if (bitmap == null || bitmap.isRecycled) {
-            publishSmokeUi("Smoke: no frame — Start capture + open Match Masters board first")
+            publishSmokeUi("Próba: nincs képkocka — Indítás + nyisd meg a Match Masters táblát")
             return
         }
         smokeJob = viewModelScope.launch {
             _uiState.update { it.copy(smokeRunning = true) }
-            publishSmokeUi("Smoke: running CAPTURE→VALIDATE→ANALYZE→SELECT…")
+            publishSmokeUi("Próba: fut RÖGZÍTÉS→ELLENŐRZÉS→ELEMZÉS→KIVÁLASZTÁS…")
             try {
                 val (beforeAnalysis, beforeSnap) = withContext(Dispatchers.Default) {
                     val fa = analyzeBitmap(bitmap, roi)
@@ -207,17 +207,17 @@ class AnalyzerViewModel @JvmOverloads constructor(
                 }
                 when (step) {
                     is OneStepSmokeController.StepResult.Held -> {
-                        publishSmokeUi("Smoke HOLD: ${step.reason}")
+                        publishSmokeUi("Próba TARTÁS: ${step.reason}")
                     }
                     is OneStepSmokeController.StepResult.Stopped -> {
-                        publishSmokeUi("Smoke STOP: ${step.reason}")
+                        publishSmokeUi("Próba LEÁLLÍTVA: ${step.reason}")
                     }
                     is OneStepSmokeController.StepResult.SuccessReadyForNext -> {
-                        publishSmokeUi("Smoke SUCCESS READY FOR NEXT")
+                        publishSmokeUi("Próba SIKER — KÉSZ A KÖVETKEZŐRE")
                     }
                     is OneStepSmokeController.StepResult.AwaitingFeedback -> {
                         publishSmokeUi(
-                            "Smoke: swipe dispatched — waiting ${step.animationWaitMs}ms…",
+                            "Próba: húzás elküldve — várakozás ${step.animationWaitMs} ms…",
                         )
                         delay(step.animationWaitMs)
                         // Prefer a newer frame than the one we swiped on.
@@ -232,7 +232,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
                         val afterBmp = _uiState.value.lastFrameBitmap
                         val afterRoi = _uiState.value.lastContentRoi
                         if (afterBmp == null || afterBmp.isRecycled) {
-                            publishSmokeUi("Smoke STOP: no post-swipe frame")
+                            publishSmokeUi("Próba LEÁLLÍTVA: nincs húzás utáni képkocka")
                             return@launch
                         }
                         val (afterAnalysis, afterSnap) = withContext(Dispatchers.Default) {
@@ -246,15 +246,15 @@ class AnalyzerViewModel @JvmOverloads constructor(
                         when (fb) {
                             is OneStepSmokeController.StepResult.SuccessReadyForNext ->
                                 publishSmokeUi(
-                                    "Smoke SUCCESS READY FOR NEXT — board changed " +
+                                    "Próba SIKER — KÉSZ A KÖVETKEZŐRE — tábla változott " +
                                         "${fb.beforeHash}→${fb.afterHash}",
                                 )
                             is OneStepSmokeController.StepResult.Held ->
-                                publishSmokeUi("Smoke HOLD: ${fb.reason}")
+                                publishSmokeUi("Próba TARTÁS: ${fb.reason}")
                             is OneStepSmokeController.StepResult.Stopped ->
-                                publishSmokeUi("Smoke STOP: ${fb.reason}")
+                                publishSmokeUi("Próba LEÁLLÍTVA: ${fb.reason}")
                             is OneStepSmokeController.StepResult.AwaitingFeedback ->
-                                publishSmokeUi("Smoke: unexpected awaiting state")
+                                publishSmokeUi("Próba: váratlan várakozó állapot")
                         }
                     }
                 }
@@ -273,12 +273,12 @@ class AnalyzerViewModel @JvmOverloads constructor(
         val bitmap = _uiState.value.lastFrameBitmap
         val roi = _uiState.value.lastContentRoi
         if (bitmap == null || bitmap.isRecycled) {
-            _uiState.update { it.copy(visionStatusText = "Vision: no frame to analyze") }
+            _uiState.update { it.copy(visionStatusText = "Látás: nincs elemezhető képkocka") }
             return
         }
         analyzeJob?.cancel()
         analyzeJob = viewModelScope.launch {
-            _uiState.update { it.copy(visionStatusText = "Vision: analyzing…") }
+            _uiState.update { it.copy(visionStatusText = "Látás: elemzés…") }
             val analysis = withContext(Dispatchers.Default) {
                 val frameAnalysis = analyzeBitmap(bitmap, roi)
                 val snap = orchestrator.analyzeVisionResult(frameAnalysis.result)
@@ -310,14 +310,14 @@ class AnalyzerViewModel @JvmOverloads constructor(
         val hold = dbg.gate == "HOLD" || resolvedSnap.decisionBlocked
         _uiState.update {
             it.copy(
-                visionStatusText = "Vision: ${dbg.gate} · ${dbg.gridMethod} · unk=${dbg.unknownCount} · " +
+                visionStatusText = "Látás: ${dbg.gate} · ${dbg.gridMethod} · unk=${dbg.unknownCount} · " +
                     "board=${"%.2f".format(dbg.boardConfidence)} grid=${"%.2f".format(dbg.gridConfidence)}",
                 visionDebugText = "ROI ${dbg.roiText} · cells=${dbg.cellLabels.size}" +
                     (dbg.holdReason?.let { r -> " · $r" } ?: ""),
                 boardGridLabels = dbg.cellLabels,
                 gateHold = hold,
                 holdMessage = if (hold) {
-                    resolvedSnap.holdReason ?: dbg.holdReason ?: "HOLD — Decision AI blocked"
+                    resolvedSnap.holdReason ?: dbg.holdReason ?: "TARTÁS — döntési AI blokkolva"
                 } else null,
                 topMovesText = if (hold) emptyList() else resolvedSnap.topMovesLines,
                 whyText = resolvedSnap.whyText,
@@ -357,7 +357,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
                 val capturing = manager?.isCapturing?.value == true
                 if (!capturing && _uiState.value.status == AnalyzerStatus.Capturing) {
                     _uiState.update {
-                        it.copy(status = AnalyzerStatus.Stopped, statusMessage = "Stopped")
+                        it.copy(status = AnalyzerStatus.Stopped, statusMessage = "Leállítva")
                     }
                 }
                 delay(100)
@@ -369,7 +369,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         _uiState.update { state ->
             state.copy(
                 status = AnalyzerStatus.Capturing,
-                statusMessage = "Capturing ${frame.width}×${frame.height}",
+                statusMessage = "Rögzítés ${frame.width}×${frame.height}",
                 frameWidth = frame.width,
                 frameHeight = frame.height,
                 contentRoiText = formatRoi(frame.contentRoi),
@@ -381,7 +381,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
     }
 
     private fun formatRoi(roi: ContentRoi?): String {
-        if (roi == null) return "full frame"
+        if (roi == null) return "teljes kép"
         return "LTRB(${roi.left}, ${roi.top}, ${roi.right}, ${roi.bottom}) " +
             "${roi.width()}×${roi.height()}"
     }

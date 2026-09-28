@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Match3 Vision Analyzer</string>
-    <string name="capture_channel_name">Screen capture</string>
-    <string name="capture_channel_desc">Foreground notification while analyzing the screen</string>
-    <string name="capture_notification_title">Match3 Vision Analyzer</string>
-    <string name="capture_notification_text">Capturing screen for analysis (input default OFF)</string>
-    <string name="action_stop">Stop</string>
-    <string name="accessibility_service_description">Match Masters Bot input (gestures). Disabled by default — enable only when you explicitly want automatic swipes. Requires in-app InputEnableSwitch as a second gate.</string>
-    <string name="input_enable_label">Enable automatic input</string>
-    <string name="input_enable_warning">OFF by default. Enabling allows AccessibilityService swipes when vision gates pass.</string>
+    <string name="app_name">Match3 Vision Elemző</string>
+    <string name="capture_channel_name">Képernyőrögzítés</string>
+    <string name="capture_channel_desc">Előtérbeli értesítés képernyőelemzés közben</string>
+    <string name="capture_notification_title">Match3 Vision Elemző</string>
+    <string name="capture_notification_text">Képernyő rögzítése elemzéshez (bevitel alapból KI)</string>
+    <string name="action_stop">Leállítás</string>
+    <string name="accessibility_service_description">Match Masters Bot bevitel (gesztusok). Alapból kikapcsolva — csak akkor kapcsold be, ha automatikus húzást szeretnél. Az alkalmazáson belüli kapcsoló is kell (második kapu).</string>
+    <string name="input_enable_label">Automatikus húzás engedélyezése</string>
+    <string name="input_enable_warning">Alapból KI. Bekapcsoláskor az AccessibilityService húzhat, ha a látás kapuk átengedik.</string>
 </resources>

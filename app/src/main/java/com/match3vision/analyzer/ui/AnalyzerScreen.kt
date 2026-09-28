@@ -53,8 +53,16 @@ fun AnalyzerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Match3 Vision Analyzer", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(state.subtitle, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            Text(
+                "Match3 Vision Elemző",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                state.subtitle,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+            )
 
             StatusCard(state)
 
@@ -67,32 +75,41 @@ fun AnalyzerScreen(
                     enabled = state.status != AnalyzerStatus.Capturing &&
                         state.status != AnalyzerStatus.AwaitingPermission,
                     modifier = Modifier.weight(1f),
-                ) { Text("Start") }
+                ) { Text("Indítás") }
                 OutlinedButton(
                     onClick = onStopCapture,
                     enabled = state.status == AnalyzerStatus.Capturing ||
                         state.status == AnalyzerStatus.AwaitingPermission,
                     modifier = Modifier.weight(1f),
-                ) { Text("Stop") }
+                ) { Text("Leállítás") }
             }
 
             OutlinedButton(
                 onClick = { viewModel.analyzeLastFrame() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = state.lastFrameBitmap != null,
-            ) { Text("Analyze last frame") }
+            ) { Text("Utolsó képkocka elemzése") }
 
-            Section("CONTROLLED ONE-STEP SMOKE") {
+            Section("EGYLÉPÉSES PRÓBA") {
                 Text(
-                    "Default DISABLED. Max 1 auto swipe per session. Requires system AccessibilityService.",
+                    "Alapból KI. Maximum 1 automatikus húzás. Kell a rendszer Kisegítő lehetőségek szolgáltatása.",
                     style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "1. Kapcsold be: Automatikus húzás engedélyezése\n" +
+                        "2. Kapcsold be: Egy lépéses próba\n" +
+                        "3. Indítsd a rögzítést, nyisd meg a Match Masters táblát\n" +
+                        "4. Nyomd meg: Futtatás (max. 1 húzás)\n" +
+                        "5. Új próba előtt: Visszaállítás",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
                 )
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Enable Input (safety)")
+                    Text("Automatikus húzás engedélyezése")
                     Switch(
                         checked = state.inputEnabled,
                         onCheckedChange = { viewModel.setInputEnabled(it) },
@@ -103,14 +120,14 @@ fun AnalyzerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Enable One-Step Smoke")
+                    Text("Egy lépéses próba")
                     Switch(
                         checked = state.smokeEnabled,
                         onCheckedChange = { viewModel.setSmokeEnabled(it) },
                     )
                 }
                 Text(
-                    "phase=${state.smokePhase}  swipes=${state.smokeSwipeCount}/1",
+                    "fázis=${smokePhaseHu(state.smokePhase)}  húzások=${state.smokeSwipeCount}/1",
                     fontWeight = FontWeight.Medium,
                 )
                 Text(state.smokeStatusText, style = MaterialTheme.typography.bodySmall)
@@ -118,23 +135,25 @@ fun AnalyzerScreen(
                     onClick = { viewModel.runOneStepSmoke() },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.smokeRunning && state.lastFrameBitmap != null,
-                ) { Text(if (state.smokeRunning) "Smoke running…" else "Run One-Step Smoke") }
+                ) {
+                    Text(if (state.smokeRunning) "Futtatás folyamatban…" else "Futtatás")
+                }
                 OutlinedButton(
                     onClick = { viewModel.resetSmokeSession() },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Reset smoke session") }
+                ) { Text("Visszaállítás") }
             }
 
-            Section("SMOKE LOG") {
+            Section("PRÓBA NAPLÓ") {
                 Text(
-                    state.smokeLogText.ifBlank { "(empty — enable + run smoke)" },
+                    state.smokeLogText.ifBlank { "(üres — kapcsold be a kapcsolókat, majd Futtatás)" },
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                 )
             }
 
-            Section("LIVE FRAME") {
+            Section("ÉLŐ KÉP") {
                 FramePreview(state.lastFrameBitmap)
                 Text(state.visionStatusText, fontWeight = FontWeight.Medium)
                 if (state.visionDebugText.isNotBlank()) {
@@ -142,29 +161,29 @@ fun AnalyzerScreen(
                 }
             }
 
-            Section("BOARD") { BoardGrid(state.boardGridLabels) }
-            Section("GAME STATE") { Text(state.gameStateText.ifBlank { "—" }) }
+            Section("TÁBLA") { BoardGrid(state.boardGridLabels) }
+            Section("JÁTÉKÁLLAPOT") { Text(state.gameStateText.ifBlank { "—" }) }
 
-            Section("TOP MOVES") {
+            Section("LEGJOBB LÉPÉSEK") {
                 if (state.gateHold) {
                     Text(
-                        state.holdMessage ?: "HOLD — Decision AI blocked",
+                        state.holdMessage ?: "TARTÁS — döntési AI blokkolva",
                         color = Color(0xFFB71C1C),
                         fontWeight = FontWeight.Bold,
                     )
                 } else {
                     val lines = state.topMovesText.take(5)
-                    if (lines.isEmpty()) Text("No moves") else lines.forEach { Text(it) }
+                    if (lines.isEmpty()) Text("Nincs lépés") else lines.forEach { Text(it) }
                 }
             }
 
-            Section("WHY") { Text(state.whyText.ifBlank { "—" }) }
-            Section("CONFIDENCE") { Text(state.confidenceText.ifBlank { "—" }) }
-            Section("RISK") { Text(state.riskText.ifBlank { "—" }) }
-            Section("EXPECTED VALUE") { Text(state.expectedValueText.ifBlank { "—" }) }
+            Section("MIÉRT") { Text(state.whyText.ifBlank { "—" }) }
+            Section("BIZONYOSSÁG") { Text(state.confidenceText.ifBlank { "—" }) }
+            Section("KOCKÁZAT") { Text(state.riskText.ifBlank { "—" }) }
+            Section("VÁRHATÓ ÉRTÉK") { Text(state.expectedValueText.ifBlank { "—" }) }
 
             Text(
-                "Input DEFAULT DISABLED. Continuous auto-play OFF. One-step smoke only when explicitly enabled.",
+                "Bevitel alapból KI. Folyamatos autojátszás KI. Egylépéses próba csak kézi bekapcsolással.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -172,6 +191,25 @@ fun AnalyzerScreen(
             )
         }
     }
+}
+
+/** Hungarian labels for smoke phase enum names (engine enums stay English). */
+internal fun smokePhaseHu(phase: String): String = when (phase) {
+    "IDLE" -> "VÁRAKOZIK"
+    "RUNNING" -> "FUT"
+    "AWAITING_FEEDBACK" -> "VISSZAJELZÉSRE VÁR"
+    "HOLD" -> "TARTÁS"
+    "STOP" -> "LEÁLLÍTVA"
+    "SUCCESS_READY_FOR_NEXT" -> "SIKER — KÉSZ"
+    else -> phase
+}
+
+internal fun statusHu(status: AnalyzerStatus): String = when (status) {
+    AnalyzerStatus.Idle -> "Tétlen"
+    AnalyzerStatus.AwaitingPermission -> "Engedélyre vár"
+    AnalyzerStatus.Capturing -> "Rögzít"
+    AnalyzerStatus.Stopped -> "Leállítva"
+    AnalyzerStatus.Error -> "Hiba"
 }
 
 @Composable
@@ -191,11 +229,11 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 private fun StatusCard(state: AnalyzerUiState) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Status: ${state.status.name}", fontWeight = FontWeight.SemiBold)
+            Text("Állapot: ${statusHu(state.status)}", fontWeight = FontWeight.SemiBold)
             Text(state.statusMessage)
-            Text("Frame size: ${state.frameWidth}×${state.frameHeight}")
-            Text("Content ROI: ${state.contentRoiText}")
-            Text("Frames received: ${state.frameCount}")
+            Text("Képkocka méret: ${state.frameWidth}×${state.frameHeight}")
+            Text("Tartalom ROI: ${state.contentRoiText}")
+            Text("Fogadott képkockák: ${state.frameCount}")
         }
     }
 }
@@ -203,7 +241,7 @@ private fun StatusCard(state: AnalyzerUiState) {
 @Composable
 private fun BoardGrid(labels: List<String>) {
     if (labels.size != 49) {
-        Text("No board labels yet")
+        Text("Még nincs tábla")
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -241,12 +279,12 @@ private fun FramePreview(bitmap: Bitmap?) {
         if (bitmap != null && !bitmap.isRecycled) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
-                contentDescription = "Last captured frame",
+                contentDescription = "Utolsó rögzített képkocka",
                 modifier = Modifier.fillMaxSize().padding(4.dp),
                 contentScale = ContentScale.Fit,
             )
         } else {
-            Text("No frame yet", color = Color.Gray)
+            Text("Még nincs képkocka", color = Color.Gray)
         }
     }
 }
