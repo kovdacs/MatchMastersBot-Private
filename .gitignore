@@ -11,3 +11,6 @@
 *.apk
 *.ap_
 *.dex
+
+# CI-downloaded APKs
+dist/

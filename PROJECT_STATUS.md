@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-28 (Europe/Vienna)  
 **Version:** `0.24.1-live-pipeline`  
+**Tip / CI:** `e96fadc` / run 36468136011 SUCCESS  
 **CI:** analyzer-ci on GitHub Actions (no JDK on box)  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
