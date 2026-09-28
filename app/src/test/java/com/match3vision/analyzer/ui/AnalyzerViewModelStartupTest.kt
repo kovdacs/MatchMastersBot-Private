@@ -2,6 +2,7 @@ package com.match3vision.analyzer.ui
 
 import android.app.Application
 import com.google.common.truth.Truth.assertThat
+import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.InputEnableSwitch
 import org.junit.Test
 
@@ -23,5 +24,13 @@ class AnalyzerViewModelStartupTest {
     fun inputEnableSwitch_defaultsDisabled() {
         val sw = InputEnableSwitch.disabledByDefault()
         assertThat(sw.isEnabled()).isFalse()
+    }
+
+    @Test
+    fun autoPlayController_defaultsIdleAndDoesNotRunWithoutBubbleStart() {
+        val ctrl = AutoPlayController()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.IDLE)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.isLoopActive()).isFalse()
     }
 }

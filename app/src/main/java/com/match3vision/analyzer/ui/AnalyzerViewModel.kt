@@ -72,7 +72,7 @@ data class AnalyzerUiState(
     val analysisFrameFrozen: Boolean = true,
 ) {
     companion object {
-        const val SUBTITLE = "Elemző + egylépéses próba (bevitel alapból KI)"
+        const val SUBTITLE = "Auto buborék — INDÍTÁS → engedélyek → Match Masters → buborék INDÍTÁS"
     }
 }
 

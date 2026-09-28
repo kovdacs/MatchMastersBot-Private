@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -36,14 +37,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.overlay.AutoPlaySession
 
 @Composable
 fun AnalyzerScreen(
     viewModel: AnalyzerViewModel,
     onStartCapture: () -> Unit,
     onStopCapture: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit = {},
+    onOpenOverlaySettings: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val auto by AutoPlaySession.ui.collectAsStateWithLifecycle()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -64,47 +70,83 @@ fun AnalyzerScreen(
                 fontWeight = FontWeight.Medium,
             )
 
-            StatusCard(state)
+            Text(
+                "1. INDÍTÁS → engedélyek\n" +
+                    "2. Buborék megjelenik\n" +
+                    "3. Nyisd meg a Match Masters-t\n" +
+                    "4. Buborék: INDÍTÁS → auto húzás\n" +
+                    "5. SZÜNET vagy STOP",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = {
-                        viewModel.onStartRequested()
-                        onStartCapture()
-                    },
-                    enabled = state.status != AnalyzerStatus.Capturing &&
-                        state.status != AnalyzerStatus.AwaitingPermission,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Indítás") }
-                OutlinedButton(
-                    onClick = onStopCapture,
-                    enabled = state.status == AnalyzerStatus.Capturing ||
-                        state.status == AnalyzerStatus.AwaitingPermission,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Leállítás") }
+            Button(
+                onClick = {
+                    viewModel.onStartRequested()
+                    onStartCapture()
+                },
+                enabled = state.status != AnalyzerStatus.AwaitingPermission,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2E7D32),
+                ),
+            ) {
+                Text(
+                    "INDÍTÁS",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
 
             OutlinedButton(
-                onClick = { viewModel.analyzeLastFrame() },
+                onClick = onStopCapture,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.lastFrameBitmap != null,
-            ) { Text("Utolsó képkocka elemzése") }
+            ) { Text("STOP — buborék + rögzítés leállítása") }
 
-            Section("EGYLÉPÉSES PRÓBA") {
+            PermissionStatusCard(
+                overlayReady = auto.overlayReady,
+                a11yReady = auto.a11yReady,
+                captureReady = auto.captureReady,
+                bubbleVisible = auto.bubbleVisible,
+                mode = auto.mode,
+                statusText = auto.statusText,
+                moveCount = auto.moveCount,
+                onOpenOverlay = onOpenOverlaySettings,
+                onOpenA11y = onOpenAccessibilitySettings,
+            )
+
+            StatusCard(state)
+
+            Section("ÉLŐ KÉP") {
+                FramePreview(state.lastFrameBitmap)
+                Text(state.visionStatusText, fontWeight = FontWeight.Medium)
+                if (state.visionDebugText.isNotBlank()) {
+                    Text(state.visionDebugText, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Section("TÁBLA") { BoardGrid(state.boardGridLabels) }
+
+            Section("LEGJOBB LÉPÉSEK") {
+                if (state.gateHold) {
+                    Text(
+                        state.holdMessage ?: "TARTÁS — döntési AI blokkolva",
+                        color = Color(0xFFB71C1C),
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else {
+                    val lines = state.topMovesText.take(5)
+                    if (lines.isEmpty()) Text("Nincs lépés") else lines.forEach { Text(it) }
+                }
+            }
+
+            // Advanced one-step smoke kept for controlled debugging (secondary).
+            Section("HALADÓ — EGYLÉPÉSES PRÓBA") {
                 Text(
-                    "Alapból KI. Maximum 1 automatikus húzás. Kell a rendszer Kisegítő lehetőségek szolgáltatása.",
+                    "Alapból KI. Maximum 1 automatikus húzás. A buborék autojátszás helyett.",
                     style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "1. Kapcsold be: Automatikus húzás engedélyezése\n" +
-                        "2. Kapcsold be: Egy lépéses próba\n" +
-                        "3. Indítsd a rögzítést, válts Match Mastersre (tábla látszik)\n" +
-                        "4. Gyere vissza ide — a tábla-kép FAGYASZTVA marad\n" +
-                        "   (vagy használd az osztott képernyőt / PiP-et)\n" +
-                        "5. Nyomd meg: Futtatás (max. 1 húzás)\n" +
-                        "6. Új próba előtt: Visszaállítás",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
                 )
                 Row(
                     Modifier.fillMaxWidth(),
@@ -144,48 +186,16 @@ fun AnalyzerScreen(
                     onClick = { viewModel.resetSmokeSession() },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Visszaállítás") }
-            }
-
-            Section("PRÓBA NAPLÓ") {
                 Text(
-                    state.smokeLogText.ifBlank { "(üres — kapcsold be a kapcsolókat, majd Futtatás)" },
+                    state.smokeLogText.ifBlank { "(üres)" },
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                 )
             }
 
-            Section("ÉLŐ KÉP") {
-                FramePreview(state.lastFrameBitmap)
-                Text(state.visionStatusText, fontWeight = FontWeight.Medium)
-                if (state.visionDebugText.isNotBlank()) {
-                    Text(state.visionDebugText, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            Section("TÁBLA") { BoardGrid(state.boardGridLabels) }
-            Section("JÁTÉKÁLLAPOT") { Text(state.gameStateText.ifBlank { "—" }) }
-
-            Section("LEGJOBB LÉPÉSEK") {
-                if (state.gateHold) {
-                    Text(
-                        state.holdMessage ?: "TARTÁS — döntési AI blokkolva",
-                        color = Color(0xFFB71C1C),
-                        fontWeight = FontWeight.Bold,
-                    )
-                } else {
-                    val lines = state.topMovesText.take(5)
-                    if (lines.isEmpty()) Text("Nincs lépés") else lines.forEach { Text(it) }
-                }
-            }
-
-            Section("MIÉRT") { Text(state.whyText.ifBlank { "—" }) }
-            Section("BIZONYOSSÁG") { Text(state.confidenceText.ifBlank { "—" }) }
-            Section("KOCKÁZAT") { Text(state.riskText.ifBlank { "—" }) }
-            Section("VÁRHATÓ ÉRTÉK") { Text(state.expectedValueText.ifBlank { "—" }) }
-
             Text(
-                "Bevitel alapból KI. Folyamatos autojátszás KI. Egylépéses próba csak kézi bekapcsolással.",
+                "Auto: buborék INDÍTÁS indítja a kört. SZÜNET megállítja. STOP eltávolítja a buborékot.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -193,6 +203,52 @@ fun AnalyzerScreen(
             )
         }
     }
+}
+
+@Composable
+private fun PermissionStatusCard(
+    overlayReady: Boolean,
+    a11yReady: Boolean,
+    captureReady: Boolean,
+    bubbleVisible: Boolean,
+    mode: AutoPlayController.Mode,
+    statusText: String,
+    moveCount: Int,
+    onOpenOverlay: () -> Unit,
+    onOpenA11y: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("ENGEDÉLYEK / AUTO", fontWeight = FontWeight.SemiBold)
+            Text("Lebegő buborék: ${if (overlayReady) "OK" else "kell"}")
+            Text("Kisegítő (húzás): ${if (a11yReady) "OK" else "kell"}")
+            Text("Rögzítés: ${if (captureReady) "OK" else "—"}")
+            Text("Buborék látszik: ${if (bubbleVisible) "igen" else "nem"}")
+            Text(
+                "Mód: ${autoModeHu(mode)} · húzások=$moveCount",
+                fontWeight = FontWeight.Medium,
+            )
+            Text(statusText, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!overlayReady) {
+                    OutlinedButton(onClick = onOpenOverlay) { Text("Buborék engedély") }
+                }
+                if (!a11yReady) {
+                    OutlinedButton(onClick = onOpenA11y) { Text("Kisegítő beállítás") }
+                }
+            }
+        }
+    }
+}
+
+internal fun autoModeHu(mode: AutoPlayController.Mode): String = when (mode) {
+    AutoPlayController.Mode.IDLE -> "VÁRAKOZIK"
+    AutoPlayController.Mode.RUNNING -> "FUT"
+    AutoPlayController.Mode.PAUSED -> "SZÜNET"
+    AutoPlayController.Mode.STOPPED -> "LEÁLLÍTVA"
 }
 
 /** Hungarian labels for smoke phase enum names (engine enums stay English). */

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:name=".Match3AnalyzerApp"
@@ -29,6 +30,14 @@
             android:name=".capture.CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!--
+          Floating auto-play bubble (SYSTEM_ALERT_WINDOW).
+          Loop starts only after user taps INDÍTÁS on the bubble.
+        -->
+        <service
+            android:name=".overlay.FloatingBubbleService"
+            android:exported="false" />
 
         <!--
           AUTOMATIC INPUT ENGINE V1 — real gesture path.

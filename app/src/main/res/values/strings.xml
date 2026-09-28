@@ -4,9 +4,13 @@
     <string name="capture_channel_name">Képernyőrögzítés</string>
     <string name="capture_channel_desc">Előtérbeli értesítés képernyőelemzés közben</string>
     <string name="capture_notification_title">Match3 Vision Elemző</string>
-    <string name="capture_notification_text">Képernyő rögzítése elemzéshez (bevitel alapból KI)</string>
+    <string name="capture_notification_text">Képernyő rögzítése autojátszáshoz (buborék INDÍTÁS kell)</string>
     <string name="action_stop">Leállítás</string>
-    <string name="accessibility_service_description">Match Masters Bot bevitel (gesztusok). Alapból kikapcsolva — csak akkor kapcsold be, ha automatikus húzást szeretnél. Az alkalmazáson belüli kapcsoló is kell (második kapu).</string>
+    <string name="accessibility_service_description">Match Masters Bot bevitel (gesztusok). Alapból kikapcsolva — csak akkor kapcsold be, ha automatikus húzást szeretnél. A buborék INDÍTÁS a második kapu.</string>
     <string name="input_enable_label">Automatikus húzás engedélyezése</string>
-    <string name="input_enable_warning">Alapból KI. Bekapcsoláskor az AccessibilityService húzhat, ha a látás kapuk átengedik.</string>
+    <string name="input_enable_warning">Alapból KI. Buborék INDÍTÁS kapcsolja be; SZÜNET/STOP kikapcsolja.</string>
+    <string name="overlay_permission_rationale">Lebegő buborék kell a Start/Szünet/Stop gombokhoz a játék fölött.</string>
+    <string name="a11y_permission_rationale">Kapcsold be a Match3 Vision Elemző kisegítő szolgáltatását a húzáshoz.</string>
+    <string name="autoplay_big_start">INDÍTÁS</string>
+    <string name="autoplay_steps">1. INDÍTÁS → engedélyek\n2. Buborék megjelenik\n3. Nyisd meg a Match Masters-t\n4. Buborék: INDÍTÁS → auto húzás\n5. SZÜNET vagy STOP</string>
 </resources>
