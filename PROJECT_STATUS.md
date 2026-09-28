@@ -1,7 +1,7 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**CI:** analyzer-ci SUCCESS run 36414665548 on `e0fc877` (REAL_FRAME PASS); tip `7b56734`  
+**CI:** analyzer-ci SUCCESS run 36416924508 on `33a876d` (REAL_FRAME export + PASS); calib `e0fc877`/36414665548  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)

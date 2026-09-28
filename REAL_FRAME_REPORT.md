@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-28 (Europe/Vienna)
 **Branch:** `main`  
-**Commit:** `7b56734` (docs tip; vision PASS calib on `e0fc877`)
-**CI:** analyzer-ci **SUCCESS** on `e0fc877` — run **36414665548** (PASS numerics); docs tip also green on **36415154332**
+**Commit:** `33a876d` (Android REAL_FRAME export golden; vision PASS calib on `e0fc877`)
+**CI:** analyzer-ci **SUCCESS** on `33a876d` — run **36416924508** (export + PASS numerics); PASS calib also **36414665548** on `e0fc877`
 **APK:** app-debug.apk artifact uploaded (**24,624,329** bytes on disk ≈ 23.5 MiB; artifact zip ≈ 8.6 MiB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
