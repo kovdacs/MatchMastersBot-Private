@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,58 @@ fun AnalyzerScreen(
                 enabled = state.lastFrameBitmap != null,
             ) { Text("Analyze last frame") }
 
+            Section("CONTROLLED ONE-STEP SMOKE") {
+                Text(
+                    "Default DISABLED. Max 1 auto swipe per session. Requires system AccessibilityService.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Enable Input (safety)")
+                    Switch(
+                        checked = state.inputEnabled,
+                        onCheckedChange = { viewModel.setInputEnabled(it) },
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Enable One-Step Smoke")
+                    Switch(
+                        checked = state.smokeEnabled,
+                        onCheckedChange = { viewModel.setSmokeEnabled(it) },
+                    )
+                }
+                Text(
+                    "phase=${state.smokePhase}  swipes=${state.smokeSwipeCount}/1",
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(state.smokeStatusText, style = MaterialTheme.typography.bodySmall)
+                Button(
+                    onClick = { viewModel.runOneStepSmoke() },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.smokeRunning && state.lastFrameBitmap != null,
+                ) { Text(if (state.smokeRunning) "Smoke running…" else "Run One-Step Smoke") }
+                OutlinedButton(
+                    onClick = { viewModel.resetSmokeSession() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Reset smoke session") }
+            }
+
+            Section("SMOKE LOG") {
+                Text(
+                    state.smokeLogText.ifBlank { "(empty — enable + run smoke)" },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                )
+            }
+
             Section("LIVE FRAME") {
                 FramePreview(state.lastFrameBitmap)
                 Text(state.visionStatusText, fontWeight = FontWeight.Medium)
@@ -110,7 +164,7 @@ fun AnalyzerScreen(
             Section("EXPECTED VALUE") { Text(state.expectedValueText.ifBlank { "—" }) }
 
             Text(
-                "Analyzer only — no AccessibilityService, no touch injection, no game automation.",
+                "Input DEFAULT DISABLED. Continuous auto-play OFF. One-step smoke only when explicitly enabled.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

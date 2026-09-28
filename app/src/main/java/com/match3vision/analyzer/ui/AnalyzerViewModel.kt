@@ -1,14 +1,22 @@
 package com.match3vision.analyzer.ui
 
+import android.app.Application
 import android.graphics.Bitmap
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.input.AccessibilityGestureExecutor
+import com.match3vision.analyzer.input.AutomaticInputEngine
+import com.match3vision.analyzer.input.InputEnableSwitch
+import com.match3vision.analyzer.input.OneStepSmokeController
+import com.match3vision.analyzer.input.SmokeEnableSwitch
+import com.match3vision.analyzer.input.SmokeTestLogger
 import com.match3vision.analyzer.orchestration.AnalysisOrchestrator
 import com.match3vision.analyzer.orchestration.AnalysisUiSnapshot
 import com.match3vision.analyzer.vision.VisionFrameAnalyzer
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -50,27 +58,57 @@ data class AnalyzerUiState(
     val gameStateText: String = "",
     val analysisSnapshot: AnalysisUiSnapshot? = null,
     val subtitle: String = SUBTITLE,
+    // Controlled one-step smoke (default DISABLED)
+    val inputEnabled: Boolean = false,
+    val smokeEnabled: Boolean = false,
+    val smokePhase: String = "IDLE",
+    val smokeSwipeCount: Int = 0,
+    val smokeStatusText: String = "Smoke: DISABLED (default)",
+    val smokeLogText: String = "",
+    val smokeRunning: Boolean = false,
 ) {
     companion object {
-        const val SUBTITLE = "Analyzer only — no automatic input"
+        const val SUBTITLE = "Analyzer + controlled one-step smoke (input DEFAULT DISABLED)"
     }
 }
 
 /**
  * Binds [CaptureService] frame flow to Compose UI state.
  * Analyze last frame uses the **real** last captured bitmap (no fake image).
- * Decision output is display-only — never executes input.
+ * Decision output is display-only unless the user explicitly enables
+ * Input + One-Step Smoke and taps Run (max 1 auto swipe).
  */
 class AnalyzerViewModel(
+    application: Application,
     private val frameAnalyzer: VisionFrameAnalyzer = VisionFrameAnalyzer(),
     private val orchestrator: AnalysisOrchestrator = AnalysisOrchestrator(),
-) : ViewModel() {
+) : AndroidViewModel(application) {
+
+    private val inputEnableSwitch = InputEnableSwitch.disabledByDefault()
+    private val smokeEnableSwitch = SmokeEnableSwitch.disabledByDefault()
+    private val smokeLogger = SmokeTestLogger(
+        file = File(application.filesDir, "smoke_test.log"),
+    )
+    private val smokeController = OneStepSmokeController(
+        smokeEnable = smokeEnableSwitch,
+        inputEngine = AutomaticInputEngine(
+            enableSwitch = inputEnableSwitch,
+            executor = AccessibilityGestureExecutor(),
+        ),
+        logger = smokeLogger,
+    )
 
     private val _uiState = MutableStateFlow(AnalyzerUiState())
     val uiState: StateFlow<AnalyzerUiState> = _uiState.asStateFlow()
 
     private var observeJob: Job? = null
     private var analyzeJob: Job? = null
+    private var smokeJob: Job? = null
+
+    init {
+        smokeLogger.log("APP_START — InputEnableSwitch=DISABLED SmokeEnableSwitch=DISABLED")
+        publishSmokeUi("Smoke: DISABLED (default) — enable switches then Run One-Step")
+    }
 
     fun onStartRequested() {
         _uiState.update {
@@ -113,6 +151,114 @@ class AnalyzerViewModel(
         }
     }
 
+    fun setInputEnabled(enabled: Boolean) {
+        inputEnableSwitch.setEnabled(enabled)
+        smokeLogger.log("UI — InputEnableSwitch=${if (enabled) "ENABLED" else "DISABLED"}")
+        publishSmokeUi(
+            if (enabled) "Input: ENABLED (still needs Smoke + a11y + Run)"
+            else "Input: DISABLED",
+        )
+    }
+
+    fun setSmokeEnabled(enabled: Boolean) {
+        smokeEnableSwitch.setEnabled(enabled)
+        smokeLogger.log("UI — SmokeEnableSwitch=${if (enabled) "ENABLED" else "DISABLED"}")
+        publishSmokeUi(
+            if (enabled) "Smoke: ENABLED (max 1 swipe; tap Run One-Step)"
+            else "Smoke: DISABLED",
+        )
+    }
+
+    fun resetSmokeSession() {
+        smokeController.resetSession()
+        publishSmokeUi("Smoke: session reset — ready for one swipe")
+    }
+
+    /**
+     * Controlled one-step smoke on the last captured frame.
+     * Max 1 auto swipe; waits for a new frame then verifies board change.
+     * Never fakes BOARD_CHANGED.
+     */
+    fun runOneStepSmoke() {
+        if (smokeJob?.isActive == true) return
+        val bitmap = _uiState.value.lastFrameBitmap
+        val roi = _uiState.value.lastContentRoi
+        if (bitmap == null || bitmap.isRecycled) {
+            publishSmokeUi("Smoke: no frame — Start capture + open Match Masters board first")
+            return
+        }
+        smokeJob = viewModelScope.launch {
+            _uiState.update { it.copy(smokeRunning = true) }
+            publishSmokeUi("Smoke: running CAPTURE→VALIDATE→ANALYZE→SELECT…")
+            try {
+                val (beforeAnalysis, beforeSnap) = withContext(Dispatchers.Default) {
+                    val fa = analyzeBitmap(bitmap, roi)
+                    fa to orchestrator.analyzeVisionResult(fa.result)
+                }
+                applyVisionToUi(beforeAnalysis, beforeSnap)
+                val step = withContext(Dispatchers.Default) {
+                    smokeController.runOneStep(beforeAnalysis.result)
+                }
+                when (step) {
+                    is OneStepSmokeController.StepResult.Held -> {
+                        publishSmokeUi("Smoke HOLD: ${step.reason}")
+                    }
+                    is OneStepSmokeController.StepResult.Stopped -> {
+                        publishSmokeUi("Smoke STOP: ${step.reason}")
+                    }
+                    is OneStepSmokeController.StepResult.SuccessReadyForNext -> {
+                        publishSmokeUi("Smoke SUCCESS READY FOR NEXT")
+                    }
+                    is OneStepSmokeController.StepResult.AwaitingFeedback -> {
+                        publishSmokeUi(
+                            "Smoke: swipe dispatched — waiting ${step.animationWaitMs}ms…",
+                        )
+                        delay(step.animationWaitMs)
+                        // Prefer a newer frame than the one we swiped on.
+                        val startCount = _uiState.value.frameCount
+                        var waited = 0L
+                        while (isActive && waited < 2_500L &&
+                            _uiState.value.frameCount <= startCount
+                        ) {
+                            delay(100L)
+                            waited += 100L
+                        }
+                        val afterBmp = _uiState.value.lastFrameBitmap
+                        val afterRoi = _uiState.value.lastContentRoi
+                        if (afterBmp == null || afterBmp.isRecycled) {
+                            publishSmokeUi("Smoke STOP: no post-swipe frame")
+                            return@launch
+                        }
+                        val (afterAnalysis, afterSnap) = withContext(Dispatchers.Default) {
+                            val fa = analyzeBitmap(afterBmp, afterRoi)
+                            fa to orchestrator.analyzeVisionResult(fa.result)
+                        }
+                        applyVisionToUi(afterAnalysis, afterSnap)
+                        val fb = withContext(Dispatchers.Default) {
+                            smokeController.completeWithNewFrame(afterAnalysis.result)
+                        }
+                        when (fb) {
+                            is OneStepSmokeController.StepResult.SuccessReadyForNext ->
+                                publishSmokeUi(
+                                    "Smoke SUCCESS READY FOR NEXT — board changed " +
+                                        "${fb.beforeHash}→${fb.afterHash}",
+                                )
+                            is OneStepSmokeController.StepResult.Held ->
+                                publishSmokeUi("Smoke HOLD: ${fb.reason}")
+                            is OneStepSmokeController.StepResult.Stopped ->
+                                publishSmokeUi("Smoke STOP: ${fb.reason}")
+                            is OneStepSmokeController.StepResult.AwaitingFeedback ->
+                                publishSmokeUi("Smoke: unexpected awaiting state")
+                        }
+                    }
+                }
+            } finally {
+                _uiState.update { it.copy(smokeRunning = false) }
+                publishSmokeUi(_uiState.value.smokeStatusText)
+            }
+        }
+    }
+
     /**
      * Runs full vision (+ orchestrated decision when gate PASS) on the last
      * captured frame. Safe no-op when no frame exists. Never injects input.
@@ -128,37 +274,66 @@ class AnalyzerViewModel(
         analyzeJob = viewModelScope.launch {
             _uiState.update { it.copy(visionStatusText = "Vision: analyzing…") }
             val analysis = withContext(Dispatchers.Default) {
-                val w = bitmap.width
-                val h = bitmap.height
-                val pixels = IntArray(w * h)
-                bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
-                val frameAnalysis = frameAnalyzer.analyzePixels(pixels, w, h, roi)
+                val frameAnalysis = analyzeBitmap(bitmap, roi)
                 val snap = orchestrator.analyzeVisionResult(frameAnalysis.result)
                 frameAnalysis to snap
             }
             val (frameAnalysis, snap) = analysis
-            val dbg = frameAnalysis.debugSummary
-            val hold = dbg.gate == "HOLD" || snap.decisionBlocked
-            _uiState.update {
-                it.copy(
-                    visionStatusText = "Vision: ${dbg.gate} · ${dbg.gridMethod} · unk=${dbg.unknownCount} · " +
-                        "board=${"%.2f".format(dbg.boardConfidence)} grid=${"%.2f".format(dbg.gridConfidence)}",
-                    visionDebugText = "ROI ${dbg.roiText} · cells=${dbg.cellLabels.size}" +
-                        (dbg.holdReason?.let { r -> " · $r" } ?: ""),
-                    boardGridLabels = dbg.cellLabels,
-                    gateHold = hold,
-                    holdMessage = if (hold) {
-                        snap.holdReason ?: dbg.holdReason ?: "HOLD — Decision AI blocked"
-                    } else null,
-                    topMovesText = if (hold) emptyList() else snap.topMovesLines,
-                    whyText = snap.whyText,
-                    confidenceText = snap.confidenceText,
-                    riskText = snap.riskText,
-                    expectedValueText = snap.expectedValueText,
-                    gameStateText = snap.gameStateText,
-                    analysisSnapshot = snap,
-                )
-            }
+            applyVisionToUi(frameAnalysis, snap)
+        }
+    }
+
+    private fun analyzeBitmap(
+        bitmap: Bitmap,
+        roi: ContentRoi?,
+    ) = frameAnalyzer.analyzePixels(
+        pixels = IntArray(bitmap.width * bitmap.height).also {
+            bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        },
+        width = bitmap.width,
+        height = bitmap.height,
+        contentRoi = roi,
+    )
+
+    private fun applyVisionToUi(
+        frameAnalysis: com.match3vision.analyzer.vision.VisionFrameAnalyzer.FrameAnalysis,
+        snap: AnalysisUiSnapshot? = null,
+    ) {
+        val resolvedSnap = snap ?: orchestrator.analyzeVisionResult(frameAnalysis.result)
+        val dbg = frameAnalysis.debugSummary
+        val hold = dbg.gate == "HOLD" || resolvedSnap.decisionBlocked
+        _uiState.update {
+            it.copy(
+                visionStatusText = "Vision: ${dbg.gate} · ${dbg.gridMethod} · unk=${dbg.unknownCount} · " +
+                    "board=${"%.2f".format(dbg.boardConfidence)} grid=${"%.2f".format(dbg.gridConfidence)}",
+                visionDebugText = "ROI ${dbg.roiText} · cells=${dbg.cellLabels.size}" +
+                    (dbg.holdReason?.let { r -> " · $r" } ?: ""),
+                boardGridLabels = dbg.cellLabels,
+                gateHold = hold,
+                holdMessage = if (hold) {
+                    resolvedSnap.holdReason ?: dbg.holdReason ?: "HOLD — Decision AI blocked"
+                } else null,
+                topMovesText = if (hold) emptyList() else resolvedSnap.topMovesLines,
+                whyText = resolvedSnap.whyText,
+                confidenceText = resolvedSnap.confidenceText,
+                riskText = resolvedSnap.riskText,
+                expectedValueText = resolvedSnap.expectedValueText,
+                gameStateText = resolvedSnap.gameStateText,
+                analysisSnapshot = resolvedSnap,
+            )
+        }
+    }
+
+    private fun publishSmokeUi(status: String) {
+        _uiState.update {
+            it.copy(
+                inputEnabled = inputEnableSwitch.isEnabled(),
+                smokeEnabled = smokeEnableSwitch.isEnabled(),
+                smokePhase = smokeController.phase.name,
+                smokeSwipeCount = smokeController.swipeCount,
+                smokeStatusText = status,
+                smokeLogText = smokeLogger.dump(),
+            )
         }
     }
 
@@ -208,6 +383,7 @@ class AnalyzerViewModel(
     override fun onCleared() {
         observeJob?.cancel()
         analyzeJob?.cancel()
+        smokeJob?.cancel()
         super.onCleared()
     }
 }

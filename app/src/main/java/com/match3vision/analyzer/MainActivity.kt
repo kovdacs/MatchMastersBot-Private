@@ -20,7 +20,7 @@ import timber.log.Timber
 
 /**
  * Hosts MediaProjection permission flow and the Compose analyzer UI.
- * Does not inject input or bind AccessibilityService.
+ * Hosts UI; input stays DEFAULT DISABLED. One-step smoke is explicit/opt-in.
  */
 class MainActivity : ComponentActivity() {
 

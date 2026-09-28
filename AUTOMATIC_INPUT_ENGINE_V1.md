@@ -93,3 +93,11 @@ Vision / Move Analysis V1 / REAL_FRAME PASS paths are unchanged. Orchestrator re
 - PASS allowed; HOLD blocked; low grid/board conf; unk>1; no legal move; low move conf
 - Coord conversion from grid centers; input disabled blocked
 - Success → verify next frame; failed verify STOP; repeated failure STOP; unknown fail-safe STOP
+
+## Controlled one-step smoke (on-device)
+
+See **`CONTROLLED_ON_DEVICE_SMOKE_TEST.md`**.
+
+- `SmokeEnableSwitch` (default DISABLED) layered on `InputEnableSwitch`.
+- `OneStepSmokeController`: max **1** auto swipe per session; second swipe blocked until reset.
+- No continuous loop. CI delivers APK harness; true `BOARD_CHANGED` only from a phone run.
