@@ -99,18 +99,13 @@ class FrameSequenceGate {
                     (frame.timestampMs > 0 && gesture.timestampMs > 0 &&
                         frame.timestampMs < gesture.timestampMs) ->
                     return Decision(Verdict.REJECT_OLD, HOLD_OLD_FRAME, allow = false)
-                frame.identity != gesture.identity && frame.sequence > gesture.sequence -> {
+                frame.identity != gesture.identity -> {
+                    // Different identity (higher or equal seq) counts as NEW.
                     requireNewAfterGesture = false
                     lastAccepted = frame
                     return Decision(Verdict.ALLOW_NEW, "NEW frame after gesture", allow = true)
                 }
                 else ->
-                    // Same sequence number but different identity is still NEW enough.
-                    if (frame.identity != gesture.identity) {
-                        requireNewAfterGesture = false
-                        lastAccepted = frame
-                        return Decision(Verdict.ALLOW_NEW, "NEW frame after gesture", allow = true)
-                    }
                     return Decision(Verdict.REJECT_SAME, HOLD_SAME_FRAME, allow = false)
             }
         }
