@@ -37,41 +37,53 @@ object AutoPlaySession {
         val accessibility: String = "DISCONNECTED",
         val inputReady: String = "NO",
         val lastDispatch: String = "NONE",
+        /** Board-changed verify: NONE | SUCCESS | FAILED */
+        val verifyStatus: String = "NONE",
         val stopReason: String? = null,
+        /** First audit-chain blocker (Hungarian / English mixed, machine-readable). */
+        val firstBlock: String? = null,
         // Vision HOLD detail (Hungarian UI — never imply useful play while HOLD-only)
         val unknownCount: Int = -1,
         val gridConfidence: Float = -1f,
         val boardConfidence: Float = -1f,
         val boardDetection: String = "—",
+        /** Explicit board ROI string e.g. LTRB(l,t,r,b). */
+        val boardRoi: String = "—",
         val frameSequence: String = "—",
         val frameAgeMs: Long = -1L,
         val captureStatus: String = "OFF",
+        val moveCount: Int = 0,
+        /** Heartbeat tick so UI proves the loop is alive (no silent freeze). */
+        val heartbeatMs: Long = 0L,
     ) {
-        fun bubbleLines(): String = buildString {
-            appendLine("FÁZIS: $phase")
-            appendLine("MODE: $mode")
-            appendLine("CAPTURE: $capture")
-            appendLine("FRAME: $frame")
-            appendLine("VISION: $vision")
-            if (vision.contains("HOLD", ignoreCase = true) || unknownCount >= 0) {
-                appendLine("  unk=$unknownCount grid=${fmt(gridConfidence)} board=${fmt(boardConfidence)}")
-                appendLine("  boardDet=$boardDetection")
-                appendLine("  frameSeq=$frameSequence ageMs=$frameAgeMs")
-                appendLine("  captureStatus=$captureStatus")
-            }
-            appendLine("MOVE: $move")
-            appendLine("INPUT: $input")
-            appendLine("ACCESSIBILITY: $accessibility")
-            appendLine("INPUT READY: $inputReady")
-            append("LAST DISPATCH: $lastDispatch")
-            if (!stopReason.isNullOrBlank()) {
-                appendLine()
-                append("STOP: $stopReason")
+        fun bubbleLines(compact: Boolean = true): String {
+            val status = LivePipelineStatus(
+                mode = mode,
+                phase = phase,
+                frame = frame,
+                boardRoi = boardRoi.ifBlank { boardDetection },
+                gridConf = gridConfidence,
+                boardConf = boardConfidence,
+                unknownCount = unknownCount,
+                visionGate = vision,
+                moveCount = moveCount,
+                selectedMove = move,
+                a11y = accessibility,
+                inputReady = inputReady,
+                lastDispatch = lastDispatch,
+                verifyStatus = verifyStatus,
+                frameSequence = frameSequence,
+                frameAgeMs = frameAgeMs,
+                captureStatus = captureStatus,
+                firstBlock = firstBlock,
+            )
+            val body = status.bubbleLines(compact = compact)
+            return if (!stopReason.isNullOrBlank() && firstBlock != stopReason) {
+                body + "\nSTOP: $stopReason"
+            } else {
+                body
             }
         }
-
-        private fun fmt(v: Float): String =
-            if (v < 0f) "—" else "%.3f".format(v)
     }
 
     data class UiSnapshot(
@@ -173,9 +185,14 @@ object AutoPlaySession {
         gridConfidence: Float? = null,
         boardConfidence: Float? = null,
         boardDetection: String? = null,
+        boardRoi: String? = null,
         frameSequence: String? = null,
         frameAgeMs: Long? = null,
         captureStatus: String? = null,
+        verifyStatus: String? = null,
+        frameSequenceAllow: Boolean? = null,
+        heartbeatMs: Long? = null,
+        cycleReason: String? = null,
     ) {
         if (clearStopReason) {
             AutoPlayTrace.clearLastStop()
@@ -193,6 +210,9 @@ object AutoPlaySession {
                 explicit = stopReason,
                 clear = clearStopReason,
             )
+            val nextRoi = boardRoi
+                ?: boardDetection
+                ?: cur.diagnostics.boardRoi
             val diag = rebuildDiagnostics(
                 base = cur.diagnostics.copy(
                     frame = frameReceived?.let { if (it) "received" else "no frame" }
@@ -200,6 +220,7 @@ object AutoPlaySession {
                     vision = visionText ?: cur.diagnostics.vision,
                     move = moveText ?: cur.diagnostics.move,
                     lastDispatch = dispatchLabel,
+                    verifyStatus = verifyStatus ?: cur.diagnostics.verifyStatus,
                     stopReason = nextStop,
                     accessibility = if (connected) "CONNECTED" else "DISCONNECTED",
                     phase = phase ?: cur.diagnostics.phase,
@@ -207,13 +228,17 @@ object AutoPlaySession {
                     gridConfidence = gridConfidence ?: cur.diagnostics.gridConfidence,
                     boardConfidence = boardConfidence ?: cur.diagnostics.boardConfidence,
                     boardDetection = boardDetection ?: cur.diagnostics.boardDetection,
+                    boardRoi = nextRoi,
                     frameSequence = frameSequence ?: cur.diagnostics.frameSequence,
                     frameAgeMs = frameAgeMs ?: cur.diagnostics.frameAgeMs,
                     captureStatus = captureStatus ?: cur.diagnostics.captureStatus,
+                    heartbeatMs = heartbeatMs ?: System.currentTimeMillis(),
                 ),
                 a11yConnected = connected,
                 captureOn = cur.captureReady,
                 overlayReady = cur.overlayReady,
+                frameSequenceAllow = frameSequenceAllow,
+                cycleReason = cycleReason ?: nextStop,
             )
             cur.copy(
                 a11yReady = connected,
@@ -231,6 +256,8 @@ object AutoPlaySession {
         a11yConnected: Boolean,
         captureOn: Boolean,
         overlayReady: Boolean,
+        frameSequenceAllow: Boolean? = null,
+        cycleReason: String? = null,
     ): Diagnostics {
         val inputEnabled = controller.enableSwitch().isEnabled()
         val gate = StartupReadinessGate.evaluate(
@@ -245,18 +272,55 @@ object AutoPlaySession {
             AutoPlayController.Mode.PAUSED -> "PAUSED"
             AutoPlayController.Mode.STOPPED -> "STOPPED"
         }
+        val stopResolved = resolveStopReason(
+            previous = base.stopReason,
+            explicit = null,
+            clear = false,
+        )
+        val visionPass = base.vision.contains("PASS", ignoreCase = true) &&
+            !base.vision.contains("HOLD", ignoreCase = true)
+        val hasMove = base.move.isNotBlank() &&
+            !base.move.equals("none", ignoreCase = true)
+        val hasFrame = base.frame.contains("received", ignoreCase = true)
+        val seqAllow = frameSequenceAllow ?: !base.frameSequence.contains("REJECT", ignoreCase = true)
+        val dispatchEnum = when (base.lastDispatch) {
+            "SUCCESS" -> StartupReadinessGate.LastDispatch.SUCCESS
+            "FAILED" -> StartupReadinessGate.LastDispatch.FAILED
+            else -> StartupReadinessGate.LastDispatch.NONE
+        }
+        val block = LivePipelineStatus.firstBlockingReason(
+            mode = controller.mode,
+            a11yConnected = a11yConnected,
+            captureOn = captureOn,
+            hasFrame = hasFrame,
+            frameSequenceAllow = seqAllow,
+            frameSequenceReason = if (!seqAllow) base.frameSequence else null,
+            frameAgeMs = base.frameAgeMs,
+            visionPass = visionPass,
+            visionHoldReason = if (!visionPass) base.vision else null,
+            gridConf = base.gridConfidence,
+            boardConf = base.boardConfidence,
+            unknownCount = base.unknownCount,
+            hasSelectedMove = hasMove,
+            inputReady = gate.inputReady,
+            lastDispatch = dispatchEnum,
+            verifyStatus = base.verifyStatus,
+            cycleReason = cycleReason ?: stopResolved,
+        )
         return base.copy(
             mode = modeLabel,
             capture = if (captureOn) "ON" else "OFF",
             input = if (inputEnabled) "ENABLED" else "DISABLED",
             accessibility = if (a11yConnected) "CONNECTED" else "DISCONNECTED",
             inputReady = if (gate.inputReady) "YES" else "NO",
-            // Never re-infect a cleared STOP while RUNNING (stale ACCESSIBILITY: DISCONNECTED).
-            stopReason = resolveStopReason(
-                previous = base.stopReason,
-                explicit = null,
-                clear = false,
-            ),
+            stopReason = stopResolved,
+            moveCount = controller.moveCount,
+            firstBlock = block,
+            boardRoi = if (base.boardRoi != "—" && base.boardRoi.isNotBlank()) {
+                base.boardRoi
+            } else {
+                base.boardDetection
+            },
         )
     }
 

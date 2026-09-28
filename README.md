@@ -1,64 +1,40 @@
-# Match3 Vision Analyzer
+# Match Masters Bot — Match3 Vision Analyzer
 
-**HU (rövid):** Kutatási Android prototípus — csak képernyőelemzés (MediaProjection). Nincs AccessibilityService, nincs érintés-injektálás, nincs automatikus játékvezérlés. Phase 1–2: capture + vision analyzer (board/grid/tiles/gate).
+**Version:** `0.24.0-live-pipeline`  
+**Package:** `com.match3vision.analyzer`  
+**Repo:** `kovdacs/MatchMastersBot-Private`
 
-**EN:** Research Android prototype that **analyzes** a match-3 board from screen capture. **Analyzer only** — no touch injection, no AccessibilityService, no gameplay automation of any commercial game.
+Hungarian UI research prototype: **Capture → Vision → Validation → MoveAnalysis → AutoPlayController → InputLoop → AccessibilityService**.
 
-## Phase 1 scope
+## Gates (never loosen)
 
-- MediaProjection + `ImageReader` + `VirtualDisplay`
-- Foreground service (`mediaProjection` type)
-- Letterbox / pillarbox content ROI detection
-- Jetpack Compose UI: Start / Stop / status / last frame preview / ROI text
-- Unit tests: `CaptureConfig`, `LetterboxDetector`
+- `MIN_GRID_CONFIDENCE = 0.98`
+- `MIN_BOARD_CONFIDENCE = 0.95`
+- `MAX_UNKNOWN_COUNT = 1`
 
-## Phase 2 scope
+## Build / test
 
-- Vision pipeline: `BoardFinder` (projection + even_split), occlusion, color, shape, special, reconcile, validation gate
-- Pure Kotlin / ARGB buffers — JVM unit tests without OpenCV or Robolectric
-- UI: **Analyze last frame** → PASS/HOLD status (analyzer only; Decision AI not implemented)
-- See `PHASE2_DONE.md`
+No JDK/SDK on the agent box — use GitHub Actions `analyzer-ci`:
 
-Phases 1–18 implemented (analyzer only). See `PROJECT_STATUS.md` and `ARCHITECTURE_FINAL.md`. Gradle tests: ENVIRONMENT_BLOCKED without JDK 17 + SDK.
+- `./gradlew testDebugUnitTest`
+- `./gradlew assembleDebug`
+- APK artifact: `Match3Analyzer-<version>-<sha>.apk`
 
-## Requirements
+## Status & evidence
 
-- Android Studio Hedgehog+ / AGP 8.5+
-- JDK 17
-- Android SDK with `compileSdk 35`, device/emulator **API 29+**
-- Copy `local.properties.example` → `local.properties` and set `sdk.dir`
+- `PROJECT_STATUS.md` — current pack
+- `docs/EVIDENCE_TIERS.md` — A–E (do not mix)
+- `docs/LIVE_PHONE_TOUCH_PROOF.md` — how **you** prove Tier E on a real phone
+- `docs/AUDIT_CHAIN_GATES.md` — fail-closed chain
+- `docs/LONG_RUN_HARNESS.md` — simulated 1/5/10/20 moves
 
-## Open / build
+**Tier E (live phone) is NOT proven in CI.** Do not claim LIVE PHONE PASS without operator evidence.
 
-```bash
-cd android   # this directory (project root)
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest
-```
+## Architecture (kept)
 
-Or open the `android/` folder in Android Studio (File → Open).
+Capture → Vision → Validation → MoveAnalysis → AutoPlayController → InputLoop → AccessibilityService  
+Input default **OFF** until INDÍTÁS. Bubble: INDÍTÁS / SZÜNET / TESZT ÉRINTÉS / STOP.
 
-## Run on device
+## Ethics
 
-1. Install debug APK / Run from Android Studio.
-2. Tap **Start** → grant notification permission (API 33+) if asked → grant **screen capture**.
-3. A foreground notification appears while capturing.
-4. Preview and content ROI update in the UI.
-5. Tap **Stop** (or the notification action) to end capture.
-
-## Package
-
-- Application ID / namespace: `com.match3vision.analyzer`
-- App name: **Match3 Vision Analyzer**
-- minSdk 29, targetSdk / compileSdk 35
-
-## Explicit non-goals (this project)
-
-- No `AccessibilityService`
-- No `GestureDescription` / inject touch
-- No AUTO-play loop
-- No automation of commercial online games
-
-## License / ethics
-
-Research / educational prototype. Use only on content you are allowed to capture. Respect game Terms of Service — this app does not control games.
+Research prototype. Respect game ToS. Accessibility gestures only after explicit user enable + INDÍTÁS.

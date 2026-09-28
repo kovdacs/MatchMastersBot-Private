@@ -122,6 +122,6 @@ class SpecialDetectorTest {
 
     @Test
     fun thresholdConstant_unchanged() {
-        assertThat(VisionThresholds.SPECIAL_MIN_CONFIDENCE).isEqualTo(0.55f)
+        assertThat(VisionThresholds.SPECIAL_MIN_CONFIDENCE).isEqualTo(0.62f)
     }
 }

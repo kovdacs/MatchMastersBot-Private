@@ -116,7 +116,7 @@ class FloatingBubbleService : Service() {
             text = "várakozik"
             setTextColor(0xFFB0BEC5.toInt())
             textSize = 8.5f
-            maxLines = 14
+            maxLines = 16
             setLineSpacing(0f, 1.05f)
         }
         startBtn = Button(this).apply {
@@ -381,13 +381,34 @@ class FloatingBubbleService : Service() {
 
     private fun ensureLoopRunning() {
         if (loopJob?.isActive == true) return
+        // Recover from cancelled/completed job so RUNNING never silent-freezes.
+        if (loopJob != null && loopJob?.isActive != true) {
+            Timber.w("auto-play loop job inactive — restarting (no silent freeze)")
+        }
         loopJob = scope.launch {
+            Timber.i("auto-play continuous cycle STARTED")
             while (isActive) {
                 val ctrl = AutoPlaySession.controller
                 if (ctrl.mode == AutoPlayController.Mode.STOPPED) break
                 if (!ctrl.isLoopActive()) {
                     refreshBubbleUi()
                     delay(200L)
+                    continue
+                }
+                // P1: a11y connected-only INPUT READY — mid-run disconnect → PAUSE (clear).
+                val a11yLive = MatchMastersAccessibilityService.isConnected()
+                if (!a11yLive) {
+                    ctrl.onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
+                    AutoPlaySession.publish(a11yReady = false)
+                    AutoPlaySession.updateDiagnostics(
+                        a11yConnected = false,
+                        phase = "SZÜNET",
+                        stopReason = "ACCESSIBILITY: DISCONNECTED (mid-run)",
+                        heartbeatMs = System.currentTimeMillis(),
+                    )
+                    AutoPlaySession.refreshFromController()
+                    refreshBubbleUi()
+                    delay(400L)
                     continue
                 }
                 val manager = CaptureService.managerOrNull()
@@ -421,6 +442,9 @@ class FloatingBubbleService : Service() {
                         frameSequence = "${seqDecision.verdict}",
                         frameAgeMs = frame.ageMs(),
                         captureStatus = "ON",
+                        frameSequenceAllow = false,
+                        heartbeatMs = System.currentTimeMillis(),
+                        cycleReason = seqDecision.reason,
                     )
                     AutoPlaySession.refreshFromController(seqDecision.reason)
                     refreshBubbleUi()
@@ -432,8 +456,10 @@ class FloatingBubbleService : Service() {
                     val vision = withContext(Dispatchers.Default) {
                         analyzeFrame(useFrame)
                     }
-                    val boardDet = vision.method.name + "/" +
-                        (vision.diagnostics["boardRoi"] ?: "roi?")
+                    val boardRoiStr = vision.diagnostics["boardRoi"]
+                        ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
+                        "${vision.grid.boardRoi.right},${vision.grid.boardRoi.bottom})"
+                    val boardDet = vision.method.name + "/" + boardRoiStr
                     val cycle = withContext(Dispatchers.Default) {
                         ctrl.runCycleIfActive(vision)
                     }
@@ -472,9 +498,13 @@ class FloatingBubbleService : Service() {
                         gridConfidence = vision.gridConfidence,
                         boardConfidence = vision.boardConfidence,
                         boardDetection = boardDet,
+                        boardRoi = boardRoiStr,
                         frameSequence = "seq=${frame.sequence}/${seqDecision.verdict}",
                         frameAgeMs = frame.ageMs(),
                         captureStatus = "ON",
+                        frameSequenceAllow = seqDecision.allow,
+                        heartbeatMs = System.currentTimeMillis(),
+                        cycleReason = cycle.reason,
                     )
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
@@ -522,11 +552,35 @@ class FloatingBubbleService : Service() {
                                 val fb = withContext(Dispatchers.Default) {
                                     ctrl.completeFeedback(executed.beforeBoardHash, afterVision)
                                 }
+                                val verifyLabel = when {
+                                    fb == null -> "NONE"
+                                    fb.outcome == BotLoopOutcome.CONTINUE -> "SUCCESS"
+                                    fb.outcome == BotLoopOutcome.STOP -> "FAILED"
+                                    else -> "FAILED"
+                                }
+                                // No uncontrolled retry: verify FAILED/STOP already pauses via failsafe.
+                                AutoPlaySession.updateDiagnostics(
+                                    phase = if (verifyLabel == "SUCCESS") "LÁTÁS OK" else "ELLENŐRZÉS",
+                                    verifyStatus = verifyLabel,
+                                    lastDispatch = if (verifyLabel == "SUCCESS") {
+                                        com.match3vision.analyzer.input.StartupReadinessGate.LastDispatch.SUCCESS
+                                    } else {
+                                        com.match3vision.analyzer.input.StartupReadinessGate.LastDispatch.FAILED
+                                    },
+                                    stopReason = if (verifyLabel == "FAILED") fb?.reason else null,
+                                    heartbeatMs = System.currentTimeMillis(),
+                                    cycleReason = fb?.reason,
+                                    unknownCount = afterVision.unknownCount,
+                                    gridConfidence = afterVision.gridConfidence,
+                                    boardConfidence = afterVision.boardConfidence,
+                                    boardRoi = afterVision.diagnostics["boardRoi"] ?: boardRoiStr,
+                                )
                                 AutoPlaySession.refreshFromController()
                                 refreshBubbleUi()
                                 if (fb?.outcome == BotLoopOutcome.STOP) {
                                     delay(300L)
                                 } else {
+                                    // SUCCESS → next iteration waits for NEW frame via seqGate.
                                     delay(80L)
                                 }
                             } else {
@@ -554,24 +608,36 @@ class FloatingBubbleService : Service() {
         }
     }
 
-    private fun analyzeFrame(frame: CaptureFrame) =
-        AutoPlaySession.frameAnalyzer.analyzePixels(
-            pixels = IntArray(frame.width * frame.height).also { buf ->
-                val bmp: Bitmap = frame.bitmap
-                if (!bmp.isRecycled) {
-                    bmp.getPixels(buf, 0, frame.width, 0, 0, frame.width, frame.height)
-                }
-            },
-            width = frame.width,
-            height = frame.height,
+    /**
+     * Copy pixels off the live capture bitmap before analysis so a concurrent
+     * recycle in ScreenCaptureManager cannot ANR / crash mid-getPixels.
+     */
+    private fun analyzeFrame(frame: CaptureFrame): com.match3vision.analyzer.vision.VisionResult {
+        val w = frame.width
+        val h = frame.height
+        val buf = IntArray(w * h)
+        val bmp: Bitmap = frame.bitmap
+        if (!bmp.isRecycled) {
+            try {
+                bmp.getPixels(buf, 0, w, 0, 0, w, h)
+            } catch (t: Throwable) {
+                Timber.w(t, "analyzeFrame: getPixels failed (recycled?)")
+            }
+        }
+        return AutoPlaySession.frameAnalyzer.analyzePixels(
+            pixels = buf,
+            width = w,
+            height = h,
             contentRoi = frame.contentRoi,
         ).result
+    }
 
     private fun refreshBubbleUi() {
         val snap = AutoPlaySession.ui.value
         val ctrl = AutoPlaySession.controller
         val diag = snap.diagnostics
-        statusView?.text = diag.bubbleLines() + "\n#${ctrl.moveCount}"
+        // Compact HU status — full P0 fields + FIRST BLOCK (no silent freeze).
+        statusView?.text = diag.bubbleLines(compact = true)
         startBtn?.isEnabled = ctrl.mode != AutoPlayController.Mode.RUNNING &&
             ctrl.mode != AutoPlayController.Mode.STOPPED
         pauseBtn?.isEnabled = ctrl.mode == AutoPlayController.Mode.RUNNING

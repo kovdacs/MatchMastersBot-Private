@@ -33,3 +33,11 @@ Each crop package should include: PNG/JPEG crop, mean RGB/HSV/luma, human label,
 - No ad-hoc mushroom recognition.
 - No threshold loosen.
 - No guessed combo tables.
+
+## UNKNOWN-safe policy (0.24.0)
+
+Until labeled crops exist: cells that look like mushroom/+3 must remain
+`TileColor.UNKNOWN` / `SpecialType.NONE` (or UNKNOWN via reconciler) — **never** invent
+`MUSHROOM_PLUS3`. False BOMB/ARROW/LIGHTNING reduced via `SPECIAL_MIN_CONFIDENCE=0.62`
+and stricter heuristics; mushroom still out of scope without crops.
+

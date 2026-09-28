@@ -32,24 +32,24 @@ class SpecialDetector {
         val brightFrac = bright.toFloat() / samples
         val darkFrac = darkCore.toFloat() / samples
 
-        // Bomb heuristic: dark core + surrounding mid tones
+        // Bomb heuristic: dark core + surrounding mid tones (stricter — cut false BOMB)
         var bombConf = 0f
-        if (darkFrac in 0.12f..0.45f && lumaMean in 40f..140f && brightFrac < 0.15f) {
-            bombConf = (darkFrac * 1.5f + 0.25f).coerceIn(0f, 0.95f)
+        if (darkFrac in 0.18f..0.42f && lumaMean in 45f..125f && brightFrac < 0.10f) {
+            bombConf = (darkFrac * 1.35f + 0.18f).coerceIn(0f, 0.95f)
         }
 
         // Lightning: elongated bright streak — high bright fraction in a band
         val streak = streakScore(cellPixels, cellWidth, cellHeight)
         var lightningConf = 0f
-        if (streak > 0.55f && brightFrac > 0.08f) {
-            lightningConf = (streak * 0.85f).coerceIn(0f, 0.95f)
+        if (streak > 0.62f && brightFrac > 0.12f) {
+            lightningConf = (streak * 0.80f).coerceIn(0f, 0.95f)
         }
 
         // Two-way arrow: two opposing bright lobes (left-right or top-bottom)
         val arrow = arrowScore(cellPixels, cellWidth, cellHeight)
         var arrowConf = 0f
-        if (arrow > 0.55f) {
-            arrowConf = (arrow * 0.80f).coerceIn(0f, 0.95f)
+        if (arrow > 0.62f) {
+            arrowConf = (arrow * 0.75f).coerceIn(0f, 0.95f)
         }
 
         val best = listOf(

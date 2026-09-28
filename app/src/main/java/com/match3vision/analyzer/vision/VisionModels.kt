@@ -313,7 +313,7 @@ object VisionThresholds {
     const val MIN_BOARD_CONFIDENCE = 0.95f
     const val MIN_GRID_CONFIDENCE = 0.98f
     const val MAX_UNKNOWN_COUNT = 1
-    const val SPECIAL_MIN_CONFIDENCE = 0.55f
+    const val SPECIAL_MIN_CONFIDENCE = 0.62f
     /** High-confidence color↔shape contradiction → force UNKNOWN. */
     const val RECONCILE_HIGH_CONFIDENCE = 0.70f
 }

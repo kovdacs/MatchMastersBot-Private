@@ -90,3 +90,30 @@ class RestartCycleTest {
         assertThat(ctrl.runCycleIfActive(vision())).isNotNull()
     }
 }
+
+    @Test
+    fun a11yDisconnect_blocksStart_reconnectAllowsStart() {
+        val exec = RecordingInputGestureExecutor(ready = true)
+        val sw = InputEnableSwitch.disabledByDefault()
+        val eng = AutomaticInputEngine(enableSwitch = sw, executor = exec)
+        val loop = InputLoopController(inputEngine = eng)
+        val ctrl = AutoPlayController(enableSwitch = sw, inputLoop = loop)
+
+        assertThat(ctrl.onStartRequested(a11yConnected = false)).isFalse()
+        assertThat(ctrl.mode).isNotEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(ctrl.lastReason.uppercase()).contains("ACCESSIBILITY")
+
+        assertThat(ctrl.onStartRequested(a11yConnected = true)).isTrue()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+
+        // Mid-run failsafe pause (simulates bubble detecting disconnect)
+        ctrl.onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)
+        assertThat(sw.isEnabled()).isFalse()
+
+        // Reconnect + INDÍTÁS resume
+        assertThat(ctrl.onBubbleStart(a11yConnected = true)).isTrue()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(sw.isEnabled()).isTrue()
+    }
+

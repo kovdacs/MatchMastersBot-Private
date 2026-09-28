@@ -28,6 +28,8 @@ class InputLoopController(
         val moveLabel: String = "none",
         val inputReady: Boolean = false,
         val lastDispatch: StartupReadinessGate.LastDispatch = StartupReadinessGate.LastDispatch.NONE,
+        /** NONE | SUCCESS | FAILED — board-changed verification. */
+        val verifyStatus: String = "NONE",
     )
 
     fun inputEngine(): AutomaticInputEngine = inputEngine
@@ -170,20 +172,33 @@ class InputLoopController(
         val fb = inputEngine.verifyAfterInput(beforeBoardHash, afterVision)
         val sm = inputEngine.stateMachine()
         return when (fb) {
-            is AutomaticInputEngine.FeedbackResult.Success ->
+            is AutomaticInputEngine.FeedbackResult.Success -> {
+                AutoPlayTrace.log("VERIFY", "SUCCESS board changed")
                 CycleResult(
                     state = sm.state,
                     outcome = BotLoopOutcome.CONTINUE,
                     reason = "board changed — next move allowed",
                     feedback = fb,
+                    verifyStatus = "SUCCESS",
+                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
                 )
+            }
             is AutomaticInputEngine.FeedbackResult.Held -> {
-                AutoPlayTrace.log("HOLD", fb.reason)
-                CycleResult(sm.state, BotLoopOutcome.HOLD, fb.reason, feedback = fb)
+                AutoPlayTrace.log("VERIFY", "FAILED/HOLD ${fb.reason}")
+                CycleResult(
+                    sm.state, BotLoopOutcome.HOLD, fb.reason, feedback = fb,
+                    verifyStatus = "FAILED",
+                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                )
             }
             is AutomaticInputEngine.FeedbackResult.Stopped -> {
+                AutoPlayTrace.log("VERIFY", "FAILED ${fb.reason}")
                 AutoPlayTrace.markStop(fb.reason)
-                CycleResult(sm.state, BotLoopOutcome.STOP, fb.reason, feedback = fb)
+                CycleResult(
+                    sm.state, BotLoopOutcome.STOP, fb.reason, feedback = fb,
+                    verifyStatus = "FAILED",
+                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                )
             }
         }
     }
