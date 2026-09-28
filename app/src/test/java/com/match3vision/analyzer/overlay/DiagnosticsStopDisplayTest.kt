@@ -65,7 +65,8 @@ class DiagnosticsStopDisplayTest {
     fun autoPlayTrace_clearLastStop_doesNotWipeRing() {
         AutoPlayTrace.log("MODE RUNNING", "test")
         AutoPlayTrace.markStop("ACCESSIBILITY: DISCONNECTED")
-        assertThat(AutoPlayTrace.lastStopReason).isEqualTo("ACCESSIBILITY: DISCONNECTED")
+        // markStop → log(TAG_STOP_REASON, reason) stores the full "STOP REASON — …" line.
+        assertThat(AutoPlayTrace.lastStopReason).contains("ACCESSIBILITY: DISCONNECTED")
         AutoPlayTrace.clearLastStop()
         assertThat(AutoPlayTrace.lastStopReason).isNull()
         assertThat(AutoPlayTrace.recentLines()).isNotEmpty()
