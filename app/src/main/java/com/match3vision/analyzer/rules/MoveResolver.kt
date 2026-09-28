@@ -6,7 +6,6 @@ import com.match3vision.analyzer.vision.SpecialType
 class MoveResolver(
     private val swapValidator: SwapValidator = SwapValidator(),
     private val cascadeEngine: CascadeEngine = CascadeEngine(doRefill = false),
-    private val specialCreator: SpecialCreator = SpecialCreator(),
     private val comboResolver: SpecialCombinationResolver = SpecialCombinationResolver(),
 ) {
     data class ResolvedMove(
@@ -33,7 +32,6 @@ class MoveResolver(
             swapped = applyComboClear(swapped, r1, c1, r2, c2, combo.effect)
         }
         val cascade = cascadeEngine.run(swapped)
-        specialCreator.fromMatchGroups(MatchDetector().findMatches(board.swapCopy(r1, c1, r2, c2)))
         return ResolvedMove(
             legal = true,
             uncertain = check.uncertain || cascade.uncertain || (combo?.uncertain == true),

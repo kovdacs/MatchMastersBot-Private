@@ -1,7 +1,7 @@
 package com.match3vision.analyzer.orchestration
 
-import com.match3vision.analyzer.ai.DecisionEngine
 import com.match3vision.analyzer.board.GameState
+import com.match3vision.analyzer.moves.MoveAnalysisEngine
 import com.match3vision.analyzer.safety.SafetyGate
 import com.match3vision.analyzer.vision.VisionResult
 
@@ -16,10 +16,14 @@ data class AnalysisUiSnapshot(
     val gameStateText: String,
 )
 
-/** Vision → Board → Safety → Decision (display only). */
+/**
+ * Vision → Board → Safety → MoveAnalysisEngine V1 (display only).
+ * Never actuates taps/swipes. HOLD → no moves.
+ */
 class AnalysisOrchestrator(
-    private val decisionEngine: DecisionEngine = DecisionEngine(),
+    private val moveAnalysisEngine: MoveAnalysisEngine = MoveAnalysisEngine(),
     private val safetyGate: SafetyGate = SafetyGate(),
+    private val enableMoveAnalysis: Boolean = true,
 ) {
     fun analyzeVisionResult(
         vision: VisionResult,
@@ -40,31 +44,47 @@ class AnalysisOrchestrator(
                 gameStateText = "unk=${state.vision.unknownCount} hash=${state.boardHash}",
             )
         }
-        val decision = decisionEngine.decide(state, uiLabels)
-        if (decision.blocked) {
+        if (!enableMoveAnalysis) {
             return AnalysisUiSnapshot(
                 decisionBlocked = true,
-                holdReason = decision.holdReason,
+                holdReason = MoveAnalysisEngine.HOLD_BLOCKED,
                 topMovesLines = emptyList(),
-                whyText = decision.whyLines.joinToString("\n"),
+                whyText = "Move analysis disabled",
+                confidenceText = "gate PASS (analysis off)",
+                riskText = "—",
+                expectedValueText = "—",
+                gameStateText = "moveAnalysis=off",
+            )
+        }
+        // Optional V1 call after Vision PASS + safety — read-only ranking.
+        @Suppress("UNUSED_VARIABLE")
+        val ignoredLabels = uiLabels
+        val analysis = moveAnalysisEngine.analyze(state)
+        if (analysis.blocked) {
+            return AnalysisUiSnapshot(
+                decisionBlocked = true,
+                holdReason = analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED,
+                topMovesLines = emptyList(),
+                whyText = analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED,
                 confidenceText = "gate HOLD",
                 riskText = "blocked",
                 expectedValueText = "—",
-                gameStateText = "mode=${decision.gameMode}",
+                gameStateText = "MoveAnalysisEngine HOLD",
             )
         }
-        val top = decision.topMoves
+        val top = analysis.top5
         return AnalysisUiSnapshot(
             decisionBlocked = false,
             holdReason = null,
             topMovesLines = top.mapIndexed { i, e ->
-                "#${i + 1} ${e.move} EV=${"%.1f".format(e.expectedValue)} conf=${"%.2f".format(e.confidence)}"
+                "#${i + 1} ${e.move} EV=${"%.1f".format(e.EV)} conf=${"%.2f".format(e.confidence)}" +
+                    " why=${e.WHY.take(80)}"
             },
-            whyText = decision.whyLines.joinToString("\n"),
+            whyText = top.firstOrNull()?.WHY ?: "No legal moves",
             confidenceText = top.firstOrNull()?.let { "%.2f".format(it.confidence) } ?: "—",
-            riskText = top.firstOrNull()?.let { "%.1f".format(it.riskPenalty) } ?: "—",
-            expectedValueText = top.firstOrNull()?.let { "%.1f".format(it.expectedValue) } ?: "—",
-            gameStateText = "mode=${decision.gameMode} strategy=${decision.strategy} moves=${top.size}",
+            riskText = top.firstOrNull()?.let { "%.1f".format(it.risk) } ?: "—",
+            expectedValueText = top.firstOrNull()?.let { "%.1f".format(it.EV) } ?: "—",
+            gameStateText = "MoveAnalysisEngine V1 moves=${top.size}",
         )
     }
 }

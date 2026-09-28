@@ -52,6 +52,13 @@
 | Parity READY comparison | Blocked on real dump |
 | Real-world vision validation | NO (partial evidence only) |
 
+## Move Analysis Engine V1
+
+- `MoveAnalysisEngine` — gated TOP-5 (grid≥0.98, board≥0.95, unk≤1); HOLD otherwise
+- Reuses `moves` / `rules` / `evaluation` / `simulation`; special leave-behind in `CascadeEngine`
+- Orchestrator wires optional read-only call after Vision PASS + SafetyGate
+- See `MOVE_ANALYSIS_ENGINE_V1.md`
+
 ## Next steps
 
 1. Capture cleaner full 7×7 without Android screenshot toolbar.
