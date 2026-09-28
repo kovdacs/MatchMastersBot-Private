@@ -224,8 +224,34 @@ class BoardFinder(
         roiTop: Int,
         roiBottom: Int,
     ): Int? {
+        val full = findDarkSeparatorBottomInset(
+            pixels, width, left, right, roiTop, roiBottom, horizontalInsetFrac = 0f,
+        )
+        if (full != null) return full
+        // Overlay / bubble on the far side can raise full-width row luma and hide the
+        // purple timer separator — retry on the horizontal center band only.
+        return findDarkSeparatorBottomInset(
+            pixels, width, left, right, roiTop, roiBottom,
+            horizontalInsetFrac = SEPARATOR_CENTER_INSET_FRAC,
+        )
+    }
+
+    private fun findDarkSeparatorBottomInset(
+        pixels: IntArray,
+        width: Int,
+        left: Int,
+        right: Int,
+        roiTop: Int,
+        roiBottom: Int,
+        horizontalInsetFrac: Float,
+    ): Int? {
         val h = roiBottom - roiTop
         if (h < 32) return null
+        val span = right - left
+        val inset = (span * horizontalInsetFrac).toInt().coerceAtLeast(0)
+        val sampleLeft = (left + inset).coerceAtMost(right - 1)
+        val sampleRight = (right - inset).coerceAtLeast(sampleLeft + 1)
+        if (sampleRight - sampleLeft < GridGeometry.GRID_SIZE * 4) return null
         val searchEnd = roiTop + (h * 55) / 100
         val minRun = 12
         val lumaCut = 22f
@@ -233,16 +259,18 @@ class BoardFinder(
         var bestEnd = -1
         var y = roiTop + h / 12 // skip extreme top status chrome
         while (y < searchEnd) {
-            val luma = rowMeanLuma(pixels, width, y, left, right)
-            if (luma < lumaCut && rowBlueishFraction(pixels, width, y, left, right) > 0.75f) {
+            val luma = rowMeanLuma(pixels, width, y, sampleLeft, sampleRight)
+            if (luma < lumaCut &&
+                rowBlueishFraction(pixels, width, y, sampleLeft, sampleRight) > 0.75f
+            ) {
                 val y0 = y
                 var sum = 0f
                 var n = 0
                 while (y < searchEnd &&
-                    rowMeanLuma(pixels, width, y, left, right) < lumaCut &&
-                    rowBlueishFraction(pixels, width, y, left, right) > 0.75f
+                    rowMeanLuma(pixels, width, y, sampleLeft, sampleRight) < lumaCut &&
+                    rowBlueishFraction(pixels, width, y, sampleLeft, sampleRight) > 0.75f
                 ) {
-                    sum += rowMeanLuma(pixels, width, y, left, right)
+                    sum += rowMeanLuma(pixels, width, y, sampleLeft, sampleRight)
                     n++
                     y++
                 }
@@ -296,9 +324,27 @@ class BoardFinder(
         internal const val GUTTER_OFFSET_OUTLIER_FRAC = 0.12f
 
         /**
+         * Milder offset fraction used only on live recovery when first-pass gridConf
+         * is below [VisionThresholds.MIN_GRID_CONFIDENCE] (keeps clean REAL_FRAME path
+         * unchanged so golden 0.9872 / boundaries stay stable).
+         */
+        internal const val GUTTER_SOFT_OUTLIER_FRAC = 0.06f
+
+        /**
          * Peak energy / median-peak above this → energy outlier (e.g. toolbar spike).
          */
         internal const val GUTTER_ENERGY_OUTLIER_MULT = 2.5f
+
+        /**
+         * Horizontal inset (each side) when full-width dark-separator search fails —
+         * resists top-end / side overlay panels covering the timer separator.
+         */
+        internal const val SEPARATOR_CENTER_INSET_FRAC = 0.40f
+
+        /**
+         * ±px micro-search of board ROI when soft gutter re-pick still < MIN_GRID.
+         */
+        internal const val LIVE_ROI_NUDGE_PX = 14
 
         /**
          * 7-cell boundary picker (local ROI coords).
@@ -306,10 +352,16 @@ class BoardFinder(
          * Pass 1: absolute-max energy in the period search window (true gutters).
          * Pass 2: if a peak is an **offset outlier** (|off| > [GUTTER_OFFSET_OUTLIER_FRAC]·period)
          * or an **energy outlier** (> [GUTTER_ENERGY_OUTLIER_MULT]× median peak energy),
+         * or (when [softOutlierFrac] is set) a **soft offset** (|off| > soft·period),
          * re-pick the strong local-max nearest the ideal inside a tighter ±offset band,
          * preferring typical-energy peaks (rejects toolbar / false gem edges).
+         *
+         * @param softOutlierFrac optional milder offset gate for live recovery only.
          */
-        internal fun pickSevenCellBoundariesInternal(energy: FloatArray): FloatArray? {
+        internal fun pickSevenCellBoundariesInternal(
+            energy: FloatArray,
+            softOutlierFrac: Float? = null,
+        ): FloatArray? {
             val n = energy.size
             if (n < GridGeometry.GRID_SIZE * 3) return null
             val period = n.toFloat() / GridGeometry.GRID_SIZE
@@ -377,7 +429,12 @@ class BoardFinder(
                 val ideal = (g * period).toInt().coerceIn(0, n - 1)
                 val peak = raw[g]
                 val off = kotlin.math.abs(peak - ideal)
-                val outlier = off > clampRadius || (peakE[g] > energyOutlierThr && peakE[g] > 0f)
+                val softRadius = softOutlierFrac?.let { frac ->
+                    (period * frac).toInt().coerceAtLeast(1)
+                }
+                val outlier = off > clampRadius ||
+                    (peakE[g] > energyOutlierThr && peakE[g] > 0f) ||
+                    (softRadius != null && off > softRadius)
                 if (!outlier) {
                     bounds[g] = peak.toFloat()
                     continue
@@ -459,11 +516,122 @@ class BoardFinder(
         boardRoi: ContentRoi,
         diag: MutableMap<String, String>,
     ): GridGeometry? {
+        // Primary path (unchanged scoring) — keeps REAL_FRAME golden 0.9872 stable.
+        val primary = projectOnRoi(
+            pixels, width, height, boardRoi, softOutlierFrac = null,
+        ) ?: return null
+        writeProjectionDiag(diag, primary)
+        if (primary.grid.confidence >= VisionThresholds.MIN_GRID_CONFIDENCE) {
+            diag["gridRecover"] = "none"
+            return primary.grid
+        }
+
+        // Live recovery: mild ROI mis-snap (bubble / letterbox / side-chrome) often lands
+        // gridConf≈0.972 with one soft-offset gutter. Soft re-pick clears MIN_GRID without
+        // touching the clean first-pass used by REAL_FRAME.
+        val soft = projectOnRoi(
+            pixels, width, height, boardRoi, softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
+        )
+        var best = primary
+        if (soft != null && soft.grid.confidence > best.grid.confidence) {
+            best = soft
+            diag["gridRecover"] = "soft_outlier"
+            writeProjectionDiag(diag, best)
+        }
+        if (best.grid.confidence >= VisionThresholds.MIN_GRID_CONFIDENCE) {
+            return best.grid
+        }
+
+        // Second recovery: micro-nudge square playfield and re-project with soft gutters.
+        val side = minOf(boardRoi.width(), boardRoi.height())
+        if (side >= GridGeometry.GRID_SIZE * 8) {
+            var nudged: ProjAttempt? = null
+            val step = 2
+            var done = false
+            var dy = -LIVE_ROI_NUDGE_PX
+            while (!done && dy <= LIVE_ROI_NUDGE_PX) {
+                var dx = -LIVE_ROI_NUDGE_PX
+                while (!done && dx <= LIVE_ROI_NUDGE_PX) {
+                    if (dx != 0 || dy != 0) {
+                        val left = boardRoi.left + dx
+                        val top = boardRoi.top + dy
+                        val right = left + side
+                        val bottom = top + side
+                        if (left >= 0 && top >= 0 && right <= width && bottom <= height) {
+                            val candRoi = ContentRoi(left, top, right, bottom)
+                            val cand = projectOnRoi(
+                                pixels, width, height, candRoi,
+                                softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
+                            )
+                            if (cand != null &&
+                                (nudged == null || cand.grid.confidence > nudged.grid.confidence)
+                            ) {
+                                nudged = cand
+                                if (cand.grid.confidence >= 0.99f) {
+                                    done = true
+                                }
+                            }
+                        }
+                    }
+                    dx += step
+                }
+                dy += step
+            }
+            if (nudged != null && nudged.grid.confidence > best.grid.confidence) {
+                best = nudged
+                diag["gridRecover"] = "soft_outlier_roi_nudge"
+                diag["boardRoi"] =
+                    "LTRB(${best.grid.boardRoi.left},${best.grid.boardRoi.top}," +
+                        "${best.grid.boardRoi.right},${best.grid.boardRoi.bottom})"
+                writeProjectionDiag(diag, best)
+            }
+        }
+        if (diag["gridRecover"] == null) diag["gridRecover"] = "none"
+        return best.grid
+    }
+
+    private data class ProjAttempt(
+        val grid: GridGeometry,
+        val relVarX: Float,
+        val relVarY: Float,
+        val xLocal: FloatArray,
+        val yLocal: FloatArray,
+    )
+
+    private fun writeProjectionDiag(diag: MutableMap<String, String>, attempt: ProjAttempt) {
+        val bw = attempt.grid.boardRoi.width()
+        val bh = attempt.grid.boardRoi.height()
+        diag["projRelVarX"] = "%.4f".format(attempt.relVarX)
+        diag["projRelVarY"] = "%.4f".format(attempt.relVarY)
+        val periodX = bw.toFloat() / GridGeometry.GRID_SIZE
+        val periodY = bh.toFloat() / GridGeometry.GRID_SIZE
+        diag["projGuttersX"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
+            val ideal = g * periodX
+            val off = attempt.xLocal[g] - ideal
+            "%d:%+.0f".format(g, off)
+        }
+        diag["projGuttersY"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
+            val ideal = g * periodY
+            val off = attempt.yLocal[g] - ideal
+            "%d:%+.0f".format(g, off)
+        }
+    }
+
+    /**
+     * Projection on a fixed board ROI. [softOutlierFrac] null = production first pass
+     * (REAL_FRAME golden); non-null = live recovery soft gutter re-pick.
+     */
+    private fun projectOnRoi(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        boardRoi: ContentRoi,
+        softOutlierFrac: Float?,
+    ): ProjAttempt? {
         val bw = boardRoi.width()
         val bh = boardRoi.height()
         if (bw < GridGeometry.GRID_SIZE * 3 || bh < GridGeometry.GRID_SIZE * 3) return null
 
-        // Vertical gutters: project edge energy along X (sum of abs horiz gradient per column)
         val colEnergy = FloatArray(bw)
         for (x in 0 until bw) {
             var e = 0f
@@ -490,12 +658,10 @@ class BoardFinder(
             rowEnergy[y] = e
         }
 
-        // Suppress banner-like bright orange/red rows from creating false "bright row" peaks:
-        // down-weight columns/rows that are mostly high-saturation warm hues at high luma.
         suppressBannerEnergy(pixels, width, boardRoi, colEnergy, rowEnergy)
 
-        val xLocal = pickSevenCellBoundaries(colEnergy) ?: return null
-        val yLocal = pickSevenCellBoundaries(rowEnergy) ?: return null
+        val xLocal = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac) ?: return null
+        val yLocal = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac) ?: return null
 
         val xBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
             boardRoi.left + xLocal[i]
@@ -511,27 +677,12 @@ class BoardFinder(
         }
         val relVarX = GridGeometry.relativeSpacingVariance(xBounds)
         val relVarY = GridGeometry.relativeSpacingVariance(yBounds)
-        diag["projRelVarX"] = "%.4f".format(relVarX)
-        diag["projRelVarY"] = "%.4f".format(relVarY)
-        // Per-gutter offset from ideal even-split (local ROI) — diagnosis aid
-        val periodX = bw.toFloat() / GridGeometry.GRID_SIZE
-        val periodY = bh.toFloat() / GridGeometry.GRID_SIZE
-        diag["projGuttersX"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
-            val ideal = g * periodX
-            val off = xLocal[g] - ideal
-            "%d:%+.0f".format(g, off)
-        }
-        diag["projGuttersY"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
-            val ideal = g * periodY
-            val off = yLocal[g] - ideal
-            "%d:%+.0f".format(g, off)
-        }
         if (relVarX > maxRelVariance || relVarY > maxRelVariance) return null
 
-        // Confidence from spacing uniformity.
-        // *1.5f maps typical clean gutter variance to ≥ MIN_GRID_CONFIDENCE without lowering the gate.
+        // *1.5f maps typical clean gutter variance to ≥ MIN_GRID without lowering the gate.
         val conf = (1f - (relVarX + relVarY) * 1.5f).coerceIn(projectionMinConfidence, 0.99f)
-        return GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, boardRoi)
+        val grid = GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, boardRoi)
+        return ProjAttempt(grid, relVarX, relVarY, xLocal, yLocal)
     }
 
     /**
@@ -589,7 +740,7 @@ class BoardFinder(
      * ideal period (see [pickSevenCellBoundariesInternal]).
      */
     private fun pickSevenCellBoundaries(energy: FloatArray): FloatArray? =
-        pickSevenCellBoundariesInternal(energy)
+        pickSevenCellBoundariesInternal(energy, softOutlierFrac = null)
 
     private fun rowMeanLuma(
         pixels: IntArray,

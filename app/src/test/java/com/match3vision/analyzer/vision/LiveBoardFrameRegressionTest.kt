@@ -6,10 +6,12 @@ import org.junit.Assume
 import org.junit.Test
 
 /**
- * Live-device HOLD (gridConf≈0.99, boardConf=0, unk≈42) regressions.
+ * Live-device HOLD regressions.
  *
- * Root cause class: composed-screen capture includes analyzer UI / overlays →
- * cells UNKNOWN → boardConf penalty clamps to 0. Gates unchanged.
+ * 1) Self-UI / overlay: gridConf≈0.99, boardConf=0, unk≈42 (composed capture).
+ * 2) Mild boardRoi mis-snap (bubble / side-chrome): gridConf≈0.972 < 0.98 while
+ *    board is clear — soft gutter re-pick must lift ≥ MIN_GRID without loosening gates
+ *    or changing the clean REAL_FRAME first-pass (golden 0.9872).
  */
 class LiveBoardFrameRegressionTest {
 
@@ -93,6 +95,79 @@ class LiveBoardFrameRegressionTest {
         val unknownPenalty = 49 * 0.08f
         val projected = (mean + 0.05f - unknownPenalty).coerceIn(0f, 1f)
         assertThat(projected).isEqualTo(0f)
+    }
+
+
+    @Test
+    fun realFrame_leftMisSnapLikeLive_softRecoverClearsMinGrid() {
+        Assume.assumeTrue(RealFrameLoader.resourceExists())
+        val frame = RealFrameLoader.loadFromResource()!!
+        assertThat(VisionThresholds.MIN_GRID_CONFIDENCE).isEqualTo(0.98f)
+
+        // Full-frame REAL_FRAME still first-pass PASS (no recovery) — golden intact.
+        val full = pipeline.analyze(
+            frame.pixels, frame.width, frame.height,
+            ContentRoi.full(frame.width, frame.height),
+        )
+        assertThat(full.gridConfidence).isWithin(5e-4f).of(0.9872f)
+        assertThat(full.diagnostics["gridRecover"] ?: "none").isEqualTo("none")
+        assertThat(full.validation.isPass).isTrue()
+
+        // Live symptom: square contentRoi left≈7 (≈−13 vs golden 20) → first-pass ≈0.972.
+        // Aspect ≤1.25 so playfield snap is a no-op; soft recovery must clear MIN_GRID.
+        val misRoi = ContentRoi(7, 1206, 1047, 2246)
+        val finder = BoardFinder()
+        val recovered = finder.find(frame.pixels, frame.width, frame.height, misRoi)
+        assertThat(recovered.grid.method).isEqualTo(GridMethod.PROJECTION)
+        assertThat(recovered.grid.confidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
+        assertThat(recovered.diagnostics["gridRecover"]).isIn(setOf("soft_outlier", "soft_outlier_roi_nudge"))
+        println(
+            "LIVE_MISSNAP misRoi=$misRoi recover=${recovered.diagnostics["gridRecover"]} " +
+                "gridConf=${"%.4f".format(recovered.grid.confidence)} " +
+                "projRelVar=${recovered.diagnostics["projRelVarX"]}/${recovered.diagnostics["projRelVarY"]} " +
+                "gate=${if (recovered.grid.confidence >= 0.98f) "PASS" else "HOLD"}",
+        )
+    }
+
+    @Test
+    fun realFrame_statusBarAndBubbleCoverTopUi_stillPass() {
+        Assume.assumeTrue(RealFrameLoader.resourceExists())
+        val frame = RealFrameLoader.loadFromResource()!!
+        val pixels = frame.pixels.copyOf()
+        val w = frame.width
+        val h = frame.height
+        // Paint a top-end bubble (118dp≈354px @3x) — MediaProjection composes overlay.
+        val bw = 354
+        val bh = 220
+        val x0 = w - bw - 16
+        val y0 = 24
+        for (yy in y0 until (y0 + bh).coerceAtMost(h)) {
+            for (xx in x0 until (x0 + bw).coerceAtMost(w)) {
+                // ~80% dark overlay blend
+                val p = pixels[yy * w + xx]
+                val r = (PixelMath.red(p) * 0.2f + 27 * 0.8f).toInt().coerceIn(0, 255)
+                val g = (PixelMath.green(p) * 0.2f + 27 * 0.8f).toInt().coerceIn(0, 255)
+                val b = (PixelMath.blue(p) * 0.2f + 27 * 0.8f).toInt().coerceIn(0, 255)
+                pixels[yy * w + xx] = PixelMath.rgb(r, g, b)
+            }
+        }
+        val roi = ContentRoi(0, 88, w, h)
+        val result = pipeline.analyze(pixels, w, h, roi)
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.validation.isPass,
+            "top-end bubble + status-bar contentRoi must still PASS (gates unchanged)",
+        )
+        assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
+        assertThat(result.boardConfidence).isAtLeast(VisionThresholds.MIN_BOARD_CONFIDENCE)
+        assertThat(result.unknownCount).isAtMost(VisionThresholds.MAX_UNKNOWN_COUNT)
+        println(
+            "LIVE_BUBBLE contentRoi=$roi gate=PASS " +
+                "gridConf=${"%.4f".format(result.gridConfidence)} " +
+                "boardConf=${"%.4f".format(result.boardConfidence)} " +
+                "recover=${result.diagnostics["gridRecover"]} " +
+                "unk=${result.unknownCount}",
+        )
     }
 
     @Test

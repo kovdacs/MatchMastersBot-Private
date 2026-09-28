@@ -256,4 +256,30 @@ class BoardFinderTest {
         assertThat(g6).isWithin(2f).of((ideals[5] - 1).toFloat())
         assertThat(g6).isNotEqualTo((ideals[5] + 10).toFloat())
     }
+
+    @Test
+    fun projectionPeaks_softOutlierRepickMildOffset() {
+        // Mild 10px-early false peaks (inside 0.12 hard band, outside 0.06 soft band).
+        val n = 700
+        val energy = FloatArray(n) { 10f }
+        val ideals = IntArray(6) { g -> ((g + 1) * n) / 7 }
+        for (ideal in ideals) {
+            energy[ideal - 10] = 120f
+            energy[ideal] = 90f
+        }
+        val hard = BoardFinder.pickSevenCellBoundariesInternal(energy, softOutlierFrac = null)!!
+        val soft = BoardFinder.pickSevenCellBoundariesInternal(
+            energy,
+            softOutlierFrac = BoardFinder.GUTTER_SOFT_OUTLIER_FRAC,
+        )!!
+        var hardOff = 0
+        var softOff = 0
+        for (i in ideals.indices) {
+            hardOff += kotlin.math.abs(hard[i + 1].toInt() - ideals[i])
+            softOff += kotlin.math.abs(soft[i + 1].toInt() - ideals[i])
+        }
+        assertThat(softOff).isLessThan(hardOff)
+        assertThat(GridGeometry.relativeSpacingVariance(soft))
+            .isLessThan(GridGeometry.relativeSpacingVariance(hard))
+    }
 }

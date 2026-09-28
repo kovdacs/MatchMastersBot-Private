@@ -87,29 +87,61 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug
 
+      - name: Name versioned APK
+        id: apkmeta
+        run: |
+          set -e
+          SRC="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$SRC"
+          VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          test -n "$VERSION"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          NAME="Match3Analyzer-${VERSION}-${SHORT_SHA}.apk"
+          mkdir -p dist
+          cp "$SRC" "dist/${NAME}"
+          SIZE=$(stat -c%s "dist/${NAME}")
+          echo "APK_NAME=${NAME}" >> "$GITHUB_ENV"
+          echo "APK_PATH=dist/${NAME}" >> "$GITHUB_ENV"
+          echo "apk_name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_path=dist/${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Named APK: dist/${NAME} (${SIZE} bytes)"
+
       - name: Verify APK on disk
         run: |
           set -e
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK="${{ steps.apkmeta.outputs.apk_path }}"
           test -f "$APK"
           SIZE=$(stat -c%s "$APK")
           echo "APK path: $APK"
           echo "APK size bytes: $SIZE"
           test "$SIZE" -gt 0
+          # Filename must be unique per version+commit (never plain app-debug.apk as artifact)
+          BASE="$(basename "$APK")"
+          echo "APK basename: $BASE"
+          case "$BASE" in
+            Match3Analyzer-*.apk) echo "apk_name_ok" ;;
+            *) echo "unexpected apk name: $BASE (expected Match3Analyzer-<version>-<sha>.apk)" >&2; exit 1 ;;
+          esac
+          if [ "$BASE" = "app-debug.apk" ]; then
+            echo "refusing overwrite-style app-debug.apk artifact name" >&2
+            exit 1
+          fi
           python3 - <<'PY'
-          import zipfile
-          apk = "app/build/outputs/apk/debug/app-debug.apk"
+          import os, zipfile
+          apk = os.environ["APK_PATH"]
           z = zipfile.ZipFile(apk)
           names = z.namelist()
           print("zip_entries", len(names))
           assert "AndroidManifest.xml" in names
           assert any(n == "classes.dex" or (n.startswith("classes") and n.endswith(".dex")) for n in names)
-          print("apk_structure_ok")
+          print("apk_structure_ok", os.path.basename(apk))
           PY
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ${{ steps.apkmeta.outputs.apk_name }}
+          path: ${{ steps.apkmeta.outputs.apk_path }}
           if-no-files-found: error
