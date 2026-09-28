@@ -21,7 +21,7 @@ import timber.log.Timber
  * Foreground service that hosts continuous MediaProjection capture.
  *
  * Type: [ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION].
- * Analyzer only — does not inject touches or use AccessibilityService.
+ * Capture only — touches go through input/ MatchMastersAccessibilityService when explicitly enabled.
  */
 class CaptureService : Service() {
 

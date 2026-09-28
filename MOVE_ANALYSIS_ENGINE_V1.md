@@ -46,3 +46,7 @@ Wired optionally from `AnalysisOrchestrator` after Vision PASS + SafetyGate (dis
 
 `MoveAnalysisEngineTest`: 3/4/5-match, multi simultaneous, special create, no valid move, UNKNOWN/HOLD gate, TOP-5 ordering, V1 field aliases.  
 `AnalysisOrchestratorTest`: HOLD blocks; PASS runs read-only TOP-5.
+
+## Related
+
+Automatic input is **not** part of Move Analysis V1. See `AUTOMATIC_INPUT_ENGINE_V1.md` (default DISABLED).

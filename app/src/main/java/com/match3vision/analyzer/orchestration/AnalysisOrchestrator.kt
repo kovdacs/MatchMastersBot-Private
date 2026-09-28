@@ -17,7 +17,7 @@ data class AnalysisUiSnapshot(
 )
 
 /**
- * Vision → Board → Safety → MoveAnalysisEngine V1 (display only).
+ * Vision → Board → Safety → MoveAnalysisEngine V1 (display only). Input via AutomaticInputEngine is separate and default DISABLED.
  * Never actuates taps/swipes. HOLD → no moves.
  */
 class AnalysisOrchestrator(

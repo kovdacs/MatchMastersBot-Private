@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Phase 1 capture permissions. NO AccessibilityService. -->
+    <!-- Capture permissions. AccessibilityService declared but NOT auto-enabled. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -30,6 +30,21 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
-        <!-- Explicitly NO AccessibilityService declaration in this research prototype. -->
+        <!--
+          AUTOMATIC INPUT ENGINE V1 — real gesture path.
+          Default: service OFF in system settings; InputEnableSwitch DISABLED in-app.
+          Both must be explicitly enabled before any swipe/touch is dispatched.
+        -->
+        <service
+            android:name=".input.MatchMastersAccessibilityService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
 </manifest>

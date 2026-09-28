@@ -41,7 +41,7 @@
 ## Build / CI
 
 - Box: **no JDK** — unit tests + `assembleDebug` run on GitHub Actions (`analyzer-ci`, €0 free)
-- Analyzer-only: no AccessibilityService / touch injection / auto-play / DecisionEngine
+- Input engine present but **default DISABLED**; DecisionEngine remains non-actuating without enable flag
 
 ## BLOCKED / PENDING
 
@@ -59,13 +59,23 @@
 - Orchestrator wires optional read-only call after Vision PASS + SafetyGate
 - See `MOVE_ANALYSIS_ENGINE_V1.md`
 
+## Automatic Input Engine V1
+
+- `AutomaticInputEngine` + `InputEnableSwitch` (**default DISABLED**)
+- Real path: `MatchMastersAccessibilityService` / `AccessibilityGestureExecutor` (shell swipe documented)
+- Coords from recognized `GridGeometry` cell centers — no hardcoded pvp_board pixels
+- Feedback loop: WAIT_FOR_BOARD → re-Vision → verify board hash changed → else STOP
+- See `AUTOMATIC_INPUT_ENGINE_V1.md`
+
 ## Next steps
 
 1. Capture cleaner full 7×7 without Android screenshot toolbar.
 2. Obtain matching Python V3.1 dump (do not invent); set reference READY.
 3. Run parity comparator on the same frame → only then `PARITY_VERIFIED`.
-4. Do **not** add input automation.
+4. Keep InputEnableSwitch default OFF; enable only for controlled device tests.
 
 ## Safety confirmation
 
-**ANALYZER ONLY** — recommendations/display only. Decision AI never executes input.
+**Input default DISABLED.** DecisionEngine / MoveAnalysisEngine stay read-only.
+Automatic input requires explicit `InputEnableSwitch` + system AccessibilityService enable.
+Fail-closed: validation fail → HOLD; unknown/unchanged board → STOP.

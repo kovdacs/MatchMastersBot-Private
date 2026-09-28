@@ -4,6 +4,9 @@
     <string name="capture_channel_name">Screen capture</string>
     <string name="capture_channel_desc">Foreground notification while analyzing the screen</string>
     <string name="capture_notification_title">Match3 Vision Analyzer</string>
-    <string name="capture_notification_text">Capturing screen for analysis (no automatic input)</string>
+    <string name="capture_notification_text">Capturing screen for analysis (input default OFF)</string>
     <string name="action_stop">Stop</string>
+    <string name="accessibility_service_description">Match Masters Bot input (gestures). Disabled by default — enable only when you explicitly want automatic swipes. Requires in-app InputEnableSwitch as a second gate.</string>
+    <string name="input_enable_label">Enable automatic input</string>
+    <string name="input_enable_warning">OFF by default. Enabling allows AccessibilityService swipes when vision gates pass.</string>
 </resources>
