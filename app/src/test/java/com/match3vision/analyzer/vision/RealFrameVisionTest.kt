@@ -72,6 +72,9 @@ class RealFrameVisionTest {
                 "unknowns=${result.unknownCount} " +
                 "method=${result.method} " +
                 "gate=$gate " +
+                "projRelVar=${result.diagnostics["projRelVarX"]}/${result.diagnostics["projRelVarY"]} " +
+                "guttersX=${result.diagnostics["projGuttersX"]} " +
+                "guttersY=${result.diagnostics["projGuttersY"]} " +
                 "caveat=android_screenshot_toolbar_may_clip_bottom_row",
         )
         println(VisionDiagnostics.formatResult(result, "REAL_FRAME primary dump"))

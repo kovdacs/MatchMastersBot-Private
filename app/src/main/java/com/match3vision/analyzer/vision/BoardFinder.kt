@@ -288,6 +288,145 @@ class BoardFinder(
     companion object {
         /** Content taller than this × width is treated as portrait UI+board (snap playfield). */
         const val TALL_ASPECT_THRESHOLD = 1.25f
+
+        /**
+         * Max |peak−ideal| / period before a gutter is treated as an offset outlier
+         * (gem-interior edge locking onto the wrong column/row).
+         */
+        internal const val GUTTER_OFFSET_OUTLIER_FRAC = 0.12f
+
+        /**
+         * Peak energy / median-peak above this → energy outlier (e.g. toolbar spike).
+         */
+        internal const val GUTTER_ENERGY_OUTLIER_MULT = 2.5f
+
+        /**
+         * 7-cell boundary picker (local ROI coords).
+         *
+         * Pass 1: absolute-max energy in the period search window (true gutters).
+         * Pass 2: if a peak is an **offset outlier** (|off| > [GUTTER_OFFSET_OUTLIER_FRAC]·period)
+         * or an **energy outlier** (> [GUTTER_ENERGY_OUTLIER_MULT]× median peak energy),
+         * re-pick the strong local-max nearest the ideal inside a tighter ±offset band,
+         * preferring typical-energy peaks (rejects toolbar / false gem edges).
+         */
+        internal fun pickSevenCellBoundariesInternal(energy: FloatArray): FloatArray? {
+            val n = energy.size
+            if (n < GridGeometry.GRID_SIZE * 3) return null
+            val period = n.toFloat() / GridGeometry.GRID_SIZE
+            val bounds = FloatArray(GridGeometry.BOUNDARY_COUNT)
+            bounds[0] = 0f
+            bounds[GridGeometry.GRID_SIZE] = n.toFloat()
+
+            val meanE = energy.average().toFloat()
+            val strongThr = meanE * 1.25f
+            val searchRadius = (period * 0.35f).toInt().coerceAtLeast(1)
+            val clampRadius = (period * GUTTER_OFFSET_OUTLIER_FRAC).toInt().coerceAtLeast(1)
+
+            // Pass 1: absolute-max peaks
+            val raw = IntArray(GridGeometry.GRID_SIZE + 1)
+            val peakE = FloatArray(GridGeometry.GRID_SIZE + 1)
+            var strongPeaks = 0
+            for (g in 1 until GridGeometry.GRID_SIZE) {
+                val ideal = (g * period).toInt().coerceIn(0, n - 1)
+                val from = (ideal - searchRadius).coerceAtLeast(1)
+                val to = (ideal + searchRadius).coerceAtMost(n - 2)
+                var absX = ideal
+                var absE = -1f
+                for (x in from..to) {
+                    val e = energy[x]
+                    if (e > absE) {
+                        absE = e
+                        absX = x
+                    }
+                }
+                if (absE >= strongThr && absE > 1f) {
+                    strongPeaks++
+                    raw[g] = absX
+                    peakE[g] = absE
+                } else {
+                    raw[g] = ideal
+                    peakE[g] = 0f
+                }
+            }
+            if (strongPeaks < 4) return null
+
+            var energySum = 0f
+            var energyN = 0
+            for (g in 1 until GridGeometry.GRID_SIZE) {
+                if (peakE[g] > 0f) {
+                    energySum += peakE[g]
+                    energyN++
+                }
+            }
+            // median via sort of copy of positive peaks
+            val positives = FloatArray(energyN)
+            var pi = 0
+            for (g in 1 until GridGeometry.GRID_SIZE) {
+                if (peakE[g] > 0f) positives[pi++] = peakE[g]
+            }
+            positives.sort()
+            val medianPeak = when {
+                energyN == 0 -> meanE
+                energyN % 2 == 1 -> positives[energyN / 2]
+                else -> 0.5f * (positives[energyN / 2 - 1] + positives[energyN / 2])
+            }
+            val energyOutlierThr = medianPeak * GUTTER_ENERGY_OUTLIER_MULT
+
+            // Pass 2: re-pick outliers toward ideal period
+            for (g in 1 until GridGeometry.GRID_SIZE) {
+                val ideal = (g * period).toInt().coerceIn(0, n - 1)
+                val peak = raw[g]
+                val off = kotlin.math.abs(peak - ideal)
+                val outlier = off > clampRadius || (peakE[g] > energyOutlierThr && peakE[g] > 0f)
+                if (!outlier) {
+                    bounds[g] = peak.toFloat()
+                    continue
+                }
+                val from = (ideal - clampRadius).coerceAtLeast(1)
+                val to = (ideal + clampRadius).coerceAtMost(n - 2)
+                var bestX = -1
+                var bestDist = Int.MAX_VALUE
+                var bestE = -1f
+                // Prefer typical-energy local maxima nearest ideal
+                for (x in from..to) {
+                    val e = energy[x]
+                    if (e < strongThr || e <= 1f) continue
+                    if (e < energy[x - 1] || e < energy[x + 1]) continue
+                    if (e > energyOutlierThr) continue
+                    val dist = kotlin.math.abs(x - ideal)
+                    if (dist < bestDist || (dist == bestDist && e > bestE)) {
+                        bestDist = dist
+                        bestE = e
+                        bestX = x
+                    }
+                }
+                if (bestX < 0) {
+                    // Relax energy cap; still stay inside clamp band
+                    for (x in from..to) {
+                        val e = energy[x]
+                        if (e < strongThr || e <= 1f) continue
+                        if (e < energy[x - 1] || e < energy[x + 1]) continue
+                        val dist = kotlin.math.abs(x - ideal)
+                        if (dist < bestDist || (dist == bestDist && e > bestE)) {
+                            bestDist = dist
+                            bestE = e
+                            bestX = x
+                        }
+                    }
+                }
+                bounds[g] = if (bestX >= 0) bestX.toFloat() else ideal.toFloat()
+            }
+
+            for (i in 1 until bounds.size) {
+                if (bounds[i] <= bounds[i - 1]) {
+                    bounds[i] = bounds[i - 1] + 1f
+                }
+            }
+            if (bounds[GridGeometry.GRID_SIZE] > n) return null
+            bounds[GridGeometry.GRID_SIZE] = n.toFloat()
+            if (!GridGeometry.isStrictlyIncreasing(bounds)) return null
+            return bounds
+        }
     }
 
     private fun rowWarmBannerFraction(
@@ -374,6 +513,19 @@ class BoardFinder(
         val relVarY = GridGeometry.relativeSpacingVariance(yBounds)
         diag["projRelVarX"] = "%.4f".format(relVarX)
         diag["projRelVarY"] = "%.4f".format(relVarY)
+        // Per-gutter offset from ideal even-split (local ROI) — diagnosis aid
+        val periodX = bw.toFloat() / GridGeometry.GRID_SIZE
+        val periodY = bh.toFloat() / GridGeometry.GRID_SIZE
+        diag["projGuttersX"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
+            val ideal = g * periodX
+            val off = xLocal[g] - ideal
+            "%d:%+.0f".format(g, off)
+        }
+        diag["projGuttersY"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
+            val ideal = g * periodY
+            val off = yLocal[g] - ideal
+            "%d:%+.0f".format(g, off)
+        }
         if (relVarX > maxRelVariance || relVarY > maxRelVariance) return null
 
         // Confidence from spacing uniformity.
@@ -433,55 +585,11 @@ class BoardFinder(
 
     /**
      * Pick 8 boundary positions in local [0, energy.size] for 7 cells.
-     * Uses expected period + peak search near ideal gutter locations.
+     * Absolute-max peak search with offset/energy-outlier re-pick toward the
+     * ideal period (see [pickSevenCellBoundariesInternal]).
      */
-    private fun pickSevenCellBoundaries(energy: FloatArray): FloatArray? {
-        val n = energy.size
-        if (n < GridGeometry.GRID_SIZE * 3) return null
-        val period = n.toFloat() / GridGeometry.GRID_SIZE
-        val bounds = FloatArray(GridGeometry.BOUNDARY_COUNT)
-        bounds[0] = 0f
-        bounds[GridGeometry.GRID_SIZE] = n.toFloat()
-
-        val meanE = energy.average().toFloat()
-        val searchRadius = (period * 0.35f).toInt().coerceAtLeast(1)
-        var strongPeaks = 0
-        for (g in 1 until GridGeometry.GRID_SIZE) {
-            val ideal = (g * period).toInt().coerceIn(0, n - 1)
-            val from = (ideal - searchRadius).coerceAtLeast(1)
-            val to = (ideal + searchRadius).coerceAtMost(n - 2)
-            var bestX = ideal
-            var bestE = -1f
-            for (x in from..to) {
-                val e = energy[x]
-                if (e > bestE) {
-                    bestE = e
-                    bestX = x
-                }
-            }
-            // Significant gutter peak vs mean energy
-            if (bestE >= meanE * 1.25f && bestE > 1f) {
-                strongPeaks++
-                bounds[g] = bestX.toFloat()
-            } else {
-                // Keep ideal slot but count as weak
-                bounds[g] = ideal.toFloat()
-            }
-        }
-
-        // Need a clear majority of internal gutters with real projection peaks
-        if (strongPeaks < 4) return null
-
-        for (i in 1 until bounds.size) {
-            if (bounds[i] <= bounds[i - 1]) {
-                bounds[i] = bounds[i - 1] + 1f
-            }
-        }
-        if (bounds[GridGeometry.GRID_SIZE] > n) return null
-        bounds[GridGeometry.GRID_SIZE] = n.toFloat()
-        if (!GridGeometry.isStrictlyIncreasing(bounds)) return null
-        return bounds
-    }
+    private fun pickSevenCellBoundaries(energy: FloatArray): FloatArray? =
+        pickSevenCellBoundariesInternal(energy)
 
     private fun rowMeanLuma(
         pixels: IntArray,

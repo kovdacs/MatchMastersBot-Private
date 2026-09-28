@@ -192,4 +192,68 @@ class BoardFinderTest {
                 "method=${result.grid.method} conf=${result.grid.confidence}",
         )
     }
+
+    @Test
+    fun projectionPeaks_repickOffsetOutlierFarFalsePeak() {
+        // Period=100 on n=700. True gutters near ideals; gutter 6 has a much stronger
+        // false peak 31px early (gem/UI edge) and a weaker true peak 3px early.
+        val n = 700
+        val energy = FloatArray(n) { 10f }
+        val ideals = IntArray(6) { g -> ((g + 1) * n) / 7 }
+        for (i in ideals.indices) {
+            val ideal = ideals[i]
+            if (i == 5) {
+                energy[ideal - 31] = 200f
+                energy[ideal - 3] = 80f
+            } else {
+                energy[ideal] = 100f
+            }
+        }
+        val bounds = BoardFinder.pickSevenCellBoundariesInternal(energy)
+        assertThat(bounds).isNotNull()
+        val g6 = bounds!![6]
+        // Must snap near ideal (600), not the false absolute max at 569
+        assertThat(g6).isWithin(5f).of(ideals[5].toFloat() - 3f)
+        assertThat(kotlin.math.abs(g6 - ideals[5])).isLessThan(10f)
+        val relVar = GridGeometry.relativeSpacingVariance(bounds)
+        assertThat(relVar).isLessThan(0.01f)
+    }
+
+    @Test
+    fun projectionPeaks_cleanPeriodicGutters_stayOnIdeals() {
+        val n = 700
+        val energy = FloatArray(n) { 10f }
+        for (g in 1..6) {
+            energy[(g * n) / 7] = 100f
+        }
+        val bounds = BoardFinder.pickSevenCellBoundariesInternal(energy)
+        assertThat(bounds).isNotNull()
+        for (g in 1..6) {
+            assertThat(bounds!![g]).isWithin(0.5f).of(((g * n) / 7).toFloat())
+        }
+        assertThat(GridGeometry.relativeSpacingVariance(bounds!!)).isWithin(1e-6f).of(0f)
+    }
+
+    @Test
+    fun projectionPeaks_repickEnergyOutlierToolbarSpike() {
+        // Strong typical gutters + one toolbar-like spike near ideal (within offset
+        // band) whose energy is >> median — must re-pick the weaker true gutter.
+        val n = 700
+        val energy = FloatArray(n) { 10f }
+        val ideals = IntArray(6) { g -> ((g + 1) * n) / 7 }
+        for (i in ideals.indices) {
+            val ideal = ideals[i]
+            if (i == 5) {
+                energy[ideal - 1] = 80f   // true gutter
+                energy[ideal + 10] = 500f // toolbar spike (offset OK, energy outlier)
+            } else {
+                energy[ideal] = 100f
+            }
+        }
+        val bounds = BoardFinder.pickSevenCellBoundariesInternal(energy)
+        assertThat(bounds).isNotNull()
+        val g6 = bounds!![6]
+        assertThat(g6).isWithin(2f).of((ideals[5] - 1).toFloat())
+        assertThat(g6).isNotEqualTo((ideals[5] + 10).toFloat())
+    }
 }

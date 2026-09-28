@@ -80,10 +80,22 @@ class VisionPipeline(
         row: Int,
         col: Int,
     ): CellVision {
-        val left = cell.left.toInt().coerceIn(0, width)
-        val top = cell.top.toInt().coerceIn(0, height)
-        val right = cell.right.toInt().coerceIn(left, width)
-        val bottom = cell.bottom.toInt().coerceIn(top, height)
+        var left = cell.left.toInt().coerceIn(0, width)
+        var top = cell.top.toInt().coerceIn(0, height)
+        var right = cell.right.toInt().coerceIn(left, width)
+        var bottom = cell.bottom.toInt().coerceIn(top, height)
+        // Inset crop toward cell center to exclude dark gutters / board chrome that
+        // otherwise trip OcclusionDetector partial_dark on valid gems (purple bg).
+        val bw = (right - left).coerceAtLeast(1)
+        val bh = (bottom - top).coerceAtLeast(1)
+        val insetX = (bw * CELL_CROP_INSET_FRAC).toInt().coerceAtLeast(0)
+        val insetY = (bh * CELL_CROP_INSET_FRAC).toInt().coerceAtLeast(0)
+        if (bw > insetX * 2 + 4 && bh > insetY * 2 + 4) {
+            left += insetX
+            right -= insetX
+            top += insetY
+            bottom -= insetY
+        }
         val (crop, size) = PixelMath.crop(pixels, width, height, left, top, right, bottom)
         val cw = size.first
         val ch = size.second
@@ -127,5 +139,13 @@ class VisionPipeline(
             (mean + methodBonus - unknownPenalty)
         }
         return base.coerceIn(0f, 1f)
+    }
+
+    companion object {
+        /**
+         * Fraction of cell width/height trimmed from each side before occlusion/color/shape.
+         * Keeps detectors on gem body instead of purple gutters (partial_dark false positives).
+         */
+        const val CELL_CROP_INSET_FRAC = 0.10f
     }
 }
