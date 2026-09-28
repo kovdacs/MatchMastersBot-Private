@@ -1,0 +1,73 @@
+{
+  "label": "REAL_FRAME_PRIMARY",
+  "resource": "real_frames/pvp_board.jpg",
+  "status": "HUMAN_VISUAL",
+  "provenance": "HUMAN_VISUAL — authored by looking at pvp_board.jpg (1080x2400 early PvP, Time Left 103, scores 0-0). NEVER from VisionPipeline / detector output. NOT a Python V3.1 dump.",
+  "imageWidth": 1080,
+  "imageHeight": 2400,
+  "caveats": [
+    "Android screenshot/edit toolbar at bottom may clip last board row and RULES footer",
+    "Row index 1-based in notes; cells[].row/col are 0-based (top-left = 0,0)",
+    "Orange pieces are inverted triangles visually; ColorShapeReconciler expects O→HEX — shape soft/UNVERIFIED for O",
+    "Purple Mushroom +3 at (4,1): SpecialType has no MUSHROOM — color/shape soft UNKNOWN, special NONE",
+    "Row 6 (1-based R7): UNVERIFIED on primary due to toolbar crop — omit hard color asserts"
+  ],
+  "mushroomCell": {"row": 4, "col": 1, "note": "Purple Mushroom +3"},
+  "cells": [
+    {"r":0,"c":0,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":1,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":2,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":3,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":4,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":5,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":0,"c":6,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+
+    {"r":1,"c":0,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":1,"c":1,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":1,"c":2,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":1,"c":3,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":1,"c":4,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":1,"c":5,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":1,"c":6,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+
+    {"r":2,"c":0,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":2,"c":1,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":2,"c":2,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":2,"c":3,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":2,"c":4,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":2,"c":5,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":2,"c":6,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+
+    {"r":3,"c":0,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":1,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":2,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":3,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":4,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":5,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":3,"c":6,"color":"R","shape":"CIRCLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+
+    {"r":4,"c":0,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":4,"c":1,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"Purple Mushroom +3; SpecialType has no MUSHROOM"},
+    {"r":4,"c":2,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":4,"c":3,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":4,"c":4,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":4,"c":5,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":4,"c":6,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+
+    {"r":5,"c":0,"color":"Y","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":5,"c":1,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":5,"c":2,"color":"G","shape":"DIAMOND","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":5,"c":3,"color":"O","shape":"TRIANGLE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"UNVERIFIED","note":"inverted orange triangle; reconciler expects HEX"},
+    {"r":5,"c":4,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":5,"c":5,"color":"B","shape":"STAR","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+    {"r":5,"c":6,"color":"P","shape":"SQUARE","special":"NONE","colorStatus":"VERIFIED","shapeStatus":"VERIFIED"},
+
+    {"r":6,"c":0,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":1,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":2,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":3,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":4,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":5,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"},
+    {"r":6,"c":6,"color":"UNKNOWN","shape":"UNKNOWN","special":"NONE","colorStatus":"UNVERIFIED","shapeStatus":"UNVERIFIED","note":"toolbar crop on primary"}
+  ]
+}

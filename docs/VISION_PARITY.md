@@ -1,31 +1,32 @@
 # Vision Parity — Android vs Python V3.1
 
 **Status:** `REFERENCE_PENDING`  
-**Date:** 2026-09-25 (Europe/Vienna)
+**Date:** 2026-09-28 (Europe/Vienna)
 
 ## Flags
 
 | Flag | Value |
 |------|-------|
-| `REAL_FRAME_AVAILABLE` | **NO** |
+| `REAL_FRAME_AVAILABLE` | **YES** (`real_frames/pvp_board.jpg`) |
 | `REALISTIC_FIXTURE_AVAILABLE` | **YES** |
 | `PYTHON_REFERENCE_AVAILABLE` | **NO** |
 | `PARITY_VERIFIED` | **NO** |
-| `VISION_REAL_WORLD_VALIDATED` | **NO** |
+| `VISION_REAL_WORLD_VALIDATED` | **NO** (partial real-frame evidence only) |
 
 ## Purpose
 
 Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference dump for the **same real input frame**. Metrics are **never blended into a single score** — each dimension is reported separately.
 
 **Do not** treat REALISTIC_SYNTHETIC ↔ SYNTHETIC_UNIT agreement as “parity verified”.
+**Do not** invent a Python V3.1 dump from detector output or human GT.
 
 ## Reference availability
 
-**No real Python V3.1 output fixtures are present in this repository.**  
-**No real Match Masters board capture (`pvp_board.jpg`) is present** (git history search: only mipmaps + REFERENCE_PENDING JSON).
+**Real Match Masters board capture is present** (`app/src/test/resources/real_frames/pvp_board.jpg` + secondaries).  
+**No real Python V3.1 output fixtures are present in this repository.**
 
 The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json`
-(and `data/vision/parity/pvp_board_reference.json`) therefore carries:
+(and `data/vision/parity/pvp_board_reference.json`) therefore still carries:
 
 ```json
 "status": "REFERENCE_PENDING"
@@ -33,13 +34,15 @@ The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json
 
 with null/empty field values. **Do not invent READY board data.**
 
-When a real dump **and** matching frame are added later:
+When a real dump for the **same** frame is added later:
 
-1. Place `pvp_board.jpg` under `app/src/test/resources/real_frames/`.
-2. Replace the scaffold JSON (keep schema keys).
+1. Keep `pvp_board.jpg` under `app/src/test/resources/real_frames/`.
+2. Replace the scaffold JSON (keep schema keys) with the Python V3.1 export.
 3. Set `"status": "READY"`.
 4. Re-run `VisionParityComparator` against Android exports from `VisionResultExporter`.
-5. Enable full assertions in `RealFrameVisionTest` (currently Assume-skips when missing).
+5. Only then consider `PARITY_VERIFIED=YES`.
+
+Human-authored `human_ground_truth.json` is **HUMAN_VISUAL** soft GT for diagnostics — not a Python parity reference.
 
 Comparator unit tests continue to cover `REFERENCE_PENDING` behavior and synthetic READY
 comparisons (**synthetic only — not real V3.1; not PARITY_VERIFIED**).

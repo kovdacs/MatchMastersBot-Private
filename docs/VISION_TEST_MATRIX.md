@@ -1,13 +1,15 @@
 # Vision Test Matrix
 
-**Date:** 2026-09-25 (Europe/Vienna)  
+**Date:** 2026-09-28 (Europe/Vienna)  
 **Scope:** Analyzer-only. Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1.  
-**Flags:** REAL_FRAME_AVAILABLE=NO · REALISTIC_FIXTURE_AVAILABLE=YES · PYTHON_REFERENCE_AVAILABLE=NO · PARITY_VERIFIED=NO · VISION_REAL_WORLD_VALIDATED=NO
+**Flags:** REAL_FRAME_AVAILABLE=YES · REALISTIC_FIXTURE_AVAILABLE=YES · PYTHON_REFERENCE_AVAILABLE=NO · PARITY_VERIFIED=NO · VISION_REAL_WORLD_VALIDATED=NO
 
 | Test | Input type | Expected | Actual | Result |
 |------|------------|----------|--------|--------|
-| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + diagnostics when present; Assume-skip if missing | Assume-skip (REAL_FRAME_MISSING) | SKIP (documented) |
-| RealFrameVisionTest.realFrame_harness_reportsMissingClearly | REAL_FRAME absence | Document REAL_FRAME_MISSING | Prints missing + Assume | SKIP (documented) |
+| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + diagnostics; soft gate fields | Filled by CI logs | RUN (when present) |
+| RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | Filled by CI logs | RUN (soft) |
+| RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | Filled by CI logs | RUN (soft) |
+| RealFrameVisionTest.realFrame_harness_reportsMissingClearly | REAL_FRAME presence marker | Available → assert true; missing → Assume skip | Available | RUN |
 | RealisticSyntheticVisionTest.realisticSynthetic_alwaysRuns_pipelineDiagnostics | REALISTIC_SYNTHETIC | 7×7, ≥1 unknown from authored occlusion, color match ≥70% on VERIFIED cells; dump numerics | Filled by CI logs | RUN (always) |
 | RealisticSyntheticVisionTest.realisticSynthetic_groundTruth_fromConstructionNotDetector | REALISTIC_SYNTHETIC GT | GT from construction params; (3,5) occluded UNKNOWN; shape UNVERIFIED | Authored | PASS (intent) |
 | RealisticSyntheticVisionTest.realisticSynthetic_distinctFromCleanLetterboxedBoard | REALISTIC vs SYNTHETIC_UNIT | Distinct geometry/pixels from cleanBoard | Distinct | PASS (intent) |
@@ -35,12 +37,13 @@
 
 | Mode | Class | When it runs |
 |------|-------|--------------|
-| REAL_FRAME | `RealFrameVisionTest` | Only if `real_frames/pvp_board.jpg` present |
+| REAL_FRAME | `RealFrameVisionTest` | When `real_frames/pvp_board.jpg` present (now YES) |
 | REALISTIC_SYNTHETIC | `RealisticSyntheticVisionTest` | Always |
 | SYNTHETIC_UNIT | `VisionPipelineTest` / `SyntheticFrames.letterboxedBoard` | Always |
 
 ## Honesty
 
 - REALISTIC_SYNTHETIC PASS ≠ real-world validation.
+- REAL_FRAME soft diagnostics / HOLD ≠ VISION_REAL_WORLD_VALIDATED.
 - No self-mirroring synthetic↔synthetic as “parity verified”.
-- `pvp_board_reference.json` remains `REFERENCE_PENDING`.
+- `pvp_board_reference.json` remains `REFERENCE_PENDING` until a real Python V3.1 dump lands.

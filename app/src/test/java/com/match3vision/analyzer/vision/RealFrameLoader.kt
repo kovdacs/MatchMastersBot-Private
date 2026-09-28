@@ -10,13 +10,22 @@ import java.io.InputStream
  * AGP unit-test **compile** classpath stubs omit `java.awt` / `javax.imageio`, so
  * calls go through reflection — not an Android Bitmap path.
  *
- * REAL_FIXTURE: loads `real_frames/pvp_board.jpg` from test resources when present.
- * Absence is expected until a real Match Masters capture is checked in.
+ * REAL_FIXTURE: loads `real_frames/pvp_board.jpg` (primary) plus optional secondary
+ * overlay/FX/volume frames from test resources.
  */
 object RealFrameLoader {
 
     const val PVP_BOARD_RESOURCE = "real_frames/pvp_board.jpg"
+    const val PVP_BOARD_SHOWDOWN_RESOURCE = "real_frames/pvp_board_showdown_overlay.jpg"
+    const val PVP_BOARD_ACTIVATE_FX_RESOURCE = "real_frames/pvp_board_activate_fx.jpg"
+    const val PVP_BOARD_MID_VOLUME_RESOURCE = "real_frames/pvp_board_mid_volume.jpg"
     const val REAL_FRAME_MISSING = "REAL_FRAME_MISSING"
+
+    val SECONDARY_RESOURCES: List<Pair<String, String>> = listOf(
+        "SHOWDOWN_OVERLAY" to PVP_BOARD_SHOWDOWN_RESOURCE,
+        "ACTIVATE_FX" to PVP_BOARD_ACTIVATE_FX_RESOURCE,
+        "MID_VOLUME" to PVP_BOARD_MID_VOLUME_RESOURCE,
+    )
 
     data class LoadedFrame(
         val pixels: IntArray,

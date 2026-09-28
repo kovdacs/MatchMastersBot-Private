@@ -1,50 +1,49 @@
 # REAL_FRAME_REPORT
 
-**Date:** 2026-09-25 (Europe/Vienna)  
+**Date:** 2026-09-28 (Europe/Vienna)  
 **Branch:** `main`  
-**CI:** analyzer-ci GREEN on `0d914cd` (run 36146083770)  
-**APK:** app-debug.apk artifact uploaded (~24.6 MB)  
+**CI:** pending fill after analyzer-ci on this commit  
+**APK:** pending fill  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
 ## Status flags (evidence-based)
 
 | Flag | Value |
 |------|-------|
-| `REAL_FRAME_AVAILABLE` | **NO** |
+| `REAL_FRAME_AVAILABLE` | **YES** (`real_frames/pvp_board.jpg` + secondaries) |
 | `REALISTIC_FIXTURE_AVAILABLE` | **YES** (`RealisticSyntheticFixture`) |
 | `PYTHON_REFERENCE_AVAILABLE` | **NO** |
 | `PARITY_VERIFIED` | **NO** |
-| `VISION_REAL_WORLD_VALIDATED` | **NO** |
+| `VISION_REAL_WORLD_VALIDATED` | **NO** (partial evidence only — see below) |
 
-Realistic-synthetic PASS is **not** real-world validation.
+One real early-match frame + occluded secondaries ≠ full real-world validation. No Python V3.1 dump. Possible bottom-row crop from Android screenshot toolbar. Treat as **PARTIAL evidence**, flag stays **NO** until cleaner full 7×7 + parity dump.
 
 ## 1. Reference recovery
 
-**Status: `REAL_FRAME_MISSING` / `REFERENCE_PENDING`**
+**Status: `REAL_FRAME_AVAILABLE=YES` / Python still `REFERENCE_PENDING`**
 
-Searched (git history + trees):
+Checked in (2026-09-28):
 
-- Private repo `kovdacs/MatchMastersBot-Private` — **no** `pvp_board.jpg` in any commit/object
-- Git history objects for `pvp_board.jpg` / Match Masters board captures — **empty**
-- Only launcher mipmaps + `pvp_board_reference.json` (`REFERENCE_PENDING`, null fields)
-- Prior parent verification: match3-vision-ai / Google Drive / Gmail — no real MM frame
+| File | Role |
+|------|------|
+| `app/src/test/resources/real_frames/pvp_board.jpg` | **PRIMARY** — early PvP, Time Left 103, 0–0, mushroom +3 @ R5C2 (1-based); 1080×2400 |
+| `pvp_board_showdown_overlay.jpg` | Secondary — READY? GO! / SHOWDOWN overlay |
+| `pvp_board_activate_fx.jpg` | Secondary — ACTIVATE + particle FX |
+| `pvp_board_mid_volume.jpg` | Secondary — volume slider occlusion |
+| `human_ground_truth.json` | HUMAN_VISUAL GT (not detector-derived) |
 
-**Do not invent** READY parity data, fake real screenshots, or fake Python V3.1 dumps.
+**Not a board:** PERKS MENU (`98dd72…` / archive `01_perks_menu.jpg`) — never used as primary.
 
-Scaffold: `data/vision/parity/pvp_board_reference.json` and
-`app/src/main/assets/data/vision/parity/pvp_board_reference.json` remain
-`status: REFERENCE_PENDING` with nulls.
+**Do not invent** READY Python parity data or V3.1 dumps. Scaffold `pvp_board_reference.json` remains `status: REFERENCE_PENDING`.
 
-## 2–4. REALISTIC_SYNTHETIC fixture + GT + harness
+## 2–4. Harness
 
 | Piece | Location |
 |-------|----------|
-| Fixture builder | `RealisticSyntheticFixture.kt` (AA, noise, JPEG-quant, scale/gutter jitter, letterbox offset, tile shading, brightness/contrast, partial occlusion) |
-| Ground truth | `RealisticSyntheticGroundTruth.kt` + `test/resources/realistic_synthetic/canonical_ground_truth.json` |
-| GT provenance | **From construction parameters (what was drawn)** — never from VisionPipeline detector output |
-| Harness REAL_FRAME | `RealFrameVisionTest` — Assume-skip if `pvp_board.jpg` missing |
-| Harness REALISTIC_SYNTHETIC | `RealisticSyntheticVisionTest` — **always runs** |
-| Harness SYNTHETIC_UNIT | `SyntheticFrames.letterboxedBoard` / `VisionPipelineTest` — clean unit board (separate) |
+| Harness REAL_FRAME | `RealFrameVisionTest` + `RealFrameLoader` — primary + soft secondaries |
+| Human GT | `RealFrameHumanGroundTruth` + `human_ground_truth.json` (HUMAN_VISUAL) |
+| Harness REALISTIC_SYNTHETIC | `RealisticSyntheticVisionTest` — **always runs**; not real MM |
+| Harness SYNTHETIC_UNIT | `SyntheticFrames.letterboxedBoard` / `VisionPipelineTest` |
 
 ## Pipeline path
 
@@ -53,26 +52,37 @@ Scaffold: `data/vision/parity/pvp_board_reference.json` and
 
 ## Numeric results
 
-### Real frame (`pvp_board.jpg`)
+### Real frame (`pvp_board.jpg`) — PRIMARY
 
 | Field | Value |
 |-------|-------|
-| gridConfidence | **N/A** (`REAL_FRAME_AVAILABLE=NO`) |
-| boardConfidence | **N/A** |
-| unknownCount | **N/A** |
-| PASS/HOLD | **N/A** |
+| gridConfidence | **PENDING_CI** |
+| boardConfidence | **PENDING_CI** |
+| unknownCount | **PENDING_CI** |
+| PASS/HOLD | **PENDING_CI** |
+| board dims (BoardFinder ROI) | **PENDING_CI** |
+| softGt colorMatch | **PENDING_CI** |
 
-### REALISTIC_SYNTHETIC (canonical fixture) — CI run 36146083770
+Caveats: Android screenshot toolbar may clip bottom UI / last board row. Pipeline still emits 7×7; GT row 6 (0-based) = UNVERIFIED. Mushroom +3 not in `SpecialType` enum → soft UNKNOWN.
+
+### Secondary frames — soft diagnostics only
+
+| Frame | Expected | Value |
+|-------|----------|-------|
+| showdown overlay | HOLD / high unknowns OK | **PENDING_CI** |
+| activate FX | HOLD / high unknowns OK | **PENDING_CI** |
+| mid volume | HOLD / high unknowns OK | **PENDING_CI** |
+
+### REALISTIC_SYNTHETIC (canonical fixture) — prior CI run 36146083770
 
 | Field | Value |
 |-------|-------|
 | gridConfidence | **0.9900** (PROJECTION) |
 | boardConfidence | **0.0000** (14 unknowns → penalty) |
-| unknownCount | **14** (authored occ(3,5) detected; others under noise/AA/quant) |
+| unknownCount | **14** |
 | colorMatch (compared known) | **35/35** (verifiableGT=48) |
 | PASS/HOLD | **HOLD** (board confidence < 0.95) |
 
-Authored occlusion at (3,5): `unk=true occ=true`.  
 **HOLD/PASS on realistic synthetic ≠ VISION_REAL_WORLD_VALIDATED.**
 
 ## PASS / HOLD integrity
@@ -83,37 +93,24 @@ Gates **unchanged**:
 - `MIN_BOARD_CONFIDENCE = 0.95`
 - `MAX_UNKNOWN_COUNT = 1`
 
-Three independent HOLD modes proven in `VisionValidatorTest.threeIndependentHoldModes_noBypass`
-(grid / board / unknownCount). No bypass. Failure dumps use `VisionDiagnostics` 7×7 UNKNOWN map.
+No bypass. Prefer documenting HOLD/unknowns on real frames over loosening gates or hacking detectors.
 
-BoardFinder `*1.5f` is scoring calibration only (see `GridConfidenceCalibrationTest`), not a gate change.
+## Parity
 
-## Robustness / audits (5–13)
-
-- BoardFinder multi-perturbation matrix (`BoardFinderRobustnessTest`)
-- GridConfidence calibration table (`GridConfidenceCalibrationTest`)
-- Occlusion dark/warm/cool/white/grey/partial/textured/R+O clear (`OcclusionAndReconcileTest`)
-- ColorDetector shading/AA/brightness/compression (`ColorDetectorTest`)
-- ShapeDetector + confidence clamp (`ShapeDetectorRealisticTest`)
-- ColorShapeReconciler no fake PASS (`ColorShapeReconcilerTest`)
-- SpecialDetector conservative (`SpecialDetectorTest`)
-
-## Parity (14)
-
-`REFERENCE_PENDING` retained. See `docs/VISION_PARITY.md`. No synthetic↔synthetic self-mirror as verified parity.
-
-## Test matrix (15)
-
-`docs/VISION_TEST_MATRIX.md`
+`REFERENCE_PENDING` retained. See `docs/VISION_PARITY.md`. No invented V3.1 dump. `PARITY_VERIFIED=NO`.
 
 ## Limitations
 
-- No real Match Masters frame → no end-to-end real-device gate proof.
-- REALISTIC_SYNTHETIC is synthetic IntArray (noise/AA/shade/quant), not a capture.
-- Shape GT marks silhouette as UNVERIFIED for solid shaded fills (reconciler may fill expected pair).
-- Parity READY blocked until real V3.1 dump + matching frame land.
+- Primary may have bottom row cropped by Android screenshot toolbar.
+- Secondaries intentionally occluded (overlay / FX / volume) — expect HOLD.
+- Mushroom special not modeled in `SpecialType`.
+- Orange inverted triangles vs reconciler O→HEX expectation.
+- No Python V3.1 dump → no Android↔Python parity.
 - No JDK on box — CI Temurin 17 runs unit tests + assembleDebug.
 
 ## Next milestone
 
-Check in real `pvp_board.jpg` + Python V3.1 dump → set reference `READY` → enable REAL_FRAME asserts + parity comparator on the same frame → only then consider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED`.
+1. Cleaner full 7×7 capture without system screenshot overlays.
+2. Real Python V3.1 dump for the same frame → set reference READY → parity comparator.
+3. Only then reconsider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED=YES`.
+4. Do **not** add input automation / DecisionEngine / AccessibilityService.
