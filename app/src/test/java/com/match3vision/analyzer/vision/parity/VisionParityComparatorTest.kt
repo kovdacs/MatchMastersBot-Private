@@ -143,13 +143,15 @@ class VisionParityComparatorTest {
             letterboxRoi = ContentRoi(0, 100, 1080, 1820),
         )
         listOf(
-            "imageWidth", "imageHeight", "letterboxRoi", "roiOffset",
+            "imageWidth", "imageHeight", "letterboxRoi", "boardRoi", "roiOffset",
             "gridMethod", "gridConfidence", "xBoundaries", "yBoundaries",
-            "cellBoxes", "cells", "unknownCount", "gate",
+            "cellBoxes", "cells", "unknownCount", "gate", "validation",
+            "centerX", "centerY", "finalTile",
         ).forEach { key ->
             assertThat(json).contains("\"$key\"")
         }
         assertThat(json).contains("\"ANDROID_EXPORT\"")
+        assertThat(json).contains("PARITY_VERIFIED=NO")
     }
 
     @Test

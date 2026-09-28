@@ -103,6 +103,19 @@ Gates **unchanged**:
 
 Gates unchanged (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Production changes are projection peak outlier re-pick, inner `partial_dark`, O+TRIANGLE accept, and boardConf high-path calibration (not gate constants).
 
+## Android REAL_FRAME export (this milestone)
+
+| Item | Value |
+|------|-------|
+| Export path | `data/vision/real_frames/pvp_board_android_export.json` (+ classpath copy under `app/src/test/resources/real_frames/`) |
+| Producer | `VisionResultExporter` + `RealFrameExportTest` (pipeline → structured JSON) |
+| Contents | boardRoi, 8× x/yBoundaries, 49 cellBoxes (LTRB + centerX/Y), 49 cells (color/shape/special/occlusion/confidence/isUnknown/finalTile/centers), gridConfidence, boardConfidence, unknownCount, validation/gate **PASS** |
+| Status field | `ANDROID_EXPORT` — **not** a Python V3.1 dump |
+
+Regression: `RealFrameExportTest` fails if primary no longer PASS, key numerics drift (gridConf≈0.9872, boardConf≈0.9696, unk=1), cell labels drift, or export schema keys go missing.
+
+**Android export only.** `REFERENCE_PENDING=YES`; `PYTHON_REFERENCE_AVAILABLE=NO`; `PARITY_VERIFIED` remains **NO** (do not invent READY / fake V3.1).
+
 ## Parity
 
 | Flag | Value |
@@ -114,6 +127,8 @@ Gates unchanged (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Production chang
 Full hunt (tree + git history + branches/tags + `*.py`/`*.ipynb` blobs): **no** Python V3.1 dump/truth/notebook. Scaffold `pvp_board_reference.json` stays `REFERENCE_PENDING`. See `docs/VISION_PARITY.md` for Android stage map vs Python (matches / gaps / diffs). Do not invent READY dumps.
 
 Primary REAL_FRAME **PASS** is a mandatory CI regression (`RealFrameVisionTest` asserts `ValidationResult.Pass`); gates/ROI/snap untouched.
+
+Android REAL_FRAME export checked in (`pvp_board_android_export.json` + `RealFrameExportTest`). This is Android pipeline output only — still **not** Python parity (`PARITY_VERIFIED=NO`).
 
 ## Limitations
 

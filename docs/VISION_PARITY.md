@@ -121,21 +121,40 @@ Python V3.1 source/dump is **absent**, so algorithmic parity cannot be verified.
 | `unknown_count` | `VisionResult.unknownCount` | Absolute difference |
 | `gate` | PASS / HOLD | Exact string equality |
 
+
+## Android REAL_FRAME export (not parity)
+
+Checked-in Android-only export for `pvp_board.jpg`:
+
+- `data/vision/real_frames/pvp_board_android_export.json`
+- `app/src/test/resources/real_frames/pvp_board_android_export.json` (JVM classpath golden)
+
+Produced/validated by `VisionResultExporter` + `RealFrameExportTest` (runs live pipeline, compares key fields to golden, asserts schema).
+
+| Flag | Still |
+|------|-------|
+| `REFERENCE_PENDING` | **YES** |
+| `PYTHON_REFERENCE_AVAILABLE` | **NO** |
+| `PARITY_VERIFIED` | **NO** |
+
+Do **not** treat `status: ANDROID_EXPORT` as Python `READY`. Scaffold `pvp_board_reference.json` remains `REFERENCE_PENDING`.
+
 ## Export schema (`VisionResultExporter`)
 
 Required top-level fields:
 
+- `status` (`ANDROID_EXPORT` for pipeline output; never invent Python `READY` here)
 - `imageWidth`, `imageHeight`
 - `letterboxRoi` `{left,top,right,bottom}`
+- `boardRoi` `{left,top,right,bottom}`
 - `roiOffset` `{dx,dy}`
 - `gridMethod` (`PROJECTION` | `EVEN_SPLIT`)
-- `gridConfidence`
+- `gridConfidence`, `boardConfidence`, `confidence`
 - `xBoundaries` (8 floats), `yBoundaries` (8 floats)
-- `cellBoxes` (49 objects)
-- `cells` (49 objects)
+- `cellBoxes` (49 objects: row/col/LTRB + `centerX`/`centerY`)
+- `cells` (49 objects: color/shape/special/occlusion/confidence/isUnknown/`finalTile` + centers)
 - `unknownCount`
-- `gate` (`PASS` | `HOLD`)
-- `boardConfidence`, `confidence` (not used as a blended parity score)
+- `gate` / `validation` (`PASS` | `HOLD`)
 
 ## REAL_FRAME regression gate
 

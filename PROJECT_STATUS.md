@@ -36,6 +36,7 @@
 - REAL_FRAME primary hard-asserts PASS + secondary soft diagnostics (HOLD OK)
 - Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1
 - Docs: `REAL_FRAME_REPORT.md`, `docs/VISION_PARITY.md`, `docs/VISION_TEST_MATRIX.md`
+- Android REAL_FRAME export golden: `data/vision/real_frames/pvp_board_android_export.json` (`RealFrameExportTest`); `PARITY_VERIFIED` still **NO**
 
 ## Build / CI
 

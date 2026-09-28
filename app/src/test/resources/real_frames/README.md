@@ -17,6 +17,14 @@ Real Match Masters PvP board captures (1080×2400 JPEG) for harness mode **REAL_
 
 Archive copies (outside test resources): `/workspace/mm-real-frames/01..05_*.jpg`.
 
+## Android export golden
+
+`pvp_board_android_export.json` — structured Android `VisionPipeline` export for primary `pvp_board.jpg`
+(boardRoi, boundaries, per-cell centers/labels/confidence/`finalTile`, gate PASS).
+Validated by `RealFrameExportTest`. **Not** a Python V3.1 dump (`PARITY_VERIFIED=NO`).
+
+Canonical copy also at `data/vision/real_frames/pvp_board_android_export.json`.
+
 ## Human GT
 
 `human_ground_truth.json` — HUMAN_VISUAL provenance for primary `pvp_board.jpg` only.
