@@ -9,7 +9,10 @@ import org.junit.Test
  * Harness mode **REAL_FRAME**.
  *
  * Loads `real_frames/pvp_board.jpg` (primary) and optional secondary overlay/FX/volume
- * frames; runs [VisionPipeline] with soft structural asserts + println diagnostics.
+ * frames; runs [VisionPipeline] with structural asserts + println diagnostics.
+ *
+ * **Regression gate:** primary `pvp_board.jpg` must [ValidationResult.Pass]
+ * (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Do not weaken gates / ROI / snap.
  *
  * When the real Match Masters capture is absent, tests Assume-skip so CI stays green.
  *
@@ -18,8 +21,7 @@ import org.junit.Test
  * - REALISTIC_SYNTHETIC — [RealisticSyntheticVisionTest] (always runs; not real MM)
  * - SYNTHETIC_UNIT — clean [SyntheticFrames.letterboxedBoard] unit tests
  *
- * Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1.
- * HOLD / high unknowns / FX decode exceptions on real captures are documented —
+ * HOLD / high unknowns / FX decode exceptions on **secondary** captures are soft —
  * do not loosen gates; secondary failures must not fail CI.
  */
 class RealFrameVisionTest {
@@ -41,7 +43,7 @@ class RealFrameVisionTest {
             ContentRoi.full(frame.width, frame.height),
         )
 
-        // Soft structural asserts; dump full diagnostics on any hard failure
+        // Structural asserts; dump full diagnostics on any hard failure
         VisionDiagnostics.assertOrDump(
             result,
             result.board.cells.size == 7 && result.board.cells[0].size == 7,
@@ -53,10 +55,16 @@ class RealFrameVisionTest {
             "expected 8x8 boundaries from REAL_FRAME",
         )
 
-        // Document numeric gate fields (may PASS or HOLD on a real capture)
-        assertThat(result.gridConfidence).isAtLeast(0f)
-        assertThat(result.boardConfidence).isAtLeast(0f)
-        assertThat(result.unknownCount).isAtLeast(0)
+        // Mandatory regression: primary pvp_board.jpg must PASS (gates unchanged).
+        VisionDiagnostics.assertOrDump(
+            result,
+            result.validation.isPass,
+            "REAL_FRAME primary pvp_board.jpg must PASS " +
+                "(grid>=0.98 board>=0.95 unk<=1); do not weaken gates/ROI",
+        )
+        assertThat(result.gridConfidence).isAtLeast(VisionThresholds.MIN_GRID_CONFIDENCE)
+        assertThat(result.boardConfidence).isAtLeast(VisionThresholds.MIN_BOARD_CONFIDENCE)
+        assertThat(result.unknownCount).isAtMost(VisionThresholds.MAX_UNKNOWN_COUNT)
 
         val boardW = result.grid.boardRoi.width()
         val boardH = result.grid.boardRoi.height()

@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-28 (Europe/Vienna)
 **Branch:** `main`  
-**Commit:** `e0fc877` (gutter outlier re-pick + inner partial_dark + boardConf high-path calib)
-**CI:** analyzer-ci **SUCCESS** on `e0fc877` — run **36414665548**
+**Commit:** `7b56734` (docs tip; vision PASS calib on `e0fc877`)
+**CI:** analyzer-ci **SUCCESS** on `e0fc877` — run **36414665548** (PASS numerics); docs tip also green on **36415154332**
 **APK:** app-debug.apk artifact uploaded (**24,624,329** bytes on disk ≈ 23.5 MiB; artifact zip ≈ 8.6 MiB)  
 **Scope:** Analyzer-only vision robustness. No AccessibilityService / touch injection / auto-play / DecisionEngine.
 
@@ -105,22 +105,28 @@ Gates unchanged (MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1). Production chang
 
 ## Parity
 
-`REFERENCE_PENDING` retained. See `docs/VISION_PARITY.md`. No invented V3.1 dump. `PARITY_VERIFIED=NO`.
+| Flag | Value |
+|------|-------|
+| `PYTHON_REFERENCE_AVAILABLE` | **NO** |
+| `PARITY_VERIFIED` | **NO** |
+| `REFERENCE_PENDING` | **YES** |
+
+Full hunt (tree + git history + branches/tags + `*.py`/`*.ipynb` blobs): **no** Python V3.1 dump/truth/notebook. Scaffold `pvp_board_reference.json` stays `REFERENCE_PENDING`. See `docs/VISION_PARITY.md` for Android stage map vs Python (matches / gaps / diffs). Do not invent READY dumps.
+
+Primary REAL_FRAME **PASS** is a mandatory CI regression (`RealFrameVisionTest` asserts `ValidationResult.Pass`); gates/ROI/snap untouched.
 
 ## Limitations
 
-- BoardFinder did not lock a tight board ROI on these captures (full-width EVEN_SPLIT fallback) → low gridConf → HOLD; soft GT colors poor.
-- Primary may have bottom row cropped by Android screenshot toolbar.
-- Secondaries intentionally occluded (overlay / FX / volume); ACTIVATE_FX currently crashes cell analysis (AIOOBE) — documented soft.
+- Primary may have bottom row cropped by Android screenshot toolbar (row6 GT UNVERIFIED).
+- Soft GT color match still ~55% on primary (HUMAN_VISUAL; not parity).
+- Secondaries intentionally occluded (overlay / FX / volume); soft diagnostics only (HOLD OK).
 - Mushroom special not modeled in `SpecialType`.
-- Orange inverted triangles vs reconciler O→HEX expectation.
-- No Python V3.1 dump → no Android↔Python parity.
+- No Python V3.1 dump → no Android↔Python parity (`REFERENCE_PENDING`).
 - No JDK on box — CI Temurin 17 runs unit tests + assembleDebug.
 
 ## Next milestone
 
 1. Cleaner full 7×7 capture without system screenshot overlays; improve BoardFinder ROI for tall MM UI (without loosening PASS/HOLD gates).
-2. Investigate ACTIVATE_FX AIOOBE (Index -1) with a targeted unit fixture — only if proven safe.
-3. Real Python V3.1 dump for the same frame → set reference READY → parity comparator.
-4. Only then reconsider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED=YES`.
-5. Do **not** add input automation / DecisionEngine / AccessibilityService.
+2. Real Python V3.1 dump for the same frame → set reference READY → parity comparator (do not invent).
+3. Only after READY dump: reconsider `PARITY_VERIFIED` / `VISION_REAL_WORLD_VALIDATED=YES`.
+4. Do **not** add input automation / DecisionEngine / AccessibilityService.

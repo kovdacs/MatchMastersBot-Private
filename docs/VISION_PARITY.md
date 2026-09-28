@@ -1,7 +1,8 @@
 # Vision Parity — Android vs Python V3.1
 
 **Status:** `REFERENCE_PENDING`  
-**Date:** 2026-09-28 (Europe/Vienna)
+**Date:** 2026-09-28 (Europe/Vienna)  
+**Tip context:** REAL_FRAME PASS on `pvp_board.jpg` (gridConf 0.9872, boardConf 0.9696, unk 1) — CI run 36414665548 / docs tip `7b56734`.
 
 ## Flags
 
@@ -11,22 +12,40 @@
 | `REALISTIC_FIXTURE_AVAILABLE` | **YES** |
 | `PYTHON_REFERENCE_AVAILABLE` | **NO** |
 | `PARITY_VERIFIED` | **NO** |
+| `REFERENCE_PENDING` | **YES** (scaffold only — no real dump) |
 | `VISION_REAL_WORLD_VALIDATED` | **NO** (partial real-frame evidence only) |
 
 ## Purpose
 
 Compare Android `VisionResult` fields to a Python Match-3 Vision V3.1 reference dump for the **same real input frame**. Metrics are **never blended into a single score** — each dimension is reported separately.
 
-**Do not** treat REALISTIC_SYNTHETIC ↔ SYNTHETIC_UNIT agreement as “parity verified”.
+**Do not** treat REALISTIC_SYNTHETIC ↔ SYNTHETIC_UNIT agreement as “parity verified”.  
 **Do not** invent a Python V3.1 dump from detector output or human GT.
+
+## Reference hunt (this milestone)
+
+Searched (2026-09-28):
+
+| Scope | Result |
+|-------|--------|
+| Working tree (`data/vision/parity/`, assets, docs, tests) | Scaffold JSON only (`status: REFERENCE_PENDING`) |
+| Keywords: `V3.1`, `v3_1`, `python`, `parity`, `pvp_board_reference`, `match3`, `vision dump` | Docs + comparator scaffold; **no dump** |
+| File types: `*.py`, `*.ipynb`, `*.pkl`, truth dumps | **None** in tree or any git blob |
+| Branches / tags | `main`, `vision/real-frame-robustness` (merged lineage); **no tags**; no Python artifacts on either |
+| Git history (`--all`, deleted files, object names) | Parity infra added in `167ecfd`; always `REFERENCE_PENDING`; **never** a READY dump |
+
+**Finding:** `PYTHON_REFERENCE_AVAILABLE=NO` → remain **`REFERENCE_PENDING`**. Do not invent READY dumps, fake parity numbers, or fake Python outputs.
 
 ## Reference availability
 
 **Real Match Masters board capture is present** (`app/src/test/resources/real_frames/pvp_board.jpg` + secondaries).  
 **No real Python V3.1 output fixtures are present in this repository.**
 
-The scaffold at `app/src/main/assets/data/vision/parity/pvp_board_reference.json`
-(and `data/vision/parity/pvp_board_reference.json`) therefore still carries:
+Scaffold locations (identical pending schema):
+
+- `app/src/main/assets/data/vision/parity/pvp_board_reference.json`
+- `data/vision/parity/pvp_board_reference.json`
+- `app/src/test/resources/vision/parity/pvp_board_reference.json` (JVM classpath copy for scaffold tests)
 
 ```json
 "status": "REFERENCE_PENDING"
@@ -44,8 +63,44 @@ When a real dump for the **same** frame is added later:
 
 Human-authored `human_ground_truth.json` is **HUMAN_VISUAL** soft GT for diagnostics — not a Python parity reference.
 
-Comparator unit tests continue to cover `REFERENCE_PENDING` behavior and synthetic READY
-comparisons (**synthetic only — not real V3.1; not PARITY_VERIFIED**).
+Comparator unit tests cover `REFERENCE_PENDING` behavior and synthetic READY comparisons (**synthetic only — not real V3.1; not PARITY_VERIFIED**).
+
+## Android pipeline stages (implemented)
+
+Order in `VisionPipeline.analyze`:
+
+```
+Frame IntArray
+  → BoardFinder          (ROI snap + PROJECTION / EVEN_SPLIT gutters)
+  → OcclusionDetector    (per-cell; short-circuit → UNKNOWN if occluded)
+  → ColorDetector        (HSV → TileColor)
+  → ShapeDetector        (contour / circularity → TileShape)
+  → SpecialDetector      (bomb / lightning / arrow overlays)
+  → ColorShapeReconciler (color↔shape consistency; special pass-through)
+  → VisionValidator      (PASS / HOLD: MIN_GRID / MIN_BOARD / MAX_UNKNOWN)
+```
+
+## Stage map vs Python V3.1
+
+Python V3.1 source/dump is **absent**, so algorithmic parity cannot be verified. Mapping below is **intent / naming only** (Android side documented; Python side unknown).
+
+| Stage | Android | Python V3.1 | Match / gap / diff |
+|-------|---------|-------------|--------------------|
+| BoardFinder | `BoardFinder` — separator_square ROI, projection gutters, EVEN_SPLIT fallback, conf `*1.5f` scoring calib | *unknown — no dump* | **GAP:** no ROI/boundary truth to compare. Intentional match: 7×7 + 8 gutters schema. |
+| Occlusion | `OcclusionDetector` — documented “V3.1-style” dark/banner/partial_dark; no interpolation | *unknown* | **INTENT MATCH (name only):** dark/banner → UNKNOWN. **GAP:** thresholds/algorithms unverified. |
+| Color | `ColorDetector` — HSV heuristics → `TileColor` | *unknown* | **GAP:** no per-cell color dump. |
+| Shape | `ShapeDetector` — contour approx / circularity → `TileShape` | *unknown* | **GAP:** no per-cell shape dump. |
+| Special | `SpecialDetector` — BOMB / LIGHTNING / TWO_WAY_ARROW; floor 0.55 → NONE | *unknown* | **GAP:** mushroom special not in `SpecialType`. No Python special labels. |
+| Reconcile | `ColorShapeReconciler` — expected shape per color; orange△ accept path | *unknown* | **GAP:** reconcile rules not cross-checked. |
+| Validation | `VisionValidator` — PASS iff grid≥0.98, board≥0.95, unk≤1 | *unknown* | **GAP:** gate semantics may differ; Android gates **unchanged**. |
+
+### Summary
+
+| Category | Detail |
+|----------|--------|
+| **Matches** | Stage *order* and export schema dimensions (roi, boundaries, cell_boxes, color, shape, special, occlusion, unknown_count, gate) align with a typical V3.1 Match-3 vision stack; OcclusionDetector claims V3.1-style behavior by design. |
+| **Gaps** | No Python code, notebook, config, or READY dump anywhere in repo/history → every stage unverified numerically. |
+| **Diffs** | Cannot assert diffs without a reference. Known Android-only notes (not Python diffs): mushroom unmodeled; HUMAN soft GT ≠ Python; boardConf high-path calib / projection `*1.5f` are Android scoring — not gate changes. |
 
 ## REALISTIC_SYNTHETIC (not parity)
 
@@ -81,6 +136,11 @@ Required top-level fields:
 - `unknownCount`
 - `gate` (`PASS` | `HOLD`)
 - `boardConfidence`, `confidence` (not used as a blended parity score)
+
+## REAL_FRAME regression gate
+
+Primary `pvp_board.jpg` must remain **PASS** in CI (`RealFrameVisionTest` hard-asserts `ValidationResult.Pass`).  
+Do **not** weaken PASS/HOLD thresholds, BoardFinder ROI/snap, or the working REAL_FRAME pipeline for parity work.
 
 ## Safety
 

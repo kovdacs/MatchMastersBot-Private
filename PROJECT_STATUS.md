@@ -1,7 +1,7 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-09-28 (Europe/Vienna)  
-**CI:** analyzer-ci SUCCESS run 36407224555 on `0c5b707`  
+**CI:** analyzer-ci SUCCESS run 36414665548 on `e0fc877` (REAL_FRAME PASS); tip `7b56734`  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)
@@ -33,7 +33,7 @@
 - Real MM JPEGs checked in under `app/src/test/resources/real_frames/`
 - Primary `pvp_board.jpg` + showdown/FX/volume secondaries
 - HUMAN_VISUAL GT (`RealFrameHumanGroundTruth` / `human_ground_truth.json`)
-- Soft REAL_FRAME asserts + secondary soft diagnostics (HOLD OK)
+- REAL_FRAME primary hard-asserts PASS + secondary soft diagnostics (HOLD OK)
 - Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1
 - Docs: `REAL_FRAME_REPORT.md`, `docs/VISION_PARITY.md`, `docs/VISION_TEST_MATRIX.md`
 
@@ -54,8 +54,8 @@
 ## Next steps
 
 1. Capture cleaner full 7×7 without Android screenshot toolbar.
-2. Drop matching V3.1 dump; set reference READY.
-3. Run parity comparator on the same frame.
+2. Obtain matching Python V3.1 dump (do not invent); set reference READY.
+3. Run parity comparator on the same frame → only then `PARITY_VERIFIED`.
 4. Do **not** add input automation.
 
 ## Safety confirmation

@@ -2,13 +2,13 @@
 
 **Date:** 2026-09-28 (Europe/Vienna)  
 **Scope:** Analyzer-only. Gates unchanged: MIN_GRID=0.98, MIN_BOARD=0.95, MAX_UNKNOWN=1.  
-**Flags:** REAL_FRAME_AVAILABLE=YES · REALISTIC_FIXTURE_AVAILABLE=YES · PYTHON_REFERENCE_AVAILABLE=NO · PARITY_VERIFIED=NO · VISION_REAL_WORLD_VALIDATED=NO
+**Flags:** REAL_FRAME_AVAILABLE=YES · REALISTIC_FIXTURE_AVAILABLE=YES · PYTHON_REFERENCE_AVAILABLE=NO · PARITY_VERIFIED=NO · REFERENCE_PENDING=YES · VISION_REAL_WORLD_VALIDATED=NO
 
 | Test | Input type | Expected | Actual | Result |
 |------|------------|----------|--------|--------|
-| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + diagnostics; soft gate fields | gridConf=0.7200 boardConf=0.4812 unk=1 EVEN_SPLIT **HOLD** (run 36407224555) | RUN |
-| RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | softGt 12/41 rate=0.293 | RUN (soft) |
-| RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | showdown HOLD; activate FX AIOOBE soft; mid_volume HOLD (ran=2 err=1) | RUN (soft) |
+| RealFrameVisionTest.realFrame_pvpBoard_pipelineDiagnostics_whenPresent | REAL_FRAME (pvp_board.jpg) | 7×7 + **PASS** regression (grid≥0.98 board≥0.95 unk≤1) | gridConf=0.9872 boardConf=0.9696 unk=1 PROJECTION **PASS** (run 36414665548) | PASS |
+| RealFrameVisionTest.realFrame_pvpBoard_softHumanGtCompare_whenPresent | REAL_FRAME + HUMAN_VISUAL GT | Soft color match log; row6 UNVERIFIED; mushroom unmapped | softGt 22/40 rate=0.550 (run 36414665548) | RUN (soft) |
+| RealFrameVisionTest.realFrame_secondaryFrames_softDiagnostics_whenPresent | REAL_FRAME secondaries | Soft 7×7 + println; HOLD/high unknowns OK | showdown HOLD; activate FX HOLD; mid_volume PASS (ran=3 err=0) | RUN (soft) |
 | RealFrameVisionTest.realFrame_harness_reportsMissingClearly | REAL_FRAME presence marker | Available → assert true; missing → Assume skip | Available | RUN |
 | RealisticSyntheticVisionTest.realisticSynthetic_alwaysRuns_pipelineDiagnostics | REALISTIC_SYNTHETIC | 7×7, ≥1 unknown from authored occlusion, color match ≥70% on VERIFIED cells; dump numerics | Filled by CI logs | RUN (always) |
 | RealisticSyntheticVisionTest.realisticSynthetic_groundTruth_fromConstructionNotDetector | REALISTIC_SYNTHETIC GT | GT from construction params; (3,5) occluded UNKNOWN; shape UNVERIFIED | Authored | PASS (intent) |
@@ -32,6 +32,7 @@
 | SpecialDetectorTest normal/arrow/lightning/bomb/uncertain/partial | Cell crops | Conservative NONE below 0.55 | Printed | DOCUMENTED |
 | VisionValidatorTest integrity + threeIndependentHoldModes_noBypass | Numeric gates | Three independent HOLD modes; no bypass | — | PASS (intent) |
 | VisionParityComparatorTest REFERENCE_PENDING | Parity JSON scaffold | PENDING handled; no READY self-mirror | — | PASS (intent) |
+| VisionParityReferenceScaffoldTest.classpathReference_isReferencePending_notReady | Parity JSON classpath scaffold | status REFERENCE_PENDING; empty geometry; schema keys present | — | PASS (intent) |
 
 ## Harness separation
 
@@ -44,6 +45,12 @@
 ## Honesty
 
 - REALISTIC_SYNTHETIC PASS ≠ real-world validation.
-- REAL_FRAME soft diagnostics / HOLD ≠ VISION_REAL_WORLD_VALIDATED.
+- REAL_FRAME primary PASS is a CI regression gate; soft secondaries / soft GT ≠ VISION_REAL_WORLD_VALIDATED.
 - No self-mirroring synthetic↔synthetic as “parity verified”.
 - `pvp_board_reference.json` remains `REFERENCE_PENDING` until a real Python V3.1 dump lands.
+
+## Parity / REAL_FRAME gate (2026-09-28)
+
+- `pvp_board_reference.json` remains `REFERENCE_PENDING` until a real Python V3.1 dump lands.
+- Primary `RealFrameVisionTest` **hard-asserts PASS** (regression); gates/ROI/snap unchanged.
+- Stage map + hunt results: `docs/VISION_PARITY.md`.
