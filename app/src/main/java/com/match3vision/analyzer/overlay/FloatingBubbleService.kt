@@ -6,7 +6,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -14,12 +16,14 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
 import com.match3vision.analyzer.input.InputThresholds
+import com.match3vision.analyzer.input.MatchMastersAccessibilityService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -254,27 +258,107 @@ class FloatingBubbleService : Service() {
 
     /**
      * Isolated AUTOMATIC TOUCH TEST — one fixed-coordinate gesture, no Vision / play loop.
+     *
+     * Critical Android fixes vs immediate onClick dispatch:
+     * 1) Delay after button MotionEvent so overlay touch does not cancel the injected gesture.
+     * 2) FLAG_NOT_TOUCHABLE on the bubble while the gesture runs (overlay must not steal it).
+     * 3) Run await off the main thread so GestureResultCallback can complete (no deadlock).
+     * 4) Surface Hungarian Toast/status: a11y igen/nem, coords, dispatch ok/fail reason.
      */
     private fun runTouchTestFromBubble() {
         // Keep Match Masters visible so the user can see the touch.
         sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
-        val dm = resources.displayMetrics
-        val w = dm.widthPixels
-        val h = dm.heightPixels
-        Timber.i("TOUCH_TEST: bubble TESZT ÉRINTÉS pressed screen=%dx%d", w, h)
-        val result = AutoPlaySession.touchTest.runOnce(w, h)
-        val coord =
-            "(${result.startX.toInt()},${result.startY.toInt()})→(${result.endX.toInt()},${result.endY.toInt()})"
-        val label = if (result.success) {
-            "érintés OK $coord"
+        val (w, h) = screenSizePx()
+        val a11yNow = MatchMastersAccessibilityService.isConnected()
+        val diagnose = MatchMastersAccessibilityService.diagnoseConnected()
+        Timber.i(
+            "TOUCH_TEST: bubble TESZT ÉRINTÉS pressed screen=%dx%d a11y=%s diagnose=%s",
+            w, h, a11yNow, diagnose,
+        )
+        val preHu = if (a11yNow) {
+            "a11y=IGEN képernyő=${w}x${h} — indítás ${TOUCH_TEST_CLICK_DELAY_MS}ms…"
         } else {
-            "érintés FAIL: ${result.reason.take(48)}"
+            "a11y=NEM képernyő=${w}x${h} — kapcsold be a Kisegítő lehetőségeket"
         }
-        statusView?.text = label
-        AutoPlaySession.publish(statusText = label)
-        Timber.i("TOUCH_TEST: result success=%s reason=%s", result.success, result.reason)
-        for (line in AutoPlaySession.touchTest.logger().lines().takeLast(12)) {
-            Timber.i("TOUCH_TEST_LOG: %s", line)
+        statusView?.text = preHu
+        Toast.makeText(this, preHu, Toast.LENGTH_SHORT).show()
+        AutoPlaySession.publish(statusText = preHu, a11yReady = a11yNow)
+
+        // Avoid concurrent auto-play gestures cancelling the isolated test swipe.
+        if (AutoPlaySession.controller.isLoopActive()) {
+            AutoPlaySession.controller.onBubblePause()
+            AutoPlaySession.syncFrameGateFromMode()
+            Timber.i("TOUCH_TEST: auto-play paused for isolated touch test")
+        }
+
+        // Let the overlay button MotionEvent finish; otherwise dispatchGesture is often cancelled.
+        setBubbleTouchable(false)
+        Handler(Looper.getMainLooper()).postDelayed({
+            scope.launch(Dispatchers.Default) {
+                val result = try {
+                    AutoPlaySession.touchTest.runOnce(w, h)
+                } catch (t: Throwable) {
+                    Timber.e(t, "TOUCH_TEST: runOnce threw")
+                    null
+                }
+                withContext(Dispatchers.Main) {
+                    setBubbleTouchable(true)
+                    if (result == null) {
+                        val fail = "a11y=? FAIL: exception — lásd logcat TOUCH_TEST"
+                        statusView?.text = fail
+                        Toast.makeText(this@FloatingBubbleService, fail, Toast.LENGTH_LONG).show()
+                        AutoPlaySession.publish(statusText = fail)
+                        return@withContext
+                    }
+                    val label = result.huStatus
+                    statusView?.text = label
+                    Toast.makeText(this@FloatingBubbleService, label, Toast.LENGTH_LONG).show()
+                    AutoPlaySession.publish(
+                        statusText = label,
+                        a11yReady = result.a11yEnabled,
+                    )
+                    Timber.i(
+                        "TOUCH_TEST: result success=%s reason=%s hu=%s",
+                        result.success,
+                        result.reason,
+                        result.huStatus,
+                    )
+                    for (line in AutoPlaySession.touchTest.logger().lines().takeLast(16)) {
+                        Timber.i("TOUCH_TEST_LOG: %s", line)
+                    }
+                }
+            }
+        }, TOUCH_TEST_CLICK_DELAY_MS)
+    }
+
+    /** Physical screen pixels for fixed-coordinate touch test (not Vision). */
+    private fun screenSizePx(): Pair<Int, Int> {
+        val wm = windowManager ?: getSystemService(WINDOW_SERVICE) as WindowManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val b = wm.maximumWindowMetrics.bounds
+            b.width() to b.height()
+        } else {
+            val dm = resources.displayMetrics
+            dm.widthPixels to dm.heightPixels
+        }
+    }
+
+    /**
+     * While false, bubble overlay ignores touches so injected a11y gestures reach the game.
+     */
+    private fun setBubbleTouchable(touchable: Boolean) {
+        val v = bubbleView ?: return
+        val p = layoutParams ?: return
+        val flag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        p.flags = if (touchable) {
+            p.flags and flag.inv()
+        } else {
+            p.flags or flag
+        }
+        try {
+            windowManager?.updateViewLayout(v, p)
+        } catch (t: Throwable) {
+            Timber.w(t, "TOUCH_TEST: setBubbleTouchable(%s) failed", touchable)
         }
     }
 
@@ -411,6 +495,9 @@ class FloatingBubbleService : Service() {
     }
 
     companion object {
+        /** Wait after TESZT ÉRINTÉS click so overlay MotionEvent ends before dispatchGesture. */
+        const val TOUCH_TEST_CLICK_DELAY_MS = 400L
+
         const val ACTION_STOP_ALL = "com.match3vision.analyzer.overlay.STOP_ALL"
         const val ACTION_START_LOOP = "com.match3vision.analyzer.overlay.START_LOOP"
         const val ACTION_PAUSE_LOOP = "com.match3vision.analyzer.overlay.PAUSE_LOOP"

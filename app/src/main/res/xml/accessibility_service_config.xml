@@ -3,12 +3,17 @@
   AccessibilityService config for AUTOMATIC INPUT ENGINE V1.
   Not auto-enabled: user must turn the service on in system settings,
   AND InputEnableSwitch must be explicitly enabled in-app (default DISABLED).
+
+  canPerformGestures=true is REQUIRED for AccessibilityService.dispatchGesture.
+  canRetrieveWindowContent helps OEMs keep the service fully capable.
+  Do NOT enable flagRequestTouchExplorationMode — that changes system touch UX.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
+    android:accessibilityFlags="flagDefault|flagReportViewIds"
     android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="100"
     android:settingsActivity="com.match3vision.analyzer.MainActivity" />

@@ -19,7 +19,7 @@ class AutomaticTouchTestTest {
         val g = t.resolveCoords(1080, 2340)
         assertThat(g.startX).isEqualTo(540f)
         assertThat(g.startY).isEqualTo(1053f) // 2340 * 45 / 100
-        assertThat(g.endX).isEqualTo(660f) // 540 + 120
+        assertThat(g.endX).isEqualTo(740f) // 540 + 200
         assertThat(g.endY).isEqualTo(1053f)
         assertThat(g.durationMs).isEqualTo(AutomaticTouchTest.GESTURE_DURATION_MS)
         assertThat(g.isSwipe).isTrue()
@@ -32,6 +32,7 @@ class AutomaticTouchTestTest {
         val t = AutomaticTouchTest(
             executor = exec,
             a11yConnected = { true },
+            a11yDiagnose = { "connected=true canPerformGestures=true" },
             logger = logger,
         )
         val r = t.runOnce(1080, 2340)
@@ -41,8 +42,11 @@ class AutomaticTouchTestTest {
         assertThat(r.dispatchAttempted).isTrue()
         assertThat(r.startX).isEqualTo(540f)
         assertThat(r.startY).isEqualTo(1053f)
+        assertThat(r.endX).isEqualTo(740f)
         assertThat(exec.dispatched).hasSize(1)
         assertThat(exec.dispatched[0].startX).isEqualTo(540f)
+        assertThat(r.huStatus).contains("a11y=IGEN")
+        assertThat(r.huStatus).contains("OK")
 
         val dump = logger.dump()
         assertThat(dump).contains("AccessibilityService ENABLED=true")
@@ -63,6 +67,7 @@ class AutomaticTouchTestTest {
         val t = AutomaticTouchTest(
             executor = exec,
             a11yConnected = { false },
+            a11yDiagnose = { "connected=false canPerformGestures=false" },
             logger = logger,
         )
         val r = t.runOnce(1080, 2340)
@@ -71,8 +76,28 @@ class AutomaticTouchTestTest {
         assertThat(r.gestureCreated).isFalse()
         assertThat(r.dispatchAttempted).isFalse()
         assertThat(exec.dispatched).isEmpty()
+        assertThat(r.huStatus).contains("a11y=NEM")
         assertThat(logger.dump()).contains("AccessibilityService ENABLED=false")
         assertThat(logger.dump()).contains("FAIL — AccessibilityService not ENABLED")
+    }
+
+    @Test
+    fun runOnce_connectedButCannotGesture_failsWithoutDispatch() {
+        val exec = RecordingInputGestureExecutor(ready = false)
+        val logger = SmokeTestLogger()
+        val t = AutomaticTouchTest(
+            executor = exec,
+            a11yConnected = { true },
+            a11yDiagnose = { "connected=true canPerformGestures=false" },
+            logger = logger,
+        )
+        val r = t.runOnce(1080, 2340)
+        assertThat(r.success).isFalse()
+        assertThat(r.gestureCreated).isFalse()
+        assertThat(r.dispatchAttempted).isFalse()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(r.huStatus).contains("canPerformGestures=false")
+        assertThat(logger.dump()).contains("canPerformGestures=false")
     }
 
     @Test
@@ -83,6 +108,7 @@ class AutomaticTouchTestTest {
         val t = AutomaticTouchTest(
             executor = exec,
             a11yConnected = { true },
+            a11yDiagnose = { "connected=true canPerformGestures=true" },
             logger = logger,
         )
         val r = t.runOnce(720, 1600)
@@ -91,6 +117,7 @@ class AutomaticTouchTestTest {
         assertThat(r.dispatchAttempted).isTrue()
         assertThat(r.startX).isEqualTo(360f)
         assertThat(r.startY).isEqualTo(720f) // 1600 * 45 / 100
+        assertThat(r.huStatus).contains("FAIL")
         assertThat(logger.dump()).contains("gesture dispatch FAIL")
         assertThat(logger.dump()).contains("AUTOMATIC TOUCH TEST FAIL")
     }
@@ -99,7 +126,7 @@ class AutomaticTouchTestTest {
     fun exampleConstants_matchDocumented1080x2340() {
         assertThat(AutomaticTouchTest.EXAMPLE_1080x2340_X).isEqualTo(540)
         assertThat(AutomaticTouchTest.EXAMPLE_1080x2340_Y).isEqualTo(1053)
-        assertThat(AutomaticTouchTest.EXAMPLE_1080x2340_END_X).isEqualTo(660)
+        assertThat(AutomaticTouchTest.EXAMPLE_1080x2340_END_X).isEqualTo(740)
     }
 
     @Test
@@ -110,5 +137,22 @@ class AutomaticTouchTestTest {
         assertThat(result).isInstanceOf(InputDispatchResult.Failed::class.java)
         assertThat((result as InputDispatchResult.Failed).reason)
             .contains("AccessibilityService not connected")
+    }
+
+    @Test
+    fun touchTestHarness_passReportFields() {
+        val exec = RecordingInputGestureExecutor(ready = true)
+        val t = AutomaticTouchTest(
+            executor = exec,
+            a11yConnected = { true },
+            a11yDiagnose = { "connected=true canPerformGestures=true capabilities=0x20" },
+        )
+        val r = t.runOnce(1080, 2340)
+        // TOUCH_TEST PASS harness fields for parent agent report
+        assertThat(r.success).isTrue()
+        assertThat(r.screenWidthPx).isEqualTo(1080)
+        assertThat(r.screenHeightPx).isEqualTo(2340)
+        assertThat(r.a11yDiagnose).contains("canPerformGestures=true")
+        assertThat(r.dispatchAttempted).isTrue()
     }
 }
