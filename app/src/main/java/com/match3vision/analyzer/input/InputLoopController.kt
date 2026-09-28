@@ -8,6 +8,8 @@ import com.match3vision.analyzer.vision.VisionResult
  * Wires MoveAnalysisEngine (read-only) → AutomaticInputEngine → feedback verify.
  * Input remains OFF unless [InputEnableSwitch] is explicitly enabled.
  * Vision / Move Analysis V1 behavior unchanged when input is disabled.
+ *
+ * Logs: VISION PASS / MOVE SELECTED / INPUT READY / (gesture+dispatch in engine).
  */
 class InputLoopController(
     private val moveAnalysis: MoveAnalysisEngine = MoveAnalysisEngine(),
@@ -22,6 +24,10 @@ class InputLoopController(
         val feedback: AutomaticInputEngine.FeedbackResult? = null,
         val topMove: MoveEvaluation? = null,
         val animationWaitMs: Long = 0L,
+        val visionGate: String = "—",
+        val moveLabel: String = "none",
+        val inputReady: Boolean = false,
+        val lastDispatch: StartupReadinessGate.LastDispatch = StartupReadinessGate.LastDispatch.NONE,
     )
 
     fun inputEngine(): AutomaticInputEngine = inputEngine
@@ -35,6 +41,7 @@ class InputLoopController(
     fun runAnalyzeAndMaybeInput(vision: VisionResult): CycleResult {
         val sm = inputEngine.stateMachine()
         if (sm.state == BotLoopState.STOP) {
+            AutoPlayTrace.markStop(sm.lastReason)
             return CycleResult(sm.state, BotLoopOutcome.STOP, sm.lastReason)
         }
         if (sm.state == BotLoopState.IDLE || sm.state == BotLoopState.HOLD ||
@@ -44,31 +51,67 @@ class InputLoopController(
         }
 
         if (!vision.validation.isPass) {
-            val t = sm.onValidationHold(
-                (vision.validation as? com.match3vision.analyzer.vision.ValidationResult.Hold)
-                    ?.reason ?: AutomaticInputEngine.HOLD_VISION_BLOCKED,
+            val reason = (vision.validation as? com.match3vision.analyzer.vision.ValidationResult.Hold)
+                ?.reason ?: AutomaticInputEngine.HOLD_VISION_BLOCKED
+            AutoPlayTrace.log("VISION HOLD", reason)
+            val t = sm.onValidationHold(reason)
+            return CycleResult(
+                state = t.to,
+                outcome = t.outcome,
+                reason = t.reason,
+                visionGate = "HOLD — $reason",
+                moveLabel = "none",
+                inputReady = false,
             )
-            return CycleResult(t.to, t.outcome, t.reason)
         }
+        AutoPlayTrace.log(AutoPlayTrace.TAG_VISION_PASS, "boardConf=${vision.boardConfidence}")
         sm.onValidationPass()
 
         val analysis = moveAnalysis.analyze(vision)
         if (analysis.blocked) {
-            val t = sm.onNoLegalMove(analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED)
-            return CycleResult(t.to, t.outcome, t.reason)
+            val reason = analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED
+            AutoPlayTrace.log("MOVE none", reason)
+            val t = sm.onNoLegalMove(reason)
+            return CycleResult(
+                t.to, t.outcome, t.reason,
+                visionGate = "PASS",
+                moveLabel = "none",
+            )
         }
         sm.onAnalysisReady()
         val top = analysis.top5.firstOrNull()
         if (top == null) {
+            AutoPlayTrace.log("MOVE none", AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
             val t = sm.onNoLegalMove(AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
-            return CycleResult(t.to, t.outcome, t.reason, topMove = null)
+            return CycleResult(
+                t.to, t.outcome, t.reason,
+                topMove = null,
+                visionGate = "PASS",
+                moveLabel = "none",
+            )
         }
 
-        if (!inputEngine.isInputEnabled()) {
+        val moveLabel =
+            "${top.move.r1},${top.move.c1}→${top.move.r2},${top.move.c2}"
+        AutoPlayTrace.log(AutoPlayTrace.TAG_MOVE_SELECTED, moveLabel)
+
+        val channelReady = inputEngine.executorReady()
+        val switchOn = inputEngine.isInputEnabled()
+        val inputReady = switchOn && channelReady
+        AutoPlayTrace.log(
+            AutoPlayTrace.TAG_INPUT_READY,
+            if (inputReady) "YES" else "NO (switch=$switchOn channel=$channelReady)",
+        )
+
+        if (!switchOn) {
             val t = sm.onInputBlocked(AutomaticInputEngine.HOLD_INPUT_DISABLED)
+            AutoPlayTrace.log("HOLD", t.reason)
             return CycleResult(
                 t.to, t.outcome, t.reason,
                 topMove = top,
+                visionGate = "PASS",
+                moveLabel = "selected $moveLabel",
+                inputReady = false,
             )
         }
 
@@ -82,11 +125,40 @@ class InputLoopController(
                     executed = exec,
                     topMove = top,
                     animationWaitMs = animationWaitMs,
+                    visionGate = "PASS",
+                    moveLabel = "selected $moveLabel",
+                    inputReady = true,
+                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
                 )
-            is AutomaticInputEngine.ExecuteResult.Held ->
-                CycleResult(sm.state, BotLoopOutcome.HOLD, exec.reason, executed = exec, topMove = top)
-            is AutomaticInputEngine.ExecuteResult.Stopped ->
-                CycleResult(sm.state, BotLoopOutcome.STOP, exec.reason, executed = exec, topMove = top)
+            is AutomaticInputEngine.ExecuteResult.Held -> {
+                AutoPlayTrace.log("HOLD", exec.reason)
+                val dispatch = when {
+                    exec.reason.contains("dispatch failed", ignoreCase = true) ->
+                        StartupReadinessGate.LastDispatch.FAILED
+                    else -> StartupReadinessGate.LastDispatch.NONE
+                }
+                CycleResult(
+                    sm.state, BotLoopOutcome.HOLD, exec.reason,
+                    executed = exec,
+                    topMove = top,
+                    visionGate = "PASS",
+                    moveLabel = "selected $moveLabel",
+                    inputReady = inputReady,
+                    lastDispatch = dispatch,
+                )
+            }
+            is AutomaticInputEngine.ExecuteResult.Stopped -> {
+                AutoPlayTrace.markStop(exec.reason)
+                CycleResult(
+                    sm.state, BotLoopOutcome.STOP, exec.reason,
+                    executed = exec,
+                    topMove = top,
+                    visionGate = "PASS",
+                    moveLabel = "selected $moveLabel",
+                    inputReady = inputReady,
+                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                )
+            }
         }
     }
 
@@ -105,10 +177,14 @@ class InputLoopController(
                     reason = "board changed — next move allowed",
                     feedback = fb,
                 )
-            is AutomaticInputEngine.FeedbackResult.Held ->
+            is AutomaticInputEngine.FeedbackResult.Held -> {
+                AutoPlayTrace.log("HOLD", fb.reason)
                 CycleResult(sm.state, BotLoopOutcome.HOLD, fb.reason, feedback = fb)
-            is AutomaticInputEngine.FeedbackResult.Stopped ->
+            }
+            is AutomaticInputEngine.FeedbackResult.Stopped -> {
+                AutoPlayTrace.markStop(fb.reason)
                 CycleResult(sm.state, BotLoopOutcome.STOP, fb.reason, feedback = fb)
+            }
         }
     }
 }

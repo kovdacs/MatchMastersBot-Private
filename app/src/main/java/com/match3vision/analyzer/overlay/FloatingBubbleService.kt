@@ -42,7 +42,8 @@ import timber.log.Timber
  * TESZT ÉRINTÉS → isolated fixed-coordinate touch (no Vision / no play loop)
  * STOP → remove bubble + stop capture/input
  *
- * Does **not** auto-start the loop; user must tap INDÍTÁS on the bubble.
+ * Main-screen INDÍTÁS can arm the loop via [ACTION_START_LOOP] when a11y is
+ * runtime-connected. Bubble INDÍTÁS remains for resume after SZÜNET.
  * Default position: top-end corner so the playfield stays clear.
  */
 class FloatingBubbleService : Service() {
@@ -114,8 +115,9 @@ class FloatingBubbleService : Service() {
         statusView = TextView(this).apply {
             text = "várakozik"
             setTextColor(0xFFB0BEC5.toInt())
-            textSize = 10f
-            maxLines = 2
+            textSize = 8.5f
+            maxLines = 14
+            setLineSpacing(0f, 1.05f)
         }
         startBtn = Button(this).apply {
             text = "INDÍTÁS"
@@ -166,7 +168,7 @@ class FloatingBubbleService : Service() {
             gravity = Gravity.TOP or Gravity.END
             x = (8 * density).toInt()
             y = (120 * density).toInt()
-            width = (132 * density).toInt()
+            width = (168 * density).toInt()
         }
         // Drag only from title so INDÍTÁS / SZÜNET / TESZT ÉRINTÉS / STOP still receive clicks.
         attachDrag(title, root, params)
@@ -222,17 +224,32 @@ class FloatingBubbleService : Service() {
     }
 
     private fun startLoopFromBubble() {
-        val ok = AutoPlaySession.controller.onBubbleStart()
+        val a11y = MatchMastersAccessibilityService.isConnected()
+        val captureOk = CaptureService.managerOrNull() != null
+        val overlayOk = android.provider.Settings.canDrawOverlays(this)
+        AutoPlaySession.publish(a11yReady = a11y, captureReady = captureOk, overlayReady = overlayOk)
+        val ok = AutoPlaySession.controller.onBubbleStart(
+            a11yConnected = a11y,
+            captureReady = captureOk,
+            overlayReady = overlayOk,
+        )
         if (!ok) {
-            AutoPlaySession.refreshFromController()
+            val reason = AutoPlaySession.controller.lastReason
+            AutoPlaySession.publish(statusText = reason, a11yReady = a11y)
+            AutoPlaySession.updateDiagnostics(
+                a11yConnected = a11y,
+                stopReason = reason,
+            )
             refreshBubbleUi()
+            Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
+            Timber.w("startLoop blocked: %s", reason)
             return
         }
         AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("fut")
+        AutoPlaySession.updateDiagnostics(a11yConnected = a11y)
         refreshBubbleUi()
         // Prefer Match Masters visible: ask analyzer Activity to background itself.
-        // Large Compose debug panels must not cover MediaProjection during FUT.
         sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
         ensureLoopRunning()
     }
@@ -376,6 +393,10 @@ class FloatingBubbleService : Service() {
                 val manager = CaptureService.managerOrNull()
                 val frame = manager?.latestFrame?.value
                 if (frame == null) {
+                    AutoPlaySession.updateDiagnostics(
+                        frameReceived = false,
+                        a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                    )
                     AutoPlaySession.refreshFromController("vár képkockára…")
                     refreshBubbleUi()
                     delay(150L)
@@ -391,9 +412,23 @@ class FloatingBubbleService : Service() {
                         ctrl.runCycleIfActive(vision)
                     }
                     if (cycle == null) {
+                        AutoPlaySession.updateDiagnostics(
+                            frameReceived = true,
+                            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                            stopReason = ctrl.lastReason,
+                        )
+                        refreshBubbleUi()
                         delay(120L)
                         continue
                     }
+                    AutoPlaySession.updateDiagnostics(
+                        frameReceived = true,
+                        visionText = cycle.visionGate,
+                        moveText = cycle.moveLabel,
+                        lastDispatch = cycle.lastDispatch,
+                        stopReason = if (cycle.outcome == BotLoopOutcome.STOP) cycle.reason else null,
+                        a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                    )
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
                     when (cycle.outcome) {
@@ -477,21 +512,12 @@ class FloatingBubbleService : Service() {
     private fun refreshBubbleUi() {
         val snap = AutoPlaySession.ui.value
         val ctrl = AutoPlaySession.controller
-        val modeLabel = when (ctrl.mode) {
-            AutoPlayController.Mode.IDLE -> "vár"
-            AutoPlayController.Mode.RUNNING -> "fut"
-            AutoPlayController.Mode.PAUSED -> "szünet"
-            AutoPlayController.Mode.STOPPED -> "stop"
-        }
-        statusView?.text = "$modeLabel · ${ctrl.moveCount} húzás"
+        val diag = snap.diagnostics
+        statusView?.text = diag.bubbleLines() + "\n#${ctrl.moveCount}"
         startBtn?.isEnabled = ctrl.mode != AutoPlayController.Mode.RUNNING &&
             ctrl.mode != AutoPlayController.Mode.STOPPED
         pauseBtn?.isEnabled = ctrl.mode == AutoPlayController.Mode.RUNNING
-        // Keep status text in session for analyzer UI.
-        AutoPlaySession.publish(
-            statusText = "${snap.statusText} ($modeLabel)",
-            bubbleVisible = bubbleView != null,
-        )
+        AutoPlaySession.publish(bubbleVisible = bubbleView != null)
     }
 
     companion object {
@@ -511,6 +537,12 @@ class FloatingBubbleService : Service() {
 
         fun start(context: Context) {
             context.startService(Intent(context, FloatingBubbleService::class.java))
+        }
+
+        /** Main-screen INDÍTÁS → arm RUNNING + ensureLoopRunning (no second bubble tap). */
+        fun requestStartLoop(context: Context) {
+            val i = Intent(context, FloatingBubbleService::class.java).setAction(ACTION_START_LOOP)
+            context.startService(i)
         }
 
         fun stop(context: Context) {

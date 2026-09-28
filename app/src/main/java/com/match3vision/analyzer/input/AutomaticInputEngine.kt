@@ -51,6 +51,8 @@ class AutomaticInputEngine(
     fun stateMachine(): BotStateMachine = stateMachine
     fun feedbackVerifier(): InputFeedbackVerifier = feedbackVerifier
     fun isInputEnabled(): Boolean = enableSwitch.isEnabled()
+    /** Runtime input channel ready (AccessibilityService connected). */
+    fun executorReady(): Boolean = executor.isReady()
 
     /**
      * Evaluate whether input is allowed. Does not dispatch.
@@ -118,8 +120,15 @@ class AutomaticInputEngine(
         } catch (t: Throwable) {
             val reason = "HOLD — coord conversion failed: ${t.message}"
             stateMachine.onInputBlocked(reason)
+            AutoPlayTrace.log("HOLD", reason)
             return ExecuteResult.Held(reason)
         }
+        AutoPlayTrace.log(
+            AutoPlayTrace.TAG_GESTURE_CREATED,
+            "start=(%.1f,%.1f) end=(%.1f,%.1f) durationMs=%d".format(
+                gesture.startX, gesture.startY, gesture.endX, gesture.endY, gesture.durationMs,
+            ),
+        )
         // Advance SELECT_MOVE → EXECUTE_INPUT when coming from a normal loop;
         // tests may call tryExecute from IDLE — force a safe path.
         when (stateMachine.state) {
@@ -140,14 +149,17 @@ class AutomaticInputEngine(
                 return ExecuteResult.Held("HOLD — cannot execute from state ${stateMachine.state}")
             }
         }
+        AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_START, gesture.toString())
         val dispatch = executor.dispatch(gesture)
         return when (dispatch) {
             is InputDispatchResult.Dispatched -> {
+                AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "SUCCESS")
                 val hash = Board.fromVision(vision.board).contentHash()
                 stateMachine.onInputExecuted()
                 ExecuteResult.Executed(dispatch.gesture, hash, move)
             }
             is InputDispatchResult.Failed -> {
+                AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "FAILED — ${dispatch.reason}")
                 val reason = "HOLD — input dispatch failed: ${dispatch.reason}"
                 stateMachine.onInputBlocked(reason)
                 ExecuteResult.Held(reason)

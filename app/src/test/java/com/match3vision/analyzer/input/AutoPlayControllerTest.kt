@@ -155,4 +155,22 @@ class AutoPlayControllerTest {
         assertThat(ctrl.onBubbleStart()).isTrue()
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
     }
+
+    @Test
+    fun a11yDisconnected_blocksRunning_evenWithSettingsFlag() {
+        val (ctrl, exec) = controllerWithReadyExec()
+        assertThat(
+            ctrl.onBubbleStart(
+                a11yConnected = false,
+                settingsEnabled = true,
+                captureReady = true,
+                overlayReady = true,
+            ),
+        ).isFalse()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.IDLE)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.runCycleIfActive(vision())).isNull()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.lastReason).contains("ACCESSIBILITY: DISCONNECTED")
+    }
 }

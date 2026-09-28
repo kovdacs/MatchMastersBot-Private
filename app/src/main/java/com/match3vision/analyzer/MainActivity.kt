@@ -11,6 +11,8 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -29,8 +31,13 @@ import timber.log.Timber
 
 /**
  * Hosts MediaProjection + overlay + accessibility prompts and the Compose UI.
- * Flow: INDÍTÁS → minimal permission prompts → CaptureService + floating bubble.
- * Auto-play loop starts only when the user taps INDÍTÁS on the bubble.
+ *
+ * Flow: one main INDÍTÁS → permissions → AccessibilityService check →
+ * CaptureService → Floating Bubble → AutoPlayController RUNNING (when a11y
+ * runtime-connected) → InputEnableSwitch ENABLED → ensureLoopRunning().
+ *
+ * Settings flag alone ≠ connected; if disconnected, UI shows
+ * ACCESSIBILITY: DISCONNECTED and does not arm RUNNING.
  */
 class MainActivity : ComponentActivity() {
 
@@ -38,11 +45,12 @@ class MainActivity : ComponentActivity() {
 
     private var pendingAfterOverlay = false
     private var pendingAfterA11y = false
+    /** True while a main-screen INDÍTÁS setup is in progress (auto-start loop when ready). */
+    private var pendingAutoStartLoop = false
 
     private val minimizeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == FloatingBubbleService.ACTION_MINIMIZE_ANALYZER) {
-                // Large analyzer panels cover MediaProjection — background so Match Masters shows.
                 moveTaskToBack(true)
             }
         }
@@ -57,15 +65,11 @@ class MainActivity : ComponentActivity() {
             AutoPlaySession.publish(captureReady = true)
             FloatingBubbleService.start(this)
             AutoPlaySession.publish(bubbleVisible = true)
-            Toast.makeText(
-                this,
-                "Buborék kész — nyisd meg a Match Masters-t, majd buborék INDÍTÁS",
-                Toast.LENGTH_LONG,
-            ).show()
             Timber.i("MediaProjection granted — CaptureService + bubble starting")
-            // Leave playfield visible for MediaProjection (bubble is small).
-            moveTaskToBack(true)
+            // Defer slightly so FloatingBubbleService.onCreate / beginNewSession finish.
+            finishStartChainAfterCaptureAndBubble()
         } else {
+            pendingAutoStartLoop = false
             viewModel.onCapturePermissionDenied()
             AutoPlaySession.publish(captureReady = false, statusText = "Képernyőrögzítés elutasítva")
             Timber.w("MediaProjection denied or cancelled")
@@ -87,6 +91,7 @@ class MainActivity : ComponentActivity() {
         if (ok) {
             continueStartFlow()
         } else {
+            pendingAutoStartLoop = false
             Toast.makeText(this, getString(R.string.overlay_permission_rationale), Toast.LENGTH_LONG).show()
             viewModel.onCapturePermissionDenied()
         }
@@ -119,13 +124,21 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.onAnalyzerUiForeground(true)
         refreshPermissionFlags()
-        // If user returned from a11y settings during setup, continue.
         if (pendingAfterA11y) {
             pendingAfterA11y = false
             if (MatchMastersAccessibilityService.isConnected() || isAccessibilityEnabledInSettings()) {
                 continueStartFlow()
             } else {
+                pendingAutoStartLoop = false
                 Toast.makeText(this, getString(R.string.a11y_permission_rationale), Toast.LENGTH_LONG).show()
+                AutoPlaySession.publish(
+                    a11yReady = false,
+                    statusText = "ACCESSIBILITY: DISCONNECTED",
+                )
+                AutoPlaySession.updateDiagnostics(
+                    a11yConnected = false,
+                    stopReason = "ACCESSIBILITY: DISCONNECTED",
+                )
             }
         }
         if (pendingAfterOverlay) {
@@ -149,8 +162,9 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** Big INDÍTÁS — request only missing permissions, then capture + bubble. */
+    /** Big INDÍTÁS — request only missing permissions, then capture + bubble + auto loop. */
     private fun beginAutoPlaySetup() {
+        pendingAutoStartLoop = true
         viewModel.onStartRequested()
         AutoPlaySession.publish(statusText = "Engedélyek…")
         continueStartFlow()
@@ -176,34 +190,89 @@ class MainActivity : ComponentActivity() {
             return
         }
         AutoPlaySession.publish(overlayReady = true)
-        // 3) Accessibility for gestures
-        if (!MatchMastersAccessibilityService.isConnected() && !isAccessibilityEnabledInSettings()) {
+        // 3) Accessibility — settings listing is enough to proceed past the prompt,
+        //    but RUNNING requires runtime connection (checked in finishStartChain).
+        val connected = MatchMastersAccessibilityService.isConnected()
+        val settingsOn = isAccessibilityEnabledInSettings()
+        if (!connected && !settingsOn) {
             pendingAfterA11y = true
             Toast.makeText(this, getString(R.string.a11y_permission_rationale), Toast.LENGTH_LONG).show()
             openAccessibilitySettings()
             return
         }
-        AutoPlaySession.publish(a11yReady = true)
+        AutoPlaySession.publish(
+            a11yReady = connected,
+            a11ySettingsEnabled = settingsOn,
+        )
         // 4) MediaProjection
         if (CaptureService.managerOrNull() != null) {
-            // Already capturing — just ensure bubble.
             if (!FloatingBubbleService.isRunning()) {
                 FloatingBubbleService.start(this)
             }
             viewModel.onCaptureServiceStarted()
             AutoPlaySession.publish(captureReady = true, bubbleVisible = true)
-            Toast.makeText(
-                this,
-                "Buborék kész — nyisd meg a Match Masters-t, majd buborék INDÍTÁS",
-                Toast.LENGTH_LONG,
-            ).show()
-            moveTaskToBack(true)
+            finishStartChainAfterCaptureAndBubble()
             return
         }
         launchProjectionPermission()
     }
 
+    /**
+     * After CaptureService + bubble are up: if a11y is runtime-connected,
+     * arm RUNNING + InputEnable + ensureLoopRunning via bubble ACTION_START_LOOP.
+     * Otherwise show ACCESSIBILITY: DISCONNECTED and leave mode IDLE (no silent HOLD).
+     */
+    private fun finishStartChainAfterCaptureAndBubble() {
+        val wantStart = pendingAutoStartLoop
+        pendingAutoStartLoop = false
+        val connected = MatchMastersAccessibilityService.isConnected()
+        val settingsOn = isAccessibilityEnabledInSettings()
+        AutoPlaySession.publish(
+            captureReady = true,
+            bubbleVisible = true,
+            a11yReady = connected,
+            a11ySettingsEnabled = settingsOn,
+            overlayReady = Settings.canDrawOverlays(this),
+        )
+        AutoPlaySession.updateDiagnostics(a11yConnected = connected)
+
+        if (!wantStart) {
+            moveTaskToBack(true)
+            return
+        }
+
+        if (!connected) {
+            val msg = if (settingsOn) {
+                "ACCESSIBILITY: DISCONNECTED (settings on, service not connected) — auto nem indul"
+            } else {
+                "ACCESSIBILITY: DISCONNECTED — kapcsold be a kisegítőt"
+            }
+            AutoPlaySession.publish(statusText = msg, a11yReady = false)
+            AutoPlaySession.updateDiagnostics(
+                a11yConnected = false,
+                stopReason = "ACCESSIBILITY: DISCONNECTED",
+            )
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            Timber.w("Main INDÍTÁS blocked: a11y not runtime-connected (settingsOn=%s)", settingsOn)
+            moveTaskToBack(true)
+            return
+        }
+
+        // Runtime connected → start full chain (no second bubble INDÍTÁS required).
+        Handler(Looper.getMainLooper()).postDelayed({
+            FloatingBubbleService.requestStartLoop(this)
+            Toast.makeText(
+                this,
+                "Auto indul — nyisd meg a Match Masters-t (buborék kontroll / SZÜNET / STOP)",
+                Toast.LENGTH_LONG,
+            ).show()
+            Timber.i("Main INDÍTÁS → ACTION_START_LOOP (a11y CONNECTED)")
+            moveTaskToBack(true)
+        }, 350L)
+    }
+
     private fun stopEverything() {
+        pendingAutoStartLoop = false
         FloatingBubbleService.stop(this)
         CaptureService.stop(this)
         viewModel.onCaptureServiceStopped()
@@ -229,15 +298,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshPermissionFlags() {
+        val connected = MatchMastersAccessibilityService.isConnected()
+        val settingsOn = isAccessibilityEnabledInSettings()
         AutoPlaySession.publish(
             overlayReady = Settings.canDrawOverlays(this),
-            a11yReady = MatchMastersAccessibilityService.isConnected() ||
-                isAccessibilityEnabledInSettings(),
+            a11yReady = connected,
+            a11ySettingsEnabled = settingsOn,
             captureReady = CaptureService.managerOrNull() != null,
         )
+        AutoPlaySession.updateDiagnostics(a11yConnected = connected)
     }
 
-    /** Settings may show enabled before onServiceConnected; treat listed service as ready enough to proceed. */
+    /** Settings listing only — does NOT mean the service is connected. */
     private fun isAccessibilityEnabledInSettings(): Boolean {
         return try {
             val enabled = Settings.Secure.getString(
@@ -245,8 +317,10 @@ class MainActivity : ComponentActivity() {
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ) ?: return false
             val expected = "$packageName/${MatchMastersAccessibilityService::class.java.canonicalName}"
-            enabled.split(':').any { it.equals(expected, ignoreCase = true) ||
-                it.contains("MatchMastersAccessibilityService", ignoreCase = true) }
+            enabled.split(':').any {
+                it.equals(expected, ignoreCase = true) ||
+                    it.contains("MatchMastersAccessibilityService", ignoreCase = true)
+            }
         } catch (_: Throwable) {
             false
         }

@@ -121,11 +121,13 @@ fun AnalyzerScreen(
             PermissionStatusCard(
                 overlayReady = auto.overlayReady,
                 a11yReady = auto.a11yReady,
+                a11ySettingsEnabled = auto.a11ySettingsEnabled,
                 captureReady = auto.captureReady,
                 bubbleVisible = auto.bubbleVisible,
                 mode = auto.mode,
                 statusText = auto.statusText,
                 moveCount = auto.moveCount,
+                diagnosticsText = auto.diagnostics.bubbleLines(),
                 onOpenOverlay = onOpenOverlaySettings,
                 onOpenA11y = onOpenAccessibilitySettings,
             )
@@ -208,7 +210,8 @@ fun AnalyzerScreen(
             }
 
             Text(
-                "Auto: buborék INDÍTÁS indítja a kört. SZÜNET megállítja. STOP eltávolítja a buborékot.",
+                "Auto: egy fő INDÍTÁS indítja a kört (ha ACCESSIBILITY: CONNECTED). " +
+                    "Buborék SZÜNET/STOP; buborék INDÍTÁS folytatáshoz.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -222,11 +225,13 @@ fun AnalyzerScreen(
 private fun PermissionStatusCard(
     overlayReady: Boolean,
     a11yReady: Boolean,
+    a11ySettingsEnabled: Boolean,
     captureReady: Boolean,
     bubbleVisible: Boolean,
     mode: AutoPlayController.Mode,
     statusText: String,
     moveCount: Int,
+    diagnosticsText: String,
     onOpenOverlay: () -> Unit,
     onOpenA11y: () -> Unit,
 ) {
@@ -235,16 +240,27 @@ private fun PermissionStatusCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("ENGEDÉLYEK / AUTO", fontWeight = FontWeight.SemiBold)
+            Text("ENGEDÉLYEK / AUTO / DIAG", fontWeight = FontWeight.SemiBold)
             Text("Lebegő buborék: ${if (overlayReady) "OK" else "kell"}")
-            Text("Kisegítő (húzás): ${if (a11yReady) "OK" else "kell"}")
-            Text("Rögzítés: ${if (captureReady) "OK" else "—"}")
+            Text(
+                "ACCESSIBILITY: ${if (a11yReady) "CONNECTED" else "DISCONNECTED"}" +
+                    if (a11ySettingsEnabled && !a11yReady) " (settings on)" else "",
+                fontWeight = FontWeight.Bold,
+                color = if (a11yReady) Color(0xFF2E7D32) else Color(0xFFB71C1C),
+            )
+            Text("Rögzítés: ${if (captureReady) "ON" else "OFF"}")
             Text("Buborék látszik: ${if (bubbleVisible) "igen" else "nem"}")
             Text(
                 "Mód: ${autoModeHu(mode)} · húzások=$moveCount",
                 fontWeight = FontWeight.Medium,
             )
             Text(statusText, style = MaterialTheme.typography.bodySmall)
+            Text(
+                diagnosticsText,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!overlayReady) {
                     OutlinedButton(onClick = onOpenOverlay) { Text("Buborék engedély") }

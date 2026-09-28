@@ -5,7 +5,9 @@ import com.match3vision.analyzer.vision.VisionResult
 /**
  * Continuous auto-play loop control for the floating bubble UX.
  *
- * - Does **not** auto-start: [onBubbleStart] required before any cycle runs.
+ * - Main-screen INDÍTÁS (or bubble INDÍTÁS) calls [onStartRequested] to arm RUNNING.
+ * - Requires runtime AccessibilityService connected ([StartupReadinessGate]);
+ *   settings flag alone does **not** allow RUNNING / input-ready.
  * - [onBubblePause] stops the loop (keeps session; no gestures).
  * - [onBubbleStop] disables input and marks STOPPED (caller removes bubble / capture).
  * - Reuses [InputLoopController] + [AutomaticInputEngine] gates (PASS/HOLD unchanged).
@@ -20,7 +22,7 @@ class AutoPlayController(
     enum class Mode {
         /** Bubble may be visible; loop not running; input disabled. */
         IDLE,
-        /** User tapped bubble INDÍTÁS — continuous recognize→move→verify. */
+        /** User / main INDÍTÁS — continuous recognize→move→verify. */
         RUNNING,
         /** User tapped SZÜNET or failsafe — no cycles; input disabled. */
         PAUSED,
@@ -50,12 +52,39 @@ class AutoPlayController(
     fun isSessionAlive(): Boolean = mode != Mode.STOPPED
 
     /**
-     * Bubble INDÍTÁS / START. Enables input and arms the continuous loop.
-     * No-op / false when already STOPPED (caller must create a new session).
+     * Main-screen or bubble INDÍTÁS / START.
+     *
+     * @param a11yConnected runtime [MatchMastersAccessibilityService.isConnected]
+     *   (default true only for JVM unit tests that inject a ready executor).
+     * @param captureReady MediaProjection ready
+     * @param overlayReady overlay permission ready
+     * @param settingsEnabled informational; never alone grants RUNNING
      */
-    fun onBubbleStart(): Boolean {
+    fun onStartRequested(
+        a11yConnected: Boolean = true,
+        captureReady: Boolean = true,
+        overlayReady: Boolean = true,
+        settingsEnabled: Boolean = false,
+    ): Boolean {
         if (mode == Mode.STOPPED) {
             lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            return false
+        }
+        val gate = StartupReadinessGate.evaluate(
+            runtimeConnected = a11yConnected,
+            settingsEnabled = settingsEnabled,
+            captureReady = captureReady,
+            overlayReady = overlayReady,
+            inputSwitchEnabled = false, // not yet; we enable only after gate passes
+        )
+        if (!gate.canEnterRunning) {
+            enableSwitch.setEnabled(false)
+            // Stay IDLE/PAUSED — never silent HOLD as RUNNING.
+            if (mode == Mode.RUNNING) {
+                mode = Mode.PAUSED
+            }
+            lastReason = gate.blockReason ?: "ACCESSIBILITY: DISCONNECTED"
+            AutoPlayTrace.markStop(lastReason)
             return false
         }
         val sm = inputLoop.inputEngine().stateMachine()
@@ -65,8 +94,22 @@ class AutoPlayController(
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
         lastReason = "fut — felismerés→lépés→húzás"
+        AutoPlayTrace.log("MODE RUNNING", "input ENABLED a11y=CONNECTED")
         return true
     }
+
+    /** Bubble INDÍTÁS alias — same gate as main-screen start. */
+    fun onBubbleStart(
+        a11yConnected: Boolean = true,
+        captureReady: Boolean = true,
+        overlayReady: Boolean = true,
+        settingsEnabled: Boolean = false,
+    ): Boolean = onStartRequested(
+        a11yConnected = a11yConnected,
+        captureReady = captureReady,
+        overlayReady = overlayReady,
+        settingsEnabled = settingsEnabled,
+    )
 
     /** Bubble SZÜNET / PAUSE — stop loop; keep bubble. */
     fun onBubblePause() {
@@ -85,6 +128,7 @@ class AutoPlayController(
         }
         mode = Mode.STOPPED
         lastReason = "leállítva"
+        AutoPlayTrace.markStop(reason)
     }
 
     /** Engine failsafe STOP while running → pause (do not remove bubble). */
@@ -93,16 +137,18 @@ class AutoPlayController(
         enableSwitch.setEnabled(false)
         mode = Mode.PAUSED
         lastReason = "szünet (biztonság): $reason"
+        AutoPlayTrace.markStop(lastReason)
     }
 
     /**
      * One analyze→maybe-input cycle. Returns null when loop is not RUNNING
-     * (IDLE / PAUSED / STOPPED) — never auto-executes before bubble START.
+     * (IDLE / PAUSED / STOPPED) — never auto-executes before START.
      */
     fun runCycleIfActive(vision: VisionResult): InputLoopController.CycleResult? {
         if (mode != Mode.RUNNING) return null
         if (!enableSwitch.isEnabled()) {
             lastReason = "bevitel ki — várakozás INDÍTÁS-ra"
+            AutoPlayTrace.log(AutoPlayTrace.TAG_STOP_REASON, lastReason)
             return null
         }
         val sm = inputLoop.inputEngine().stateMachine()
@@ -122,7 +168,10 @@ class AutoPlayController(
                     moveCount += 1
                 }
             }
-            BotLoopOutcome.HOLD -> holdCount += 1
+            BotLoopOutcome.HOLD -> {
+                holdCount += 1
+                AutoPlayTrace.log("HOLD", cycle.reason)
+            }
             BotLoopOutcome.STOP -> onFailsafePause(cycle.reason)
         }
         return cycle
@@ -149,6 +198,7 @@ class AutoPlayController(
         lastReason = "tétlen"
         moveCount = 0
         holdCount = 0
+        AutoPlayTrace.clear()
     }
 
     companion object {

@@ -11,8 +11,8 @@ android {
         applicationId = "com.match3vision.analyzer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.22.1-touch-fix"
+        versionCode = 8
+        versionName = "0.22.2-startup-unify"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
