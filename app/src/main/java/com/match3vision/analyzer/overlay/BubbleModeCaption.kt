@@ -1,5 +1,7 @@
 package com.match3vision.analyzer.overlay
 
+import com.match3vision.analyzer.input.FiveMoveArm
+
 /**
  * Collapsed chip title. The status line is a separate refusal or result.
  */
@@ -14,4 +16,16 @@ object BubbleModeCaption {
     }
 
     fun fiveLabel(verified: Int, max: Int): String = "5 LÉPÉS $verified/$max"
+
+    /** Shown on the collapsed chip while a 5-move session is in progress. */
+    fun collapsedStatus(
+        fiveActive: Boolean,
+        fiveLabel: String,
+        chipNotice: String,
+        fallback: String,
+    ): String = if (fiveActive) {
+        "${FiveMoveArm.DO_NOT_TOUCH}\n$fiveLabel"
+    } else {
+        chipNotice.ifBlank { fallback }
+    }
 }

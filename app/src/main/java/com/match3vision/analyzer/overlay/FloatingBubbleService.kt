@@ -2305,14 +2305,20 @@ class FloatingBubbleService : Service() {
             titleView?.textSize = 13f
             statusView?.maxLines = 2
             statusView?.textSize = 11f
-            statusView?.text = chipNotice.ifBlank { modeTitle }
+            statusView?.text = BubbleModeCaption.collapsedStatus(
+                fiveActive = five.isActive,
+                fiveLabel = five.label(),
+                chipNotice = chipNotice,
+                fallback = modeTitle,
+            )
         } else {
             titleView?.text = "Match3 Auto"
             titleView?.textSize = 11f
             statusView?.maxLines = 32
             statusView?.textSize = 8.5f
+            val warning = if (five.isActive) FiveMoveArm.DO_NOT_TOUCH + ".\n" else ""
             val notice = if (chipNotice.isBlank()) "" else chipNotice + "\n"
-            statusView?.text = notice + diag.bubbleLines(compact = true) +
+            statusView?.text = warning + notice + diag.bubbleLines(compact = true) +
                 "\nEGY LÉPÉS: ${ctrl.singleMove.label()}"
         }
         startBtn?.isEnabled = ctrl.mode != AutoPlayController.Mode.RUNNING &&
