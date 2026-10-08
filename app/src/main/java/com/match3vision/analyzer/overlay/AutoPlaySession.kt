@@ -1,13 +1,13 @@
 package com.match3vision.analyzer.overlay
 
 import com.match3vision.analyzer.capture.AnalysisFrameGate
-import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutoPlayTrace
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.AutomaticTouchTest
 import com.match3vision.analyzer.input.InputEnableSwitch
 import com.match3vision.analyzer.input.InputLoopController
+import com.match3vision.analyzer.input.ProductionInstall
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.orchestration.AnalysisOrchestrator
 import com.match3vision.analyzer.vision.VisionFrameAnalyzer
@@ -133,7 +133,7 @@ object AutoPlaySession {
     private val enableSwitch = InputEnableSwitch.disabledByDefault()
     private val inputEngine = AutomaticInputEngine(
         enableSwitch = enableSwitch,
-        executor = AccessibilityGestureExecutor(),
+        executor = ProductionInstall.accessibilityExecutor(),
     )
     private val inputLoop = InputLoopController(inputEngine = inputEngine)
     val controller: AutoPlayController = AutoPlayController(

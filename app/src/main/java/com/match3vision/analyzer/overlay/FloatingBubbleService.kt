@@ -25,7 +25,7 @@ import com.match3vision.analyzer.input.BotLoopOutcome
 import com.match3vision.analyzer.input.GestureFailSafe
 import com.match3vision.analyzer.input.InputThresholds
 import com.match3vision.analyzer.input.MatchMastersAccessibilityService
-import com.match3vision.analyzer.input.RuntimeCycleContext
+import com.match3vision.analyzer.input.ProductionCycleContext
 import com.match3vision.analyzer.input.RuntimeLabels
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.input.VerificationPolicy
@@ -557,18 +557,15 @@ class FloatingBubbleService : Service() {
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
                         "${vision.grid.boardRoi.right},${vision.grid.boardRoi.bottom})"
                     val boardDet = vision.method.name + "/" + boardRoiStr
-                    val cycleContext = RuntimeCycleContext(
+                    val cycleContext = ProductionCycleContext.fromLoopObservation(
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
-                        captureOn = CaptureService.managerOrNull() != null,
+                        captureManagerPresent = CaptureService.managerOrNull() != null,
                         hasFrame = true,
                         frameAgeMs = useFrame.ageMs(),
                         frameSequenceDecision = seqDecision,
-                        screenWidth = useFrame.width,
-                        screenHeight = useFrame.height,
                         frameTimestampMs = useFrame.timestampMs,
                         frameWidth = useFrame.width,
                         frameHeight = useFrame.height,
-                        simulated = false,
                     )
                     // Overlay must not cancel the injected gesture (same fix as TESZT ÉRINTÉS).
                     setBubbleTouchable(false)
@@ -643,6 +640,9 @@ class FloatingBubbleService : Service() {
                             val executed = cycle.executed
                             if (executed is AutomaticInputEngine.ExecuteResult.Executed) {
                                 seqGate.markGestureDispatched(frameId)
+                                val dispatchCompletedAtMs = System.currentTimeMillis()
+                                val dispatchCompletedElapsedMs =
+                                    com.match3vision.analyzer.input.FrameClock.tryElapsed()
                                 statusView?.text = "GESZTUS #${ctrl.moveCount}"
                                 val waitMs = cycle.animationWaitMs.coerceAtLeast(
                                     InputThresholds.ANIMATION_WAIT_MS,
@@ -707,6 +707,10 @@ class FloatingBubbleService : Service() {
                                         VerifyObservation(
                                             newFrameAccepted = true,
                                             frameFresh = true,
+                                            frameTimestampMs = afterFrame.timestampMs,
+                                            dispatchCompletedAtMs = dispatchCompletedAtMs,
+                                            frameElapsedMs = afterFrame.elapsedRealtimeMs,
+                                            dispatchCompletedElapsedMs = dispatchCompletedElapsedMs,
                                         ),
                                     )
                                 }

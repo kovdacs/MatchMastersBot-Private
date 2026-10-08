@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -20,6 +21,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import com.match3vision.analyzer.capture.CaptureConsent
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.input.MatchMastersAccessibilityService
 import com.match3vision.analyzer.overlay.AutoPlaySession
@@ -282,7 +284,19 @@ class MainActivity : ComponentActivity() {
 
     private fun launchProjectionPermission() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projectionLauncher.launch(mpm.createScreenCaptureIntent())
+        val intent = if (
+            CaptureConsent.modeForSdk(Build.VERSION.SDK_INT) ==
+            CaptureConsent.Mode.ENTIRE_DEFAULT_DISPLAY
+        ) {
+            // API 34+ default chooser can capture only this app. After the
+            // analyzer is backgrounded that is not the game, so Vision HOLDs
+            // and the loop never dispatches.
+            val config = MediaProjectionConfig.createConfigForDefaultDisplay()
+            mpm.createScreenCaptureIntent(config)
+        } else {
+            mpm.createScreenCaptureIntent()
+        }
+        projectionLauncher.launch(intent)
     }
 
     private fun openOverlaySettings() {

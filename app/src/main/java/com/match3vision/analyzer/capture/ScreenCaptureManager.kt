@@ -71,10 +71,17 @@ class ScreenCaptureManager(
         mediaProjection = projection
         projection.registerCallback(projectionCallback, null)
 
-        val metrics = displayMetrics()
-        densityDpi = metrics.densityDpi
-        widthPx = metrics.widthPixels
-        heightPx = metrics.heightPixels
+        val size = capturePixelSize()
+        densityDpi = size.densityDpi
+        widthPx = size.width
+        heightPx = size.height
+        if (widthPx <= 0 || heightPx <= 0) {
+            Timber.e("Capture display size unknown (${size.source}) — not starting")
+            mediaProjection?.unregisterCallback(projectionCallback)
+            mediaProjection?.stop()
+            mediaProjection = null
+            return
+        }
 
         val thread = HandlerThread("Match3Capture").also { it.start() }
         captureThread = thread
@@ -97,7 +104,9 @@ class ScreenCaptureManager(
 
         running.set(true)
         _isCapturing.value = true
-        Timber.i("Capture started ${widthPx}x$heightPx @ ${config.targetFps} fps")
+        Timber.i(
+            "Capture started ${widthPx}x$heightPx dpi=$densityDpi source=${size.source} @ ${config.targetFps} fps",
+        )
     }
 
     @Synchronized
@@ -152,6 +161,7 @@ class ScreenCaptureManager(
         try {
             image = reader.acquireLatestImage() ?: return
             val now = System.currentTimeMillis()
+            val elapsed = com.match3vision.analyzer.input.FrameClock.tryElapsed()
             val interval = config.frameIntervalMs
             if (now - lastEmitMs < interval) {
                 return
@@ -196,6 +206,7 @@ class ScreenCaptureManager(
                 bitmap = cropped,
                 contentRoi = roi,
                 sequence = ++frameSequence,
+                elapsedRealtimeMs = elapsed,
             )
             _latestFrame.value = frame
             // Recycle previous bitmap after swap (avoid MediaProjection leak).
@@ -216,17 +227,38 @@ class ScreenCaptureManager(
         }
     }
 
-    private fun displayMetrics(): DisplayMetrics {
-        val metrics = Resources.getSystem().displayMetrics
-        // Prefer window metrics from context when available
-        val dm = DisplayMetrics()
-        dm.setTo(metrics)
+    /**
+     * Virtual-display pixels. Prefer maximum window bounds (same space as the
+     * touch test / dispatchGesture screen) and fall back to real metrics.
+     */
+    private fun capturePixelSize(): CaptureDisplaySize.Px {
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+        var maxW = 0
+        var maxH = 0
+        if (wm != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val b = wm.maximumWindowMetrics.bounds
+            maxW = b.width()
+            maxH = b.height()
+        }
+        val real = DisplayMetrics()
         if (wm != null) {
             @Suppress("DEPRECATION")
-            wm.defaultDisplay.getRealMetrics(dm)
+            wm.defaultDisplay.getRealMetrics(real)
+        } else {
+            real.setTo(Resources.getSystem().displayMetrics)
         }
-        return dm
+        val density = if (real.densityDpi > 0) {
+            real.densityDpi
+        } else {
+            Resources.getSystem().displayMetrics.densityDpi
+        }
+        return CaptureDisplaySize.choose(
+            maximumWindowWidth = maxW,
+            maximumWindowHeight = maxH,
+            realWidth = real.widthPixels,
+            realHeight = real.heightPixels,
+            densityDpi = density,
+        )
     }
 
     companion object {

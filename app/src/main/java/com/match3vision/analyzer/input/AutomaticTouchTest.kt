@@ -13,7 +13,7 @@ package com.match3vision.analyzer.input
  * Example 1080×2340: (540, 1053) → (740, 1053)
  */
 class AutomaticTouchTest(
-    private val executor: InputGestureExecutor = AccessibilityGestureExecutor(),
+    private val executor: InputGestureExecutor = ProductionInstall.accessibilityExecutor(),
     private val a11yConnected: () -> Boolean = { MatchMastersAccessibilityService.isConnected() },
     private val a11yDiagnose: () -> String = { MatchMastersAccessibilityService.diagnoseConnected() },
     private val logger: SmokeTestLogger = SmokeTestLogger(),

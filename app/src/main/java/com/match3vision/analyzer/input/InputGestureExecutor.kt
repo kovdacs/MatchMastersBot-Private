@@ -15,7 +15,23 @@ interface InputGestureExecutor {
 }
 
 /**
+ * Fail-closed placeholder when no executor was installed.
+ *
+ * Not a test recorder and not the production accessibility channel.
+ * [isReady] is always false, so a forgotten install cannot dispatch.
+ */
+class UninstalledGestureExecutor : InputGestureExecutor {
+    override fun isReady(): Boolean = false
+
+    override fun dispatch(gesture: GestureSpec): InputDispatchResult =
+        InputDispatchResult.Failed(
+            "executor not installed (production must use AccessibilityGestureExecutor)",
+        )
+}
+
+/**
  * Test double that records gestures and never touches the OS.
+ * JVM harness only. The production install rejects this type.
  */
 class RecordingInputGestureExecutor(
     private var ready: Boolean = true,

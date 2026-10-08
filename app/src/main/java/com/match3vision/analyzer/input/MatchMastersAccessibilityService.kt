@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicReference
  * Alternative documented path: [ShellInputGestureExecutor] (`input swipe` via shell /
  * Instrumentation). Prefer this AccessibilityService when available.
  */
-class MatchMastersAccessibilityService : AccessibilityService() {
+class MatchMastersAccessibilityService : AccessibilityService(), AccessibilityGestureChannel {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -68,7 +68,7 @@ class MatchMastersAccessibilityService : AccessibilityService() {
      * from serviceInfo (some OEMs omit the bit even when XML has canPerformGestures=true).
      * Still returns true so we attempt dispatch — the framework returns false if denied.
      */
-    fun canDispatchGestures(): Boolean {
+    override fun canDispatchGestures(): Boolean {
         val info = serviceInfo
         if (info != null) {
             val hasBit =
@@ -87,7 +87,7 @@ class MatchMastersAccessibilityService : AccessibilityService() {
     }
 
     /** Human-readable diagnose line for bubble / logcat. */
-    fun diagnose(): String {
+    override fun diagnose(): String {
         val info = serviceInfo
         val caps = info?.capabilities ?: -1
         val hasBit =
@@ -107,10 +107,10 @@ class MatchMastersAccessibilityService : AccessibilityService() {
      * Uses `super.dispatchGesture` explicitly so the GestureSpec overload never
      * shadows the framework call (a11y wiring fix).
      */
-    fun dispatchGesture(
+    override fun dispatchGesture(
         gesture: GestureSpec,
-        awaitCompletion: Boolean = true,
-        timeoutMs: Long = GESTURE_CALLBACK_TIMEOUT_MS,
+        awaitCompletion: Boolean,
+        timeoutMs: Long,
     ): InputDispatchResult {
         if (!canDispatchGestures()) {
             Timber.e("TOUCH_A11Y: gesture dispatch FAIL — canPerformGestures=false (%s)", diagnose())
@@ -191,35 +191,43 @@ class MatchMastersAccessibilityService : AccessibilityService() {
 
         if (!ok) {
             Timber.e("TOUCH_A11Y: gesture dispatch FAIL — dispatchGesture returned false")
-            return InputDispatchResult.Failed("AccessibilityService.dispatchGesture returned false")
+            return GestureCallbackPolicy.decide(
+                scheduled = false,
+                awaitCallback = shouldAwait,
+                callbackArrived = false,
+                completed = false,
+                cancelled = false,
+            ).toResult(gesture)
         }
 
         Timber.i("TOUCH_A11Y: dispatchGesture returned true (scheduled) await=%s", shouldAwait)
-        if (!shouldAwait) {
-            return InputDispatchResult.Dispatched(gesture)
-        }
-
-        val finished = try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
-        } catch (ie: InterruptedException) {
-            Thread.currentThread().interrupt()
+        val finished = if (!shouldAwait) {
             false
+        } else {
+            try {
+                latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            } catch (ie: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
         }
-        return when {
-            !finished -> {
-                Timber.e("TOUCH_A11Y: gesture dispatch FAIL — callback timeout ${timeoutMs}ms")
-                InputDispatchResult.Failed("gesture callback timeout ${timeoutMs}ms")
-            }
-            outcome.get() == CallbackOutcome.COMPLETED -> {
-                InputDispatchResult.Dispatched(gesture)
-            }
-            outcome.get() == CallbackOutcome.CANCELLED -> {
-                InputDispatchResult.Failed(
-                    "gesture onCancelled (overlay/touch conflict or system interrupt)",
-                )
-            }
-            else -> InputDispatchResult.Failed("gesture callback unknown state")
+        val decision = GestureCallbackPolicy.decide(
+            scheduled = true,
+            awaitCallback = shouldAwait,
+            callbackArrived = finished,
+            completed = outcome.get() == CallbackOutcome.COMPLETED,
+            cancelled = outcome.get() == CallbackOutcome.CANCELLED,
+        )
+        when (decision.kind) {
+            GestureCallbackPolicy.Kind.TIMED_OUT ->
+                Timber.e("TOUCH_A11Y: gesture dispatch FAIL — %s", decision.reason)
+            GestureCallbackPolicy.Kind.CANCELLED ->
+                Timber.w("TOUCH_A11Y: gesture dispatch FAIL — %s", decision.reason)
+            GestureCallbackPolicy.Kind.COMPLETED ->
+                Timber.i("TOUCH_A11Y: gesture callback onCompleted (not VERIFY SUCCESS)")
+            else -> Unit
         }
+        return decision.toResult(gesture)
     }
 
     private enum class CallbackOutcome { COMPLETED, CANCELLED }

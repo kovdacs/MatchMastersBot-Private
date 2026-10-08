@@ -11,12 +11,13 @@ import com.match3vision.analyzer.vision.VisionValidator
  * Executes a swipe **only** when all gates pass and [InputEnableSwitch] is explicitly
  * enabled (default DISABLED). Otherwise HOLD — Decision AI blocked, no input.
  *
- * Real gesture path: [InputGestureExecutor] (AccessibilityService preferred).
+ * Real gesture path: [AccessibilityGestureExecutor] installed by [ProductionInstall].
+ * The default executor is [UninstalledGestureExecutor] — never the test recorder.
  * Never uses hardcoded pvp_board coordinates — [TouchCoordinateMapper] + grid centers.
  */
 class AutomaticInputEngine(
     private val enableSwitch: InputEnableSwitch = InputEnableSwitch.disabledByDefault(),
-    private val executor: InputGestureExecutor = RecordingInputGestureExecutor(ready = false),
+    private val executor: InputGestureExecutor = UninstalledGestureExecutor(),
     private val coordinateMapper: TouchCoordinateMapper = TouchCoordinateMapper(),
     private val visionValidator: VisionValidator = VisionValidator(),
     private val minMoveConfidence: Float = InputThresholds.MIN_MOVE_CONFIDENCE,
@@ -50,6 +51,8 @@ class AutomaticInputEngine(
     fun stateMachine(): BotStateMachine = stateMachine
     fun feedbackVerifier(): InputFeedbackVerifier = feedbackVerifier
     fun isInputEnabled(): Boolean = enableSwitch.isEnabled()
+    /** Installed channel. Production must be [AccessibilityGestureExecutor]. */
+    fun executor(): InputGestureExecutor = executor
     /** Runtime input channel ready (AccessibilityService connected). */
     fun executorReady(): Boolean = executor.isReady()
 
@@ -92,6 +95,16 @@ class AutomaticInputEngine(
         move: MoveEvaluation?,
         context: RuntimeCycleContext? = null,
     ): ExecuteResult {
+        // The live accessibility executor must not inherit evaluateGate defaults
+        // (a11y connected, fresh frame, age 0) and must not run a simulation context.
+        if (ProductionPath.isProductionExecutor(executor)) {
+            val refusal = ProductionPath.productionReadinessRefusal(context)
+            if (refusal != null) {
+                stateMachine.onInputBlocked(refusal)
+                AutoPlayTrace.log("HOLD", refusal)
+                return ExecuteResult.Held(refusal)
+            }
+        }
         val gate = if (context == null) {
             evaluateGate(vision, move)
         } else {
@@ -119,6 +132,18 @@ class AutomaticInputEngine(
             return ExecuteResult.Stopped(reason)
         }
         if (context != null) {
+            val space = FrameScreenCoordinatePolicy.assess(
+                frameWidth = context.frameWidth,
+                frameHeight = context.frameHeight,
+                screenWidth = context.screenWidth,
+                screenHeight = context.screenHeight,
+            )
+            if (space.mapping != FrameScreenCoordinatePolicy.Mapping.IDENTITY_FRAME_PIXELS) {
+                val reason = "STOP — gesture NOT CREATED: ${space.reason}"
+                stateMachine.stop(reason)
+                AutoPlayTrace.log("GESTURE", reason)
+                return ExecuteResult.Stopped(reason)
+            }
             val coord = CoordinateBounds.check(gesture, context.screenWidth, context.screenHeight)
             if (!coord.allow) {
                 val reason = "STOP — gesture NOT CREATED: ${coord.reason}"
@@ -154,7 +179,17 @@ class AutomaticInputEngine(
             }
         }
         AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_START, gesture.toString())
-        val dispatch = executor.dispatch(gesture)
+        val dispatch = if (context != null && executor is AccessibilityGestureExecutor) {
+            val permit = DispatchPermit.from(
+                context = context,
+                vision = vision,
+                gesture = gesture,
+                inputEnabled = enableSwitch.isEnabled(),
+            )
+            executor.dispatchChecked(permit)
+        } else {
+            executor.dispatch(gesture)
+        }
         return when (dispatch) {
             is InputDispatchResult.Dispatched -> {
                 AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "SUCCESS")

@@ -213,7 +213,8 @@ class InputLoopController(
                 val dispatchFailed = exec.reason.contains("dispatch failed", ignoreCase = true)
                 val coordBlocked = exec.reason.contains("off-screen", ignoreCase = true) ||
                     exec.reason.contains("bounds unknown", ignoreCase = true) ||
-                    exec.reason.contains("non-finite", ignoreCase = true)
+                    exec.reason.contains("non-finite", ignoreCase = true) ||
+                    exec.reason.contains("frame/screen", ignoreCase = true)
                 CycleResult(
                     sm.state, BotLoopOutcome.STOP, exec.reason,
                     executed = exec,
@@ -267,9 +268,18 @@ class InputLoopController(
         afterVision: VisionResult,
         verify: VerifyObservation? = null,
     ): CycleResult {
-        if (verify != null && (!verify.newFrameAccepted || !verify.frameFresh)) {
+        val frameTooEarly = verify != null && !verify.frameIsAfterDispatch()
+        val boardSame = verify?.boardUnchanged == true
+        if (verify != null && (!verify.newFrameAccepted || !verify.frameFresh || frameTooEarly || boardSame)) {
             val reason = verify.reason.ifBlank {
-                "VERIFY FAILED — stale or non-new frame cannot decide (no SUCCESS)"
+                when {
+                    boardSame ->
+                        "VERIFY FAILED — board unchanged (identical to pre-move; no SUCCESS)"
+                    frameTooEarly ->
+                        "VERIFY FAILED — frame is not later than dispatch completion (no SUCCESS)"
+                    else ->
+                        "VERIFY FAILED — stale or non-new frame cannot decide (no SUCCESS)"
+                }
             }
             val sm = inputEngine.stateMachine()
             if (sm.state != BotLoopState.STOP) {
