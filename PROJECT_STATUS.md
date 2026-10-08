@@ -3,8 +3,8 @@
 **Date:** 2026-10-08  
 **Version:** `0.24.4-production-safety-integration`  
 **Previous tip:** `c609479` / 0.24.3-production-path-audit  
-**This pack:** production safety, independent screen measurement, honest verification. Live phone still **NOT TESTED**. See `docs/FINAL_REPORT_0.24.4_PRODUCTION_SAFETY.md` after CI.  
-**CI:** pending the 0.24.4 candidate run. Prior 0.24.3 evidence remains in `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
+**This pack:** production safety, independent screen measurement, honest verification. Live phone still **NOT TESTED**. Evidence: `docs/FINAL_REPORT_0.24.4_PRODUCTION_SAFETY.md`.  
+**CI:** push run 37781640302 SUCCESS on candidate `fb4e74eb0b7faf03c8709ff55fa624895d454c7e`. Prior 0.24.3 evidence remains in `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)
