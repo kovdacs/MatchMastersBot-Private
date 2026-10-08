@@ -2,7 +2,12 @@
 
 **Date:** 2026-10-08  
 **Base:** `0.24.1-live-pipeline` (`c085dac`)  
-**Version name:** `0.24.2-runtime-diagnostics` (`versionCode` 14)
+**Commit:** `edb75397e4fccfa5e3d2089ede5dfe4103066464`  
+**Version name:** `0.24.2-runtime-diagnostics` (`versionCode` 14)  
+**CI (push):** https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767286383 — **SUCCESS**  
+**CI (pull_request):** https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767326565 — **SUCCESS**  
+**APK (this commit):** `Match3Analyzer-0.24.2-runtime-diagnostics-edb7539.apk` — **25 021 931** bytes  
+**Artifact:** https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767286383/artifacts/11546700212 (zip 8 755 727 bytes)
 
 ## What this pack is
 
@@ -116,6 +121,10 @@ Banner: `SIMULATION — not live phone`. Not a live-phone proof.
 4. Gesture coordinates are capture-bitmap pixels. A device where that space is not the touch space would show `COORD` / verify FAILED, not a silent success. Not measured here.
 5. After a process kill the session returns to IDLE until INDÍTÁS.
 
+The pull_request run names the APK with GitHub's merge commit (`68b0bad`), not the branch tip. The APK byte size is the same (25 021 931). That artifact is https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767326565/artifacts/11546715326 (`Match3Analyzer-0.24.2-runtime-diagnostics-68b0bad.apk`).
+
+Both CI logs show **342 PASSED** and `assembleDebug` **BUILD SUCCESSFUL**.
+
 ## Report block
 
 ```
@@ -123,22 +132,26 @@ VERSION:
 0.24.2-runtime-diagnostics
 
 COMMIT:
-(filled after push)
+edb75397e4fccfa5e3d2089ede5dfe4103066464
 
 CI RUN:
-(filled when Actions finishes)
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767286383 (push, edb7539)
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767326565 (pull_request, merge sha 68b0bad)
 
 CI STATUS:
-(filled when Actions finishes)
+SUCCESS (both runs)
 
 APK ARTIFACT:
-Match3Analyzer-0.24.2-runtime-diagnostics-<shortsha>.apk
+Match3Analyzer-0.24.2-runtime-diagnostics-edb7539.apk (25021931 bytes)
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767286383/artifacts/11546700212
+PR merge-sha copy: Match3Analyzer-0.24.2-runtime-diagnostics-68b0bad.apk (25021931 bytes)
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37767326565/artifacts/11546715326
 
 TESTS BEFORE:
-0.24.1 CI testDebugUnitTest was green (run 36468136011). Not re-executed on c085dac in this session.
+323 @Test methods on c085dac (0.24.1). That suite was not re-executed in this session; its CI run 36468136011 was SUCCESS.
 
 TESTS AFTER:
-testDebugUnitTest: 342 tests, 0 failures, 0 errors. assembleDebug: BUILD SUCCESSFUL.
+342 tests, 0 failures. Local testDebugUnitTest and both CI logs (342 PASSED). assembleDebug BUILD SUCCESSFUL locally and in both runs.
 
 RUNTIME STATUS AUDIT:
 - Real: mode, a11y instance, CaptureService alive/capturing, frame timestamp/size/age, VisionResult gate, MoveAnalysis candidates, gesture build, executor dispatch, verifier on a new frame.
@@ -155,15 +168,17 @@ FIXED:
 - MainActivity captureReady
 
 TEST EVIDENCE:
-- Faulty input readiness blocks dispatch: PASS
-- Vision HOLD never dispatches: PASS
-- Dispatch success is not VERIFY SUCCESS: PASS
-- Verify only on a new fresh verifiable frame: PASS
-- Stale frame is not a new decision: PASS
-- Bad coordinates blocked before dispatch: PASS
-- Failed dispatch does not retry: PASS
-- 1/5/10/20 simulations labeled SIMULATION: PASS
-- Thresholds 0.98 / 0.95 / unk<=1 unchanged: PASS
+- Full unit suite: PASS (342/342, both CI runs)
+- assembleDebug: PASS (both CI runs; APK 25021931 bytes)
+- Faulty input readiness blocks dispatch: PASS (faultyInputReadiness_blocksDispatchInEveryCase — switch off, channel not ready, a11y down, capture off, settings-only)
+- Vision HOLD never dispatches: PASS (visionHold_neverReachesDispatch)
+- Dispatch success is not VERIFY SUCCESS: PASS (dispatchSuccess_isNotVerifySuccess; status stays PENDING)
+- Verify only on a new fresh verifiable frame: PASS (verify_nonNewFrame_failedEvenIfBoardWouldDiffer, verify_requiresNewFreshFrame_andDoesNotTreatDispatchAsSuccess, verify_newFreshChangedBoard_success)
+- Stale frame is not a new decision: PASS (staleFrame_notUsedForNewDecision_thenFreshStillWorks)
+- Bad coordinates blocked before dispatch: PASS (offScreenAndUnknownBounds_blockedBeforeDispatch_noRetry)
+- A failed step does not retry without limit: PASS (dispatchFailure_doesNotRetryAndIsNotVerifySuccess, verify_boardUnchanged_failed)
+- 1/5/10/20 simulations labeled SIMULATION: PASS (ContinuousCycleHarnessTest continuous_1/5/10/20_moves)
+- Thresholds 0.98 / 0.95 / unk<=1 unchanged: PASS (thresholds_unchanged)
 
 SIMULATION:
 - 1 / 5 / 10 / 20: PASS (Tier B, explicitly SIMULATION)
