@@ -76,6 +76,7 @@ class AutoPlayControllerTest {
         val eng = AutomaticInputEngine(enableSwitch = sw, executor = exec)
         val loop = InputLoopController(inputEngine = eng)
         val ctrl = AutoPlayController(enableSwitch = sw, inputLoop = loop)
+        PlayPermit.allowContinuousStart()
         return ctrl to exec
     }
 

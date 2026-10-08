@@ -100,6 +100,7 @@ class RuntimeDiagnosticsAcceptanceTest {
             enableSwitch = sw,
             inputLoop = InputLoopController(inputEngine = eng),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true)).isTrue()
         return ctrl to exec
     }
@@ -323,6 +324,7 @@ class RuntimeDiagnosticsAcceptanceTest {
                     inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
                 ),
             )
+            PlayPermit.allowContinuousStart()
             assertThat(ctrl.onStartRequested(a11yConnected = true)).isTrue()
             val cycle = ctrl.runCycleIfActive(vision, fresh(a11y = false))
             assertThat(cycle!!.reason).contains("DISCONNECTED")
@@ -382,6 +384,7 @@ class RuntimeDiagnosticsAcceptanceTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
             ),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(ctrl.onStartRequested()).isTrue()
         val cycle = ctrl.runCycleIfActive(visionPass(), fresh())
         assertThat(cycle!!.outcome).isEqualTo(BotLoopOutcome.STOP)

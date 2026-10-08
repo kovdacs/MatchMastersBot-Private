@@ -19,6 +19,13 @@ object CoordinateSelfCheck {
     const val STATUS_REFUSED = "REFUSED"
     const val STATUS_RECORDED_UNPROVEN = "RECORDED_UNPROVEN"
 
+    /**
+     * A point was recorded and it is not the expected point.
+     * This does not unlock EGY LÉPÉS or continuous INDÍTÁS.
+     * [Record.alignmentProven] stays false either way.
+     */
+    const val STATUS_OBSERVED_MISMATCH = "OBSERVED_MISMATCH"
+
     data class Record(
         val status: String,
         val expectedX: Float,
@@ -36,6 +43,8 @@ object CoordinateSelfCheck {
         val observedNote: String,
         val alignmentProven: Boolean,
         val reason: String,
+        val observedX: Float? = null,
+        val observedY: Float? = null,
     ) {
         init {
             require(!alignmentProven) { "coordinate self-check cannot set alignmentProven" }
@@ -89,6 +98,9 @@ object CoordinateSelfCheck {
 
     fun allowsSingleMoveArm(): Boolean = current?.status == STATUS_RECORDED_UNPROVEN
 
+    /** Continuous INDÍTÁS. Same record as [allowsSingleMoveArm]. Never means alignment is proven. */
+    fun allowsContinuousStart(): Boolean = allowsSingleMoveArm()
+
     fun refuse(reason: String): Record {
         val rec = Record(
             status = STATUS_REFUSED,
@@ -132,6 +144,8 @@ object CoordinateSelfCheck {
         originOffsetX: Int = 0,
         originOffsetY: Int = 0,
         observedLuma: Float? = null,
+        observedX: Float? = null,
+        observedY: Float? = null,
     ): Record {
         val observed = if (observedLuma == null) {
             "touch indicator NOT MEASURED — no capture pixel at " +
@@ -147,6 +161,13 @@ object CoordinateSelfCheck {
         val frameKnown = frameWidth > 0 || frameHeight > 0
         val sizeMismatch = frameKnown &&
             (frameWidth != screenWidth || frameHeight != screenHeight)
+        val observedDiffers = observedX != null && observedY != null &&
+            (observedX != expectedX || observedY != expectedY)
+        val observedPoint = if (observedX != null && observedY != null) {
+            " observed=(${observedX},${observedY})"
+        } else {
+            ""
+        }
         val (status, reason) = when {
             screenWidth <= 0 || screenHeight <= 0 -> STATUS_REFUSED to
                 "screen size unknown ${screenWidth}x$screenHeight"
@@ -154,8 +175,12 @@ object CoordinateSelfCheck {
             sizeMismatch -> STATUS_REFUSED to
                 "frame/screen size mismatch frame=${frameWidth}x$frameHeight " +
                 "screen=${screenWidth}x$screenHeight"
+            observedDiffers -> STATUS_OBSERVED_MISMATCH to
+                "TESZT ÉRINTÉS observed!=expected expected=(${expectedX},${expectedY})" +
+                "$observedPoint. EGY LÉPÉS stays locked. alignmentProven=false."
             else -> STATUS_RECORDED_UNPROVEN to
-                "TESZT ÉRINTÉS recorded expected=(${expectedX},${expectedY}) " +
+                "TESZT ÉRINTÉS recorded expected=(${expectedX},${expectedY})" +
+                "$observedPoint " +
                 "screen=${screenWidth}x$screenHeight frame=${frameWidth}x$frameHeight " +
                 "rotation=$rotation. $insetNote. $observed. " +
                 "alignmentProven=false. Physical alignment is NOT proven."
@@ -177,6 +202,8 @@ object CoordinateSelfCheck {
             observedNote = observed,
             alignmentProven = false,
             reason = reason,
+            observedX = observedX,
+            observedY = observedY,
         )
         current = rec
         return rec

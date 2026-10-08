@@ -25,4 +25,17 @@ class HandMeasuredOracleTest {
         assertThat(HandMeasuredPvpCenters.rowCenterY[6]).isNotEqualTo(2165f)
         assertThat(HandMeasuredPvpCenters.rowCenterY[6]).isNotEqualTo(2171f)
     }
+
+    @Test
+    fun tolerance_doesNotDependOnTheObservedRow2Error() {
+        val observedRow2ErrorPx = 27.5f
+        assertThat(HandMeasuredPvpCenters.TOLERANCE_PX)
+            .isEqualTo(HandMeasuredPvpCenters.MIN_COLUMN_PITCH_PX / 5f)
+        assertThat(HandMeasuredPvpCenters.MIN_COLUMN_PITCH_PX).isEqualTo(149f)
+        assertThat(HandMeasuredPvpCenters.TOLERANCE_PX).isEqualTo(149f / 5f)
+        assertThat(HandMeasuredPvpCenters.TOLERANCE_PX).isNotEqualTo(observedRow2ErrorPx)
+        assertThat(HandMeasuredPvpCenters.TOLERANCE_PX - observedRow2ErrorPx)
+            .isWithin(0.01f).of(2.3f)
+        assertThat(HandMeasuredPvpCenters.TOLERANCE_PX).isLessThan(149f / 2f)
+    }
 }

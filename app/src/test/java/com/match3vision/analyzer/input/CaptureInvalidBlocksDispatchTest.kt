@@ -213,6 +213,7 @@ class CaptureInvalidBlocksDispatchTest {
             check(rec.status == CoordinateSelfCheck.STATUS_RECORDED_UNPROVEN)
             check(ctrl.armSingleMove())
         } else {
+            PlayPermit.allowContinuousStart()
             check(ctrl.onStartRequested())
         }
         return ctrl to channel

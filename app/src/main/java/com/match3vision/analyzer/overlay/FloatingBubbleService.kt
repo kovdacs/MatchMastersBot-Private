@@ -23,6 +23,8 @@ import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ScreenMetricsSource
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.CaptureOverlayTrace
+import com.match3vision.analyzer.input.DiagnosticAnalysisGate
 import com.match3vision.analyzer.input.CoordinateSelfCheck
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
@@ -321,7 +323,7 @@ class FloatingBubbleService : Service() {
         val captureOk = CaptureService.managerOrNull() != null
         val overlayOk = android.provider.Settings.canDrawOverlays(this)
         AutoPlaySession.publish(a11yReady = a11y, captureReady = captureOk, overlayReady = overlayOk)
-        if (!captureOk && a11y && overlayOk && attempt < CAPTURE_START_RETRIES) {
+        if (!captureOk && overlayOk && attempt < CAPTURE_START_RETRIES) {
             val waiting = "CAPTURE: OFF — CaptureService még nem él"
             AutoPlaySession.updateDiagnostics(
                 frameReceived = false,
@@ -339,8 +341,12 @@ class FloatingBubbleService : Service() {
             )
             return
         }
-        val ok = AutoPlaySession.controller.onBubbleStart(
+        val play = AutoPlaySession.controller.onBubbleStart(
             a11yConnected = a11y,
+            captureReady = captureOk,
+            overlayReady = overlayOk,
+        )
+        val ok = play || AutoPlaySession.controller.onDiagnosticStart(
             captureReady = captureOk,
             overlayReady = overlayOk,
         )
@@ -687,6 +693,11 @@ class FloatingBubbleService : Service() {
         }
     }
 
+    private fun overlayRectText(): String {
+        val rect = overlayRectOnScreen() ?: return "unknown"
+        return "LTRB(${rect.left},${rect.top},${rect.right},${rect.bottom})"
+    }
+
     private fun overlayRectOnScreen(): OverlayPlacement.Rect? {
         val v = bubbleView ?: return null
         if (v.width <= 0 || v.height <= 0) return null
@@ -796,21 +807,21 @@ class FloatingBubbleService : Service() {
                     continue
                 }
                 collapseBubbleForCapture()
-                // P1: a11y connected-only INPUT READY — mid-run disconnect → PAUSE (clear).
+                // Accessibility off stays in the loop for capture, analysis, and
+                // export. Play dispatch is a separate gate and is not started.
                 val a11yLive = MatchMastersAccessibilityService.isConnected()
-                if (!a11yLive) {
-                    ctrl.onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
+                if (!a11yLive && !ctrl.analysisOnly) {
+                    ctrl.enterAnalysisOnly(
+                        "diagnosztika — kisegítő KI, elemzés és export, nincs érintés",
+                    )
                     AutoPlaySession.publish(a11yReady = false)
                     AutoPlaySession.updateDiagnostics(
                         a11yConnected = false,
-                        phase = "SZÜNET",
-                        stopReason = "ACCESSIBILITY: DISCONNECTED (mid-run)",
+                        phase = "DIAGNOSZTIKA",
+                        gestureStatus = "NOT CREATED",
+                        inputBlockReason = "diagnostic analysis only",
                         heartbeatMs = System.currentTimeMillis(),
                     )
-                    AutoPlaySession.refreshFromController()
-                    refreshBubbleUi()
-                    delay(400L)
-                    continue
                 }
                 val manager = CaptureService.managerOrNull()
                 if (manager == null) {
@@ -916,6 +927,13 @@ class FloatingBubbleService : Service() {
                             collapseWallMs,
                         )
                     ) {
+                        CaptureOverlayTrace.noteSkip()
+                        CaptureOverlayTrace.collapsed = collapsedForCapture
+                        CaptureOverlayTrace.collapseWallMs = collapseWallMs
+                        CaptureOverlayTrace.overlayRect = overlayRectText()
+                        CaptureOverlayTrace.analyzedFrameTimestampMs = useFrame.timestampMs
+                        CaptureOverlayTrace.gestureStatus = "NOT CREATED"
+                        CaptureOverlayTrace.dispatchState = "NOT STARTED"
                         AutoPlaySession.updateDiagnostics(
                             frameReceived = true,
                             hasFrameFlag = true,
@@ -983,6 +1001,11 @@ class FloatingBubbleService : Service() {
                         screenHeight = screenH,
                         rotation = screen.rotation,
                     )
+                    CaptureOverlayTrace.collapsed = collapsedForCapture
+                    CaptureOverlayTrace.collapseWallMs = collapseWallMs
+                    CaptureOverlayTrace.overlayRect = overlayRectText()
+                    CaptureOverlayTrace.gateResult = overlayGate.reason
+                    CaptureOverlayTrace.analyzedFrameTimestampMs = useFrame.timestampMs
                     val vision = holdIfOverlayBlocks(visionRaw, overlayGate)
                     val boardRoiStr = vision.diagnostics["boardRoi"]
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
@@ -1016,6 +1039,63 @@ class FloatingBubbleService : Service() {
                         screen = screen,
                         frameSequence = useFrame.sequence,
                     )
+                    val analysisGate = DiagnosticAnalysisGate.decide(
+                        captureOn = true,
+                        hasFrame = true,
+                        analysisOnly = ctrl.analysisOnly,
+                        a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                    )
+                    if (!analysisGate.callRunCycle) {
+                        CaptureOverlayTrace.gestureStatus = "NOT CREATED"
+                        CaptureOverlayTrace.dispatchState = "NOT STARTED"
+                        AutoPlaySession.updateDiagnostics(
+                            frameReceived = true,
+                            visionText = if (vision.validation.isPass) "PASS" else "HOLD",
+                            visionPassFlag = vision.validation.isPass,
+                            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                            phase = "DIAGNOSZTIKA",
+                            unknownCount = vision.unknownCount,
+                            gridConfidence = vision.gridConfidence,
+                            boardConfidence = vision.boardConfidence,
+                            boardDetection = boardDet,
+                            boardRoi = boardRoiStr,
+                            frameSequence = "seq=${useFrame.sequence}",
+                            frameAgeMs = useFrame.ageMs(),
+                            frameTimestampMs = useFrame.timestampMs,
+                            frameWidth = useFrame.width,
+                            frameHeight = useFrame.height,
+                            frameFreshness = RuntimeLabels.freshness(true, useFrame.ageMs()),
+                            captureStatus = "ON",
+                            heartbeatMs = System.currentTimeMillis(),
+                            cycleReason = analysisGate.reason,
+                            gestureStatus = "NOT CREATED",
+                            lastDispatch = StartupReadinessGate.LastDispatch.NONE,
+                            inputBlockReason = "diagnostic analysis only",
+                            verifyStatus = VerificationPolicy.PENDING,
+                            hasFrameFlag = true,
+                            simulated = false,
+                        )
+                        publishSafetyDiagnostics(
+                            vision = vision,
+                            screen = screen,
+                            frame = useFrame,
+                            pixels = analyzed.pixels,
+                            pixelNote = analyzed.pixelNote,
+                            moveText = "none",
+                            coordinateRefused = false,
+                            coordinateReason = "coordinate origin alignment UNPROVEN",
+                            dispatchStatus = "NOT STARTED",
+                            callbackOutcome = "not dispatched",
+                            verificationStatus = VerificationPolicy.PENDING,
+                            verificationReason = analysisGate.reason,
+                            gestureStatus = "NOT CREATED",
+                            analysisOnly = true,
+                        )
+                        AutoPlaySession.refreshFromController(analysisGate.reason)
+                        refreshBubbleUi()
+                        delay(280L)
+                        continue
+                    }
                     // Overlay must not cancel the injected gesture (same fix as TESZT ÉRINTÉS).
                     setBubbleTouchable(false)
                     val cycle = try {
@@ -1092,6 +1172,7 @@ class FloatingBubbleService : Service() {
                         coordinateRefused = cycle.coordinateBlocked,
                         coordinateReason = if (cycle.coordinateBlocked) cycle.reason else "",
                         dispatchStatus = cycle.lastDispatch.name,
+                        gestureStatus = cycle.gestureStatus,
                         callbackOutcome = cycle.callbackOutcome,
                         verificationStatus = cycle.verifyStatus,
                         verificationReason = cycle.reason,
@@ -1149,6 +1230,7 @@ class FloatingBubbleService : Service() {
                                         coordinateReason = "",
                                         dispatchStatus = StartupReadinessGate.LastDispatch.SUCCESS.name,
                                         callbackOutcome = cycle.callbackOutcome,
+                                        gestureStatus = "CREATED",
                                         verificationStatus = VerificationPolicy.FAILED,
                                         verificationReason = reason,
                                     )
@@ -1164,8 +1246,8 @@ class FloatingBubbleService : Service() {
                                         frameAgeMs = afterAge,
                                         frameFreshness = if (afterFrame == null) "NONE" else "STALE",
                                         frameTimestampMs = afterFrame?.timestampMs ?: -1L,
-                                        frameWidth = afterFrame?.width ?: 0,
-                                        frameHeight = afterFrame?.height ?: 0,
+                                        frameWidth = afterFrame?.width?.takeIf { it > 0 },
+                                        frameHeight = afterFrame?.height?.takeIf { it > 0 },
                                     )
                                     AutoPlaySession.refreshFromController()
                                     refreshBubbleUi()
@@ -1254,6 +1336,7 @@ class FloatingBubbleService : Service() {
                                     coordinateReason = "",
                                     dispatchStatus = StartupReadinessGate.LastDispatch.SUCCESS.name,
                                     callbackOutcome = cycle.callbackOutcome,
+                                    gestureStatus = cycle.gestureStatus,
                                     verificationStatus = verifyLabel,
                                     verificationReason = fb?.reason ?: "",
                                 )
@@ -1319,7 +1402,17 @@ class FloatingBubbleService : Service() {
         callbackOutcome: String,
         verificationStatus: String,
         verificationReason: String,
+        gestureStatus: String = "NOT CREATED",
+        analysisOnly: Boolean = AutoPlaySession.controller.analysisOnly,
     ) {
+        val exportGesture = if (analysisOnly) "NOT CREATED" else gestureStatus
+        val exportDispatch = if (analysisOnly) "NOT STARTED" else dispatchStatus
+        CaptureOverlayTrace.gestureStatus = exportGesture
+        CaptureOverlayTrace.dispatchState = exportDispatch
+        CaptureOverlayTrace.collapsed = collapsedForCapture
+        CaptureOverlayTrace.collapseWallMs = collapseWallMs
+        CaptureOverlayTrace.overlayRect = overlayRectText()
+        CaptureOverlayTrace.analyzedFrameTimestampMs = frame.timestampMs
         val luma = DiagnosticLuminance.measure(pixels)
         val roi = vision.grid.boardRoi
         val frameExport = DiagnosticFrame.render(
@@ -1362,8 +1455,10 @@ class FloatingBubbleService : Service() {
                 "coordinate origin alignment UNPROVEN"
             },
             coordinateRefused = coordinateRefused,
-            dispatchStatus = dispatchStatus,
+            dispatchStatus = exportDispatch,
             callbackOutcome = callbackOutcome,
+            gestureStatus = exportGesture,
+            analysisOnly = analysisOnly,
             verificationStatus = verificationStatus,
             verificationReason = verificationReason,
             simulated = false,

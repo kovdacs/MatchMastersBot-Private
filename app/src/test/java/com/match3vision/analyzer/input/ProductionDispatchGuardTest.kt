@@ -587,6 +587,7 @@ class ProductionDispatchGuardTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
             ),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true),
         ).isTrue()

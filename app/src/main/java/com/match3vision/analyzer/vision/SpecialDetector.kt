@@ -9,7 +9,13 @@ class SpecialDetector {
 
     data class Result(val special: SpecialType, val confidence: Float)
 
-    fun detect(cellPixels: IntArray, cellWidth: Int, cellHeight: Int): Result {
+    fun detect(
+        cellPixels: IntArray,
+        cellWidth: Int,
+        cellHeight: Int,
+        source: String = "unspecified",
+    ): Result {
+        SpecialCropAudit.observe(source, cellWidth, cellHeight, cellPixels.size)
         if (cellPixels.isEmpty() || cellWidth < 4 || cellHeight < 4) {
             return none()
         }

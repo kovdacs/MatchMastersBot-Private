@@ -13,7 +13,7 @@ import com.match3vision.analyzer.capture.ContentRoi
  *
  * Pure Kotlin on ARGB [IntArray] — JVM-testable. Bitmap wrapper optional for device.
  */
-class BoardFinder(
+open class BoardFinder(
     private val maxRelVariance: Float = GridGeometry.DEFAULT_MAX_REL_VARIANCE,
     private val projectionMinConfidence: Float = 0.85f,
 ) {
@@ -26,7 +26,7 @@ class BoardFinder(
     /**
      * @param contentRoi optional letterbox ROI in frame coordinates; if null, full frame.
      */
-    fun find(
+    open fun find(
         pixels: IntArray,
         width: Int,
         height: Int,
@@ -528,21 +528,55 @@ class BoardFinder(
         overlayMask: OverlayColumnMask,
         diag: MutableMap<String, String>,
     ): ContentRoi? {
-        if (height < LATTICE_MIN_FRAME_HEIGHT || width < LATTICE_MIN_FRAME_WIDTH) return null
-        if (trimmed.height() < trimmed.width() * TALL_ASPECT_THRESHOLD) return null
-        val fit = searchGutterLattice(pixels, width, height, overlayMask) ?: return null
-        if (fit.score < LATTICE_MIN_SCORE || fit.minStd < LATTICE_MIN_LUMA_STD) return null
+        fun note(fit: LatticeFit?, used: Boolean) {
+            if (fit == null) {
+                diag["latticeScore"] = "none"
+                diag["latticeStd"] = "none"
+                diag["latticeCandidate"] = "none"
+                diag["latticeRoiUsed"] = "no"
+                return
+            }
+            diag["latticeScore"] = "%.2f".format(fit.score)
+            diag["latticeStd"] = "%.2f".format(fit.minStd)
+            diag["latticeCandidate"] = "${fit.top},${fit.bottom},${fit.period}"
+            diag["latticeRoiUsed"] = if (used) "yes" else "no"
+            diag["lattice"] = "${fit.top},${fit.bottom},${fit.period},${"%.2f".format(fit.score)}"
+        }
+        if (height < LATTICE_MIN_FRAME_HEIGHT || width < LATTICE_MIN_FRAME_WIDTH) {
+            note(null, false)
+            return null
+        }
+        if (trimmed.height() < trimmed.width() * TALL_ASPECT_THRESHOLD) {
+            note(null, false)
+            return null
+        }
+        val fit = searchGutterLattice(pixels, width, height, overlayMask)
+        if (fit == null) {
+            note(null, false)
+            return null
+        }
+        if (fit.score < LATTICE_MIN_SCORE || fit.minStd < LATTICE_MIN_LUMA_STD) {
+            note(fit, false)
+            return null
+        }
         val clippedBottom = snapped.bottom >= height - LATTICE_CLIP_MARGIN
         val headerLock = snapped.top < height * 0.40f
         val far = kotlin.math.abs(snapped.top - fit.top) > LATTICE_DISAGREE_PX ||
             kotlin.math.abs(snapped.bottom - fit.bottom) > LATTICE_DISAGREE_PX
-        if (!clippedBottom && !headerLock && !far) return null
+        if (!clippedBottom && !headerLock && !far) {
+            note(fit, false)
+            return null
+        }
         val left = if (overlayMask.isEmpty()) snapped.left else trimmed.left
         val right = if (overlayMask.isEmpty()) snapped.right else trimmed.right
-        if (right - left < GridGeometry.GRID_SIZE * 8) return null
-        if (fit.bottom - fit.top < GridGeometry.GRID_SIZE * 8) return null
+        if (right - left < GridGeometry.GRID_SIZE * 8 ||
+            fit.bottom - fit.top < GridGeometry.GRID_SIZE * 8
+        ) {
+            note(fit, false)
+            return null
+        }
+        note(fit, true)
         diag["playfieldSnap"] = "gutter_lattice"
-        diag["lattice"] = "${fit.top},${fit.bottom},${fit.period},${"%.2f".format(fit.score)}"
         diag["playfieldTop"] = fit.top.toString()
         return ContentRoi(left, fit.top, right, fit.bottom)
     }

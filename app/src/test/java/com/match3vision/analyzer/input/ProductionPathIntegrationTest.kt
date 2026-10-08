@@ -87,6 +87,7 @@ class ProductionPathIntegrationTest {
             enableSwitch = sw,
             inputLoop = InputLoopController(inputEngine = eng),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true),
         ).isTrue()
@@ -243,6 +244,7 @@ class ProductionPathIntegrationTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
             ),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true),
         ).isTrue()

@@ -277,8 +277,8 @@ object AutoPlaySession {
                     heartbeatMs = heartbeatMs ?: System.currentTimeMillis(),
                     gestureStatus = gestureStatus ?: cur.diagnostics.gestureStatus,
                     frameTimestampMs = frameTimestampMs ?: cur.diagnostics.frameTimestampMs,
-                    frameWidth = frameWidth ?: cur.diagnostics.frameWidth,
-                    frameHeight = frameHeight ?: cur.diagnostics.frameHeight,
+                    frameWidth = retainPositive(frameWidth, cur.diagnostics.frameWidth),
+                    frameHeight = retainPositive(frameHeight, cur.diagnostics.frameHeight),
                     frameFreshness = frameFreshness ?: cur.diagnostics.frameFreshness,
                     moveCandidates = moveCandidates ?: cur.diagnostics.moveCandidates,
                     inputBlockReason = when (inputBlockReason) {
@@ -307,6 +307,13 @@ object AutoPlaySession {
                 compactUi = controller.mode == AutoPlayController.Mode.RUNNING,
             )
         }
+    }
+
+    /** A 0×0 update after pause must not erase a frame that was already measured. */
+    private fun retainPositive(incoming: Int?, previous: Int): Int {
+        if (incoming == null) return previous
+        if (incoming > 0) return incoming
+        return if (previous > 0) previous else incoming
     }
 
     private fun rebuildDiagnostics(
