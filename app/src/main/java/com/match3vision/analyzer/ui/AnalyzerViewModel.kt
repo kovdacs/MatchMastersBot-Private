@@ -74,7 +74,7 @@ data class AnalyzerUiState(
     val analysisFrameFrozen: Boolean = true,
 ) {
     companion object {
-        const val SUBTITLE = "Auto — egy INDÍTÁS: engedélyek → rögzítés → buborék → auto kör (a11y CONNECTED kell)"
+        const val SUBTITLE = "Auto — egy INDÍTÁS: engedélyek → rögzítés → buborék → auto kör (a11y CONNECTED kell). Diagnosztika: kisegítő maradhat KI."
     }
 }
 

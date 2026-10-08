@@ -89,6 +89,7 @@ class StartupReadinessGateTest {
     @Test
     fun autoPlayController_allowsStartWhenA11yConnected() {
         val ctrl = AutoPlayController()
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(
                 a11yConnected = true,

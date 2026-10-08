@@ -95,6 +95,7 @@ class FixtureToGestureEndToEndTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = executor),
             ),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true),
         ).isTrue()
@@ -268,6 +269,7 @@ class FixtureToGestureEndToEndTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = executor),
             ),
         )
+        PlayPermit.allowContinuousStart()
         check(ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true))
         return ctrl
     }

@@ -36,6 +36,7 @@ class VisionPipeline(
         height: Int,
         contentRoi: ContentRoi? = null,
     ): VisionResult {
+        SpecialCropAudit.clear()
         val find = boardFinder.find(pixels, width, height, contentRoi)
         val grid = find.grid
         val diag = find.diagnostics.toMutableMap()
@@ -134,7 +135,12 @@ class VisionPipeline(
         val shape = shapeDetector.detect(shapePixels, shapeW, shapeH)
 
         // Special overlays (+ badges) often sit near edges — keep full cell.
-        val special = specialDetector.detect(crop, cw, ch)
+        val special = specialDetector.detect(
+            crop,
+            cw,
+            ch,
+            source = "VisionPipeline.analyzeCell r=$row c=$col",
+        )
 
         val reconciled = ColorShapeReconciler.reconcile(
             color = color.color,

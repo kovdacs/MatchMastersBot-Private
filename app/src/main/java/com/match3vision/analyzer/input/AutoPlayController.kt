@@ -72,6 +72,14 @@ class AutoPlayController(
     @Volatile
     private var awaitingFeedback: Boolean = false
 
+    /**
+     * Diagnostic capture. The loop may analyze and export.
+     * [runCycleIfActive] does not dispatch while this is true.
+     */
+    @Volatile
+    var analysisOnly: Boolean = false
+        private set
+
     fun inputLoop(): InputLoopController = inputLoop
     fun enableSwitch(): InputEnableSwitch = enableSwitch
     fun isLoopActive(): Boolean = mode == Mode.RUNNING
@@ -118,6 +126,15 @@ class AutoPlayController(
             AutoPlayTrace.markStop(lastReason)
             return false
         }
+        if (!CoordinateSelfCheck.allowsContinuousStart()) {
+            enableSwitch.setEnabled(false)
+            if (mode == Mode.RUNNING) {
+                mode = Mode.PAUSED
+            }
+            lastReason = "INDÍTÁS refused — coordinate self-check is " +
+                "${CoordinateSelfCheck.statusLabel()} (alignment NOT proven)"
+            return false
+        }
         if (runStyle == RunStyle.SINGLE_MOVE &&
             singleMove.productionDispatches > 0 &&
             singleMove.phase != SingleMoveMachine.Phase.STOPPED &&
@@ -132,6 +149,7 @@ class AutoPlayController(
             sm.reset()
         }
         runStyle = RunStyle.CONTINUOUS
+        analysisOnly = false
         singleMove.resetIdle()
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
@@ -140,6 +158,59 @@ class AutoPlayController(
         AutoPlayTrace.clearLastStop()
         AutoPlayTrace.log("MODE RUNNING", "input ENABLED a11y=CONNECTED")
         return true
+    }
+
+    /**
+     * Diagnostic INDÍTÁS. Capture and overlay must be ready.
+     * Accessibility and the coordinate self-check are not required.
+     * Input stays disabled. This does not prove alignment.
+     */
+    fun onDiagnosticStart(
+        captureReady: Boolean = true,
+        overlayReady: Boolean = true,
+    ): Boolean {
+        if (mode == Mode.STOPPED) {
+            lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            return false
+        }
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            lastReason = "HOLD — MOVE UNCONFIRMED cap latched; start cannot bypass it"
+            return false
+        }
+        if (!captureReady || !overlayReady) {
+            enableSwitch.setEnabled(false)
+            lastReason = if (!captureReady) "CAPTURE: OFF" else "overlay not ready"
+            return false
+        }
+        val sm = inputLoop.inputEngine().stateMachine()
+        if (sm.state == BotLoopState.STOP || sm.state == BotLoopState.HOLD) {
+            sm.reset()
+        }
+        runStyle = RunStyle.CONTINUOUS
+        analysisOnly = true
+        singleMove.resetIdle()
+        enableSwitch.setEnabled(false)
+        mode = Mode.RUNNING
+        lastReason = "diagnosztika — elemzés és export, nincs érintés"
+        AutoPlayTrace.clearLastStop()
+        AutoPlayTrace.log("MODE DIAGNOSTIC", "input DISABLED")
+        return true
+    }
+
+    /**
+     * Accessibility dropped while the loop was running.
+     * Stay RUNNING so capture, analysis, and export continue.
+     * Do not pause, and do not leave input enabled.
+     */
+    fun enterAnalysisOnly(reason: String) {
+        if (mode == Mode.STOPPED) return
+        enableSwitch.setEnabled(false)
+        analysisOnly = true
+        if (mode != Mode.RUNNING) {
+            mode = Mode.RUNNING
+        }
+        lastReason = reason
     }
 
     /** Bubble INDÍTÁS alias — same gate as main-screen start. */
@@ -281,6 +352,17 @@ class AutoPlayController(
         if (awaitingFeedback) {
             lastReason = "HOLD — awaiting verification of the previous dispatch; no second dispatch"
             return null
+        }
+        if (analysisOnly) {
+            lastReason = "diagnostic analysis only — no touch"
+            return InputLoopController.CycleResult(
+                state = inputLoop.inputEngine().stateMachine().state,
+                outcome = BotLoopOutcome.HOLD,
+                reason = "diagnostic analysis only — no touch",
+                verifyStatus = VerificationPolicy.PENDING,
+                gestureStatus = "NOT CREATED",
+                inputBlockReason = "diagnostic analysis only",
+            )
         }
         if (context != null && !context.a11yConnected) {
             onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
@@ -428,6 +510,7 @@ class AutoPlayController(
         moveCount = 0
         holdCount = 0
         runStyle = RunStyle.CONTINUOUS
+        analysisOnly = false
         singleMove.resetIdle()
         awaitingFeedback = false
         AutoPlayTrace.clear()

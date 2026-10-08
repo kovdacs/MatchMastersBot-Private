@@ -34,12 +34,10 @@ import timber.log.Timber
 /**
  * Hosts MediaProjection + overlay + accessibility prompts and the Compose UI.
  *
- * Flow: one main INDÍTÁS → permissions → AccessibilityService check →
- * CaptureService → Floating Bubble → AutoPlayController RUNNING (when a11y
- * runtime-connected) → InputEnableSwitch ENABLED → ensureLoopRunning().
- *
- * Settings flag alone ≠ connected; if disconnected, UI shows
- * ACCESSIBILITY: DISCONNECTED and does not arm RUNNING.
+ * Flow: one main INDÍTÁS → permissions → CaptureService → Floating Bubble.
+ * Runtime accessibility plus a recorded coordinate self-check arms play.
+ * Accessibility off still starts diagnostic capture, analysis, and export.
+ * That path does not enable input and does not dispatch.
  */
 class MainActivity : ComponentActivity() {
 
@@ -192,16 +190,9 @@ class MainActivity : ComponentActivity() {
             return
         }
         AutoPlaySession.publish(overlayReady = true)
-        // 3) Accessibility — settings listing is enough to proceed past the prompt,
-        //    but RUNNING requires runtime connection (checked in finishStartChain).
+        // Accessibility is required for play, not for diagnostic capture.
         val connected = MatchMastersAccessibilityService.isConnected()
         val settingsOn = isAccessibilityEnabledInSettings()
-        if (!connected && !settingsOn) {
-            pendingAfterA11y = true
-            Toast.makeText(this, getString(R.string.a11y_permission_rationale), Toast.LENGTH_LONG).show()
-            openAccessibilitySettings()
-            return
-        }
         AutoPlaySession.publish(
             a11yReady = connected,
             a11ySettingsEnabled = settingsOn,
@@ -220,9 +211,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * After CaptureService + bubble are up: if a11y is runtime-connected,
-     * arm RUNNING + InputEnable + ensureLoopRunning via bubble ACTION_START_LOOP.
-     * Otherwise show ACCESSIBILITY: DISCONNECTED and leave mode IDLE (no silent HOLD).
+     * After CaptureService + bubble are up, start the loop.
+     * The bubble tries play first. If accessibility or the self-check
+     * refuses play, it falls back to diagnostic analysis and export.
      */
     private fun finishStartChainAfterCaptureAndBubble() {
         val wantStart = pendingAutoStartLoop
@@ -243,32 +234,25 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val startNote = if (connected) {
+            "Auto indul — nyisd meg a Match Masters-t (buborék kontroll / SZÜNET / STOP)"
+        } else {
+            "diagnosztika — kisegítő KI, elemzés és export, nincs érintés"
+        }
         if (!connected) {
-            val msg = if (settingsOn) {
-                "ACCESSIBILITY: DISCONNECTED (settings on, service not connected) — auto nem indul"
-            } else {
-                "ACCESSIBILITY: DISCONNECTED — kapcsold be a kisegítőt"
-            }
-            AutoPlaySession.publish(statusText = msg, a11yReady = false)
+            AutoPlaySession.publish(statusText = startNote, a11yReady = false)
             AutoPlaySession.updateDiagnostics(
                 a11yConnected = false,
-                stopReason = "ACCESSIBILITY: DISCONNECTED",
+                gestureStatus = "NOT CREATED",
+                inputBlockReason = "diagnostic analysis only",
             )
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-            Timber.w("Main INDÍTÁS blocked: a11y not runtime-connected (settingsOn=%s)", settingsOn)
-            moveTaskToBack(true)
-            return
+            Timber.i("Main INDÍTÁS diagnostic: a11y off (settingsOn=%s)", settingsOn)
         }
 
-        // Runtime connected → start full chain (no second bubble INDÍTÁS required).
         Handler(Looper.getMainLooper()).postDelayed({
             FloatingBubbleService.requestStartLoop(this)
-            Toast.makeText(
-                this,
-                "Auto indul — nyisd meg a Match Masters-t (buborék kontroll / SZÜNET / STOP)",
-                Toast.LENGTH_LONG,
-            ).show()
-            Timber.i("Main INDÍTÁS → ACTION_START_LOOP (a11y CONNECTED)")
+            Toast.makeText(this, startNote, Toast.LENGTH_LONG).show()
+            Timber.i("Main INDÍTÁS → ACTION_START_LOOP a11y=%s", connected)
             moveTaskToBack(true)
         }, 350L)
     }

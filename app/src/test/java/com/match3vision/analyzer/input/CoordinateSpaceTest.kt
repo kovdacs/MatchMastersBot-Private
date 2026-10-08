@@ -188,6 +188,7 @@ class CoordinateSpaceTest {
 
     private fun running(): Pair<AutoPlayController, CountingChannel> {
         val pair = controller()
+        PlayPermit.allowContinuousStart()
         check(pair.first.onStartRequested())
         return pair
     }

@@ -2,6 +2,7 @@ package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.capture.FrameCadence
 import com.match3vision.analyzer.capture.ScreenMeasurement
+import com.match3vision.analyzer.vision.SpecialCropAudit
 import com.match3vision.analyzer.vision.VisionResult
 import java.io.File
 
@@ -64,6 +65,28 @@ data class DiagnosticBundle(
     val diagnosticInfluencesGate: Boolean = false,
     /** Latest TESZT ÉRINTÉS self-check. Recording it does not prove alignment. */
     val coordinateSelfCheck: String = "not recorded",
+    val overlayCollapsed: Boolean = false,
+    val overlayRect: String = "unknown",
+    val overlayGateResult: String = "not evaluated",
+    val skippedFrameCount: Int = 0,
+    val collapseWallMs: Long = 0L,
+    val analyzedFrameTimestampMs: Long = 0L,
+    val latticeScore: String = "not measured",
+    val latticeStd: String = "not measured",
+    val playfieldSnap: String = "not measured",
+    val latticeRoiUsed: String = "not measured",
+    val latticeCandidate: String = "not measured",
+    val roiAspect: String = "not measured",
+    val roiTopFraction: String = "not measured",
+    val roiBottomMarginPx: String = "not measured",
+    val pitchX: String = "not measured",
+    val pitchY: String = "not measured",
+    val specialCropSizes: String = "none",
+    val specialRejectedCropCount: Int = 0,
+    val specialRejectedCropOrigin: String = "none",
+    val gestureStatus: String = "NOT CREATED",
+    /** Diagnostic capture. True means this cycle did not dispatch. */
+    val analysisOnly: Boolean = false,
     val simulated: Boolean,
 ) {
     fun toJson(): String = buildString {
@@ -118,6 +141,27 @@ data class DiagnosticBundle(
         field("frameTimestampMeaning", frameTimestampMeaning)
         field("diagnosticInfluencesGate", diagnosticInfluencesGate.toString(), raw = true)
         field("coordinateSelfCheck", coordinateSelfCheck)
+        field("overlayCollapsed", overlayCollapsed.toString(), raw = true)
+        field("overlayRect", overlayRect)
+        field("overlayGateResult", overlayGateResult)
+        field("skippedFrameCount", skippedFrameCount.toString(), numeric = true)
+        field("collapseWallMs", collapseWallMs.toString(), numeric = true)
+        field("analyzedFrameTimestampMs", analyzedFrameTimestampMs.toString(), numeric = true)
+        field("latticeScore", latticeScore)
+        field("latticeStd", latticeStd)
+        field("playfieldSnap", playfieldSnap)
+        field("latticeRoiUsed", latticeRoiUsed)
+        field("latticeCandidate", latticeCandidate)
+        field("roiAspect", roiAspect)
+        field("roiTopFraction", roiTopFraction)
+        field("roiBottomMarginPx", roiBottomMarginPx)
+        field("pitchX", pitchX)
+        field("pitchY", pitchY)
+        field("specialCropSizes", specialCropSizes)
+        field("specialRejectedCropCount", specialRejectedCropCount.toString(), numeric = true)
+        field("specialRejectedCropOrigin", specialRejectedCropOrigin)
+        field("gestureStatus", gestureStatus)
+        field("analysisOnly", analysisOnly.toString(), raw = true)
         field("callbackOutcomeIsDispatchCopy", (callbackOutcome == dispatchStatus).toString(), raw = true)
         field("simulated", simulated.toString(), raw = true, last = true)
         append("}\n")
@@ -199,6 +243,8 @@ data class DiagnosticBundle(
             frameExportStatus: String = DiagnosticFrame.STATUS_NOT_EXPORTED,
             frameExportReason: String = "frame pixels were not supplied",
             captureInvalidReason: String? = null,
+            gestureStatus: String = CaptureOverlayTrace.gestureStatus,
+            analysisOnly: Boolean = false,
         ): DiagnosticBundle {
             val captureInvalid = !captureInvalidReason.isNullOrBlank()
             val gate = when {
@@ -266,7 +312,33 @@ data class DiagnosticBundle(
             } else {
                 verificationStatus.ifBlank { VerificationPolicy.PENDING }
             }
-            val dispatchDecision = if (visionPass) dispatchStatus else "NOT STARTED"
+            val recordedDispatch = when {
+                analysisOnly -> "NOT STARTED"
+                visionPass -> dispatchStatus
+                else -> "NOT STARTED"
+            }
+            val recordedGesture = if (analysisOnly) "NOT CREATED" else gestureStatus
+            val grid = vision?.grid
+            val roiWidth = grid?.boardRoi?.width() ?: 0
+            val roiHeight = grid?.boardRoi?.height() ?: 0
+            val roiAspect = if (grid == null || roiWidth <= 0) {
+                "not measured"
+            } else {
+                "%.4f".format(roiHeight.toFloat() / roiWidth)
+            }
+            val roiTopFraction = if (grid == null || frameHeight <= 0) {
+                "not measured"
+            } else {
+                "%.4f".format(grid.boardRoi.top.toFloat() / frameHeight)
+            }
+            val roiBottomMargin = if (grid == null || frameHeight <= 0) {
+                "not measured"
+            } else {
+                (frameHeight - grid.boardRoi.bottom).toString()
+            }
+            val pitchX = boundaryPitch(grid?.xBoundaries)
+            val pitchY = boundaryPitch(grid?.yBoundaries)
+            val dispatchDecision = recordedDispatch
             val finalSafety = when {
                 !visionPass -> "HOLD $failure: $reason"
                 recordedVerify == VerificationPolicy.BOARD_CHANGED_UNCONFIRMED ->
@@ -311,8 +383,8 @@ data class DiagnosticBundle(
                     else -> "not run — vision HOLD"
                 },
                 selectedMove = moveText,
-                dispatchStatus = if (visionPass) dispatchStatus else "NOT STARTED",
-                callbackOutcome = if (visionPass) callbackOutcome else "not dispatched",
+                dispatchStatus = recordedDispatch,
+                callbackOutcome = if (analysisOnly || !visionPass) "not dispatched" else callbackOutcome,
                 verificationStatus = recordedVerify,
                 verificationReason = verificationReason,
                 gridMethod = gridMethod,
@@ -334,8 +406,36 @@ data class DiagnosticBundle(
                 gridBoundaries = boundaries,
                 diagnosticInfluencesGate = false,
                 coordinateSelfCheck = CoordinateSelfCheck.current()?.reason ?: "not recorded",
+                overlayCollapsed = CaptureOverlayTrace.collapsed,
+                overlayRect = CaptureOverlayTrace.overlayRect,
+                overlayGateResult = CaptureOverlayTrace.gateResult,
+                skippedFrameCount = CaptureOverlayTrace.skippedAfterCollapse,
+                collapseWallMs = CaptureOverlayTrace.collapseWallMs,
+                analyzedFrameTimestampMs = CaptureOverlayTrace.analyzedFrameTimestampMs,
+                latticeScore = diag["latticeScore"] ?: "not measured",
+                latticeStd = diag["latticeStd"] ?: "not measured",
+                playfieldSnap = diag["playfieldSnap"] ?: "not measured",
+                latticeRoiUsed = diag["latticeRoiUsed"] ?: "not measured",
+                latticeCandidate = diag["latticeCandidate"] ?: "not measured",
+                roiAspect = roiAspect,
+                roiTopFraction = roiTopFraction,
+                roiBottomMarginPx = roiBottomMargin,
+                pitchX = pitchX,
+                pitchY = pitchY,
+                specialCropSizes = SpecialCropAudit.sizesText(),
+                specialRejectedCropCount = SpecialCropAudit.rejectedCount(),
+                specialRejectedCropOrigin = SpecialCropAudit.originText(),
+                gestureStatus = recordedGesture,
+                analysisOnly = analysisOnly,
                 simulated = simulated,
             )
+        }
+
+        private fun boundaryPitch(bounds: FloatArray?): String {
+            if (bounds == null || bounds.size < 2) return "not measured"
+            return (1 until bounds.size).joinToString(",") { i ->
+                "%.1f".format(bounds[i] - bounds[i - 1])
+            }
         }
 
         fun write(file: File, bundle: DiagnosticBundle) {

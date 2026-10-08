@@ -13,7 +13,7 @@ import com.match3vision.analyzer.capture.ContentRoi
  *
  * Pure Kotlin on ARGB [IntArray] — JVM-testable. Bitmap wrapper optional for device.
  */
-class BoardFinder(
+open class BoardFinder(
     private val maxRelVariance: Float = GridGeometry.DEFAULT_MAX_REL_VARIANCE,
     private val projectionMinConfidence: Float = 0.85f,
 ) {
@@ -26,7 +26,7 @@ class BoardFinder(
     /**
      * @param contentRoi optional letterbox ROI in frame coordinates; if null, full frame.
      */
-    fun find(
+    open fun find(
         pixels: IntArray,
         width: Int,
         height: Int,
@@ -37,10 +37,13 @@ class BoardFinder(
         val content = contentRoi ?: ContentRoi.full(width, height)
         diag["contentRoi"] = "LTRB(${content.left},${content.top},${content.right},${content.bottom})"
 
-        val boardRoi = refineBoardRoi(pixels, width, height, content, diag)
+        val overlayMask = OverlayColumnMask.detect(pixels, width, height)
+        diag["overlayColumns"] = overlayMask.describe()
+
+        val boardRoi = refineBoardRoi(pixels, width, height, content, overlayMask, diag)
         diag["boardRoi"] = "LTRB(${boardRoi.left},${boardRoi.top},${boardRoi.right},${boardRoi.bottom})"
 
-        val projected = tryProjection(pixels, width, height, boardRoi, diag)
+        val projected = tryProjection(pixels, width, height, boardRoi, overlayMask, diag)
         if (projected != null && projected.validate(maxRelVariance)) {
             diag["method"] = GridMethod.PROJECTION.name
             return FindResult(projected, diag)
@@ -71,6 +74,7 @@ class BoardFinder(
         width: Int,
         height: Int,
         content: ContentRoi,
+        overlayMask: OverlayColumnMask,
         diag: MutableMap<String, String>,
     ): ContentRoi {
         // Board ≈ content, with optional dark-margin trim and warm-banner strip trim.
@@ -112,21 +116,26 @@ class BoardFinder(
 
         val trimmed = ContentRoi(left, top, right, bottom)
         val playfield = snapSquarePlayfield(pixels, width, height, trimmed, diag)
-        val area = playfield.width() * playfield.height()
+        val latticed = refitGutterLattice(
+            pixels, width, height, trimmed, playfield, overlayMask, diag,
+        ) ?: playfield
+        val area = latticed.width() * latticed.height()
         val contentArea = cw * ch
         if (contentArea > 0 && area.toFloat() / contentArea < 0.20f) {
             diag["boardRefine"] = "over_trim_reverted"
             return content
         }
         val snapped = diag["playfieldSnap"] == "separator_square"
+        val latched = diag["playfieldSnap"] == "gutter_lattice"
         val refineTag = when {
+            latched -> "gutter_lattice"
             snapped && bannerTrim > 0 -> "dark_banner_playfield"
             snapped -> "dark_playfield"
             bannerTrim > 0 -> "dark_and_banner_trim"
             else -> "inner_dark_trim"
         }
         diag["boardRefine"] = refineTag
-        return playfield
+        return latticed
     }
 
     /**
@@ -349,6 +358,15 @@ class BoardFinder(
          */
         internal const val LIVE_ROI_NUDGE_PX = 14
 
+        /** Tall phone frames only. Synthetic ~540px portraits stay on separator snap. */
+        internal const val LATTICE_MIN_FRAME_HEIGHT = 1600
+        internal const val LATTICE_MIN_FRAME_WIDTH = 700
+        internal const val LATTICE_MIN_SCORE = 5f
+        internal const val LATTICE_MIN_LUMA_STD = 45f
+        /** Snap must disagree by more than this before a lattice may replace it. */
+        internal const val LATTICE_DISAGREE_PX = 80
+        internal const val LATTICE_CLIP_MARGIN = 8
+
         /**
          * 7-cell boundary picker (local ROI coords).
          *
@@ -493,6 +511,198 @@ class BoardFinder(
         }
     }
 
+    /**
+     * Phone frames whose square snap locks the header or the screen bottom.
+     * A 7-cell dark gutter lattice in the mid-screen window replaces that snap
+     * only when it disagrees by more than [LATTICE_DISAGREE_PX], the snap is
+     * clipped to the frame bottom, or the snap top sits in the header.
+     * A snap that already agrees (PvP golden) is returned unchanged — separator
+     * luma is not retuned.
+     */
+    private fun refitGutterLattice(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        trimmed: ContentRoi,
+        snapped: ContentRoi,
+        overlayMask: OverlayColumnMask,
+        diag: MutableMap<String, String>,
+    ): ContentRoi? {
+        fun note(fit: LatticeFit?, used: Boolean) {
+            if (fit == null) {
+                diag["latticeScore"] = "none"
+                diag["latticeStd"] = "none"
+                diag["latticeCandidate"] = "none"
+                diag["latticeRoiUsed"] = "no"
+                return
+            }
+            diag["latticeScore"] = "%.2f".format(fit.score)
+            diag["latticeStd"] = "%.2f".format(fit.minStd)
+            diag["latticeCandidate"] = "${fit.top},${fit.bottom},${fit.period}"
+            diag["latticeRoiUsed"] = if (used) "yes" else "no"
+            diag["lattice"] = "${fit.top},${fit.bottom},${fit.period},${"%.2f".format(fit.score)}"
+        }
+        if (height < LATTICE_MIN_FRAME_HEIGHT || width < LATTICE_MIN_FRAME_WIDTH) {
+            note(null, false)
+            return null
+        }
+        if (trimmed.height() < trimmed.width() * TALL_ASPECT_THRESHOLD) {
+            note(null, false)
+            return null
+        }
+        val fit = searchGutterLattice(pixels, width, height, overlayMask)
+        if (fit == null) {
+            note(null, false)
+            return null
+        }
+        if (fit.score < LATTICE_MIN_SCORE || fit.minStd < LATTICE_MIN_LUMA_STD) {
+            note(fit, false)
+            return null
+        }
+        val clippedBottom = snapped.bottom >= height - LATTICE_CLIP_MARGIN
+        val headerLock = snapped.top < height * 0.40f
+        val far = kotlin.math.abs(snapped.top - fit.top) > LATTICE_DISAGREE_PX ||
+            kotlin.math.abs(snapped.bottom - fit.bottom) > LATTICE_DISAGREE_PX
+        if (!clippedBottom && !headerLock && !far) {
+            note(fit, false)
+            return null
+        }
+        val left = if (overlayMask.isEmpty()) snapped.left else trimmed.left
+        val right = if (overlayMask.isEmpty()) snapped.right else trimmed.right
+        if (right - left < GridGeometry.GRID_SIZE * 8 ||
+            fit.bottom - fit.top < GridGeometry.GRID_SIZE * 8
+        ) {
+            note(fit, false)
+            return null
+        }
+        note(fit, true)
+        diag["playfieldSnap"] = "gutter_lattice"
+        diag["playfieldTop"] = fit.top.toString()
+        return ContentRoi(left, fit.top, right, fit.bottom)
+    }
+
+    private data class LatticeFit(
+        val top: Int,
+        val bottom: Int,
+        val period: Int,
+        val score: Float,
+        val minStd: Float,
+    )
+
+    /**
+     * Best 7-cell period whose top sits in 47–54% of the frame and whose
+     * bottom is not the screen edge. Dark-blue gutters on columns the overlay
+     * does not cover. Earlier candidate wins a tie.
+     */
+    private fun searchGutterLattice(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        overlayMask: OverlayColumnMask,
+    ): LatticeFit? {
+        val sampleXs = ArrayList<Int>(width / 3 + 1)
+        var x = 0
+        while (x < width) {
+            if (!overlayMask.covers(x)) sampleXs.add(x)
+            x += 3
+        }
+        if (sampleXs.isEmpty()) return null
+        val dark = FloatArray(height)
+        for (y in 0 until height) {
+            var hit = 0
+            for (sx in sampleXs) {
+                val p = pixels[y * width + sx]
+                val r = PixelMath.red(p)
+                val g = PixelMath.green(p)
+                val b = PixelMath.blue(p)
+                if (PixelMath.luma(p) < 48 && b > r && b > g) hit++
+            }
+            dark[y] = hit.toFloat() / sampleXs.size
+        }
+        val smooth = FloatArray(height)
+        for (y in 0 until height) {
+            var sum = 0f
+            var n = 0
+            for (k in -2..2) {
+                val yy = y + k
+                if (yy in 0 until height) {
+                    sum += dark[yy]
+                    n++
+                }
+            }
+            smooth[y] = if (n == 0) 0f else sum / n
+        }
+        val lumaStd = HashMap<Int, Float>()
+        fun stdAt(y: Int): Float {
+            lumaStd[y]?.let { return it }
+            var sum = 0.0
+            var sumSq = 0.0
+            var n = 0
+            var xx = 0
+            while (xx < width) {
+                if (!overlayMask.covers(xx)) {
+                    val l = PixelMath.luma(pixels[y * width + xx]).toDouble()
+                    sum += l
+                    sumSq += l * l
+                    n++
+                }
+                xx += 4
+            }
+            val value = if (n < 2) {
+                0f
+            } else {
+                val mean = sum / n
+                val variance = (sumSq / n) - mean * mean
+                kotlin.math.sqrt(variance.coerceAtLeast(0.0)).toFloat()
+            }
+            lumaStd[y] = value
+            return value
+        }
+        val pMin = (width / 7f * 0.92f).toInt()
+        val pMax = (width / 7f * 1.06f).toInt()
+        if (pMax < pMin || pMin < 4) return null
+        val top0 = (height * 0.47f).toInt()
+        val top1 = (height * 0.54f).toInt()
+        var best: LatticeFit? = null
+        for (period in pMin..pMax) {
+            val footerCut = (period * 0.6f).toInt()
+            var top = top0
+            while (top <= top1) {
+                val bottom = top + 7 * period
+                if (bottom >= height - 2 || bottom > height - footerCut) {
+                    top++
+                    continue
+                }
+                var boundaryDark = 0f
+                for (i in 0..7) {
+                    val yb = top + i * period
+                    if (yb in 0 until height) boundaryDark += smooth[yb]
+                }
+                var centerDark = 0f
+                var minStd = Float.MAX_VALUE
+                for (i in 0 until 7) {
+                    val yc = top + i * period + period / 2
+                    if (yc in 0 until height) {
+                        centerDark += smooth[yc]
+                        val st = stdAt(yc)
+                        if (st < minStd) minStd = st
+                    }
+                }
+                if (minStd == Float.MAX_VALUE) {
+                    top++
+                    continue
+                }
+                var score = boundaryDark - 0.65f * centerDark
+                score += if (minStd < LATTICE_MIN_LUMA_STD) -3f else 0.015f * minStd
+                if (best == null || score > best.score) {
+                    best = LatticeFit(top, bottom, period, score, minStd)
+                }
+                top++
+            }
+        }
+        return best
+    }
+
     private fun rowWarmBannerFraction(
         pixels: IntArray,
         width: Int,
@@ -521,11 +731,12 @@ class BoardFinder(
         width: Int,
         height: Int,
         boardRoi: ContentRoi,
+        overlayMask: OverlayColumnMask,
         diag: MutableMap<String, String>,
     ): GridGeometry? {
         // Primary path (unchanged scoring) — keeps REAL_FRAME golden 0.9872 stable.
         val primary = projectOnRoi(
-            pixels, width, height, boardRoi, softOutlierFrac = null,
+            pixels, width, height, boardRoi, overlayMask, softOutlierFrac = null,
         ) ?: return null
         writeProjectionDiag(diag, primary)
         if (primary.grid.confidence >= VisionThresholds.MIN_GRID_CONFIDENCE) {
@@ -537,7 +748,8 @@ class BoardFinder(
         // gridConf≈0.972 with one soft-offset gutter. Soft re-pick clears MIN_GRID without
         // touching the clean first-pass used by REAL_FRAME.
         val soft = projectOnRoi(
-            pixels, width, height, boardRoi, softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
+            pixels, width, height, boardRoi, overlayMask,
+            softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
         )
         var best = primary
         if (soft != null && soft.grid.confidence > best.grid.confidence) {
@@ -567,7 +779,7 @@ class BoardFinder(
                         if (left >= 0 && top >= 0 && right <= width && bottom <= height) {
                             val candRoi = ContentRoi(left, top, right, bottom)
                             val cand = projectOnRoi(
-                                pixels, width, height, candRoi,
+                                pixels, width, height, candRoi, overlayMask,
                                 softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
                             )
                             if (cand != null &&
@@ -637,16 +849,21 @@ class BoardFinder(
         width: Int,
         height: Int,
         boardRoi: ContentRoi,
+        overlayMask: OverlayColumnMask,
         softOutlierFrac: Float?,
     ): ProjAttempt? {
         val bw = boardRoi.width()
         val bh = boardRoi.height()
         if (bw < GridGeometry.GRID_SIZE * 3 || bh < GridGeometry.GRID_SIZE * 3) return null
-
+        // Empty mask: covers() is false for every x, so energy matches the unmasked path.
         val colEnergy = FloatArray(bw)
         for (x in 0 until bw) {
-            var e = 0f
             val fx = boardRoi.left + x
+            if (overlayMask.covers(fx)) {
+                colEnergy[x] = 0f
+                continue
+            }
+            var e = 0f
             for (y in 0 until bh step PixelMath.sampleStep(bh)) {
                 val fy = boardRoi.top + y
                 val c0 = pixels[fy * width + fx]
@@ -662,6 +879,7 @@ class BoardFinder(
             val fy = boardRoi.top + y
             for (x in 0 until bw step PixelMath.sampleStep(bw)) {
                 val fx = boardRoi.left + x
+                if (overlayMask.covers(fx)) continue
                 val c0 = pixels[fy * width + fx]
                 val c1 = if (fy + 1 < height) pixels[(fy + 1) * width + fx] else c0
                 e += kotlin.math.abs(PixelMath.luma(c0) - PixelMath.luma(c1)).toFloat()
