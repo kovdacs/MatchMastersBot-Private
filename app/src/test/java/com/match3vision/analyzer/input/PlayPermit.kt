@@ -16,6 +16,8 @@ object PlayPermit {
             frameWidth = 1080,
             frameHeight = 2400,
             rotation = 0,
+            observedX = 100f,
+            observedY = 200f,
         )
     }
 }

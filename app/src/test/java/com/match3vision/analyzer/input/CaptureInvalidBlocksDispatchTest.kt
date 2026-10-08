@@ -209,8 +209,11 @@ class CaptureInvalidBlocksDispatchTest {
                 frameWidth = 700,
                 frameHeight = 700,
                 rotation = 0,
+                observedX = 350f,
+                observedY = 315f,
             )
-            check(rec.status == CoordinateSelfCheck.STATUS_RECORDED_UNPROVEN)
+            check(rec.status == CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
+            check(!rec.alignmentProven)
             check(ctrl.armSingleMove())
         } else {
             PlayPermit.allowContinuousStart()

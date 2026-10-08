@@ -48,6 +48,53 @@ class DiagnosticHistoryTest {
     }
 
     @Test
+    fun ringExport_listsEveryEntry_andAttachesEveryFramePng() {
+        val history = DiagnosticHistory(capacity = 8)
+        val dir = File.createTempFile("diagring", "dir")
+        dir.delete()
+        dir.mkdirs()
+        val pixels = intArrayOf(
+            0xFFFF0000.toInt(),
+            0xFF00FF00.toInt(),
+            0xFF0000FF.toInt(),
+            0xFFFFFFFF.toInt(),
+        )
+        repeat(8) { index ->
+            val frame = DiagnosticFrame.render(
+                pixels = pixels,
+                width = 2,
+                height = 2,
+                roiLeft = 0,
+                roiTop = 0,
+                roiRight = 2,
+                roiBottom = 2,
+                xBoundaries = floatArrayOf(0f, 2f),
+                yBoundaries = floatArrayOf(0f, 2f),
+            )
+            assertThat(frame.png).isNotNull()
+            val stamp = 1_000L + index
+            history.record(bundle(hold = true, stamp = stamp, export = frame), frame)
+        }
+        DiagnosticFiles.write(dir, history)
+        val text = File(dir, "export.txt").readText()
+        assertThat(text).contains("RING 8/8")
+        assertThat(text).contains("does not prove a longer run")
+        for (index in 0 until 8) {
+            assertThat(text).contains("seq=${1_000L + index}")
+            assertThat(text).contains("latticeScore=")
+            assertThat(text).contains("latticeRoiUsed=")
+            assertThat(text).contains("overlayGate=")
+            assertThat(text).contains("frameAge=")
+            assertThat(text).contains("frame=100x100")
+            assertThat(File(dir, "ring/frame-%02d.png".format(index)).isFile).isTrue()
+        }
+        val attachments = DiagnosticFiles.shareAttachments(dir)
+        assertThat(attachments.map { it.name }).contains("export.txt")
+        assertThat(attachments.count { it.name.endsWith(".png") }).isAtLeast(8)
+        println(text)
+    }
+
+    @Test
     fun explicitClear_dropsPinnedFirstHold() {
         val history = DiagnosticHistory(capacity = 4)
         val dir = File.createTempFile("diagclear", "dir")

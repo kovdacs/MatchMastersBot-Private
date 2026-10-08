@@ -100,6 +100,21 @@ object DiagnosticFiles {
         File(dir, "export.txt").writeText(DiagnosticExportText.render(history))
     }
 
+    /** Text plus every downscaled frame PNG the share sheet should attach. */
+    fun shareAttachments(dir: File): List<File> {
+        val out = ArrayList<File>()
+        File(dir, "export.txt").takeIf { it.isFile }?.let { out.add(it) }
+        File(dir, "pinned-first-hold.png").takeIf { it.isFile }?.let { out.add(it) }
+        val ring = File(dir, "ring")
+        if (ring.isDirectory) {
+            ring.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".png") }
+                ?.sortedBy { it.name }
+                ?.let { out.addAll(it) }
+        }
+        return out
+    }
+
     fun clear(dir: File) {
         if (dir.exists()) dir.deleteRecursively()
     }
@@ -120,6 +135,20 @@ object DiagnosticExportText {
         appendLine("diagnosticInfluencesGate=false")
         appendLine("ringCount=${history.ringSnapshot().size}")
         appendLine("capacity=${history.capacity}")
+        val ring = history.ringSnapshot()
+        appendLine("--- RING ${ring.size}/${history.capacity} ---")
+        appendLine(
+            "Only these ring entries are checkable. This export does not prove a longer run.",
+        )
+        if (ring.isEmpty()) {
+            appendLine("none")
+        } else {
+            ring.forEachIndexed { index, entry ->
+                appendLine("#$index ${entry.bundle.cycleLine()}")
+                appendLine("frameFile=ring/frame-%02d.png".format(index))
+                appendLine("frameExport=${entry.frame.status} ${entry.frame.reason}")
+            }
+        }
         appendLine("--- PINNED FIRST HOLD ---")
         val pinned = history.pinnedJson
         if (pinned == null) {

@@ -27,28 +27,27 @@ object DiagnosticShare {
         directory.mkdirs()
         val textFile = File(directory, "export.txt")
         textFile.writeText(text)
-        val png = File(directory, "pinned-first-hold.png").takeIf { it.isFile }
-            ?: directory.walkTopDown().firstOrNull { it.isFile && it.name.endsWith(".png") }
+        val attachments = DiagnosticFiles.shareAttachments(directory)
         val authority = context.packageName + ".fileprovider"
-        val textUri = FileProvider.getUriForFile(context, authority, textFile)
-        val intent = if (png != null) {
-            val pngUri = FileProvider.getUriForFile(context, authority, png)
+        val uris = ArrayList<android.net.Uri>(attachments.size)
+        for (file in attachments) {
+            uris.add(FileProvider.getUriForFile(context, authority, file))
+        }
+        val intent = if (uris.size > 1) {
             Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = "*/*"
-                putParcelableArrayListExtra(
-                    Intent.EXTRA_STREAM,
-                    arrayListOf(textUri, pngUri),
-                )
-                clipData = ClipData.newRawUri("hold-diagnostic", textUri).also {
-                    it.addItem(ClipData.Item(pngUri))
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                clipData = ClipData.newRawUri("hold-diagnostic", uris[0]).also { clip ->
+                    for (uri in uris.drop(1)) clip.addItem(ClipData.Item(uri))
                 }
+                putExtra(Intent.EXTRA_TEXT, text)
             }
         } else {
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_STREAM, textUri)
+                putExtra(Intent.EXTRA_STREAM, uris.firstOrNull())
                 putExtra(Intent.EXTRA_TEXT, text)
-                clipData = ClipData.newRawUri("hold-diagnostic", textUri)
+                uris.firstOrNull()?.let { clipData = ClipData.newRawUri("hold-diagnostic", it) }
             }
         }
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

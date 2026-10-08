@@ -14,6 +14,12 @@ object OverlayPlacement {
     const val COLLAPSED_TOP_DP = 28f
     const val COLLAPSED_END_MARGIN_DP = 8f
 
+    /** Shown on the collapsed chip while analysis-only. Not a play state. */
+    const val ANALYSIS_ONLY_CHIP_HU = "ELEMZÉS – NINCS ÉRINTÉS"
+
+    fun collapsedChipCaption(analysisOnly: Boolean): String =
+        if (analysisOnly) ANALYSIS_ONLY_CHIP_HU else ""
+
     /**
      * Wait after collapsing before a captured frame is eligible.
      * MediaProjection delivers the composed screen; a frame already in hand

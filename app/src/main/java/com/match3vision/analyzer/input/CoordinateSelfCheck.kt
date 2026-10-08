@@ -5,10 +5,11 @@ import java.io.File
 /**
  * In-memory record of one TESZT ÉRINTÉS self-check.
  *
- * EGY LÉPÉS calls [allowsSingleMoveArm] and refuses until the status is
- * [STATUS_RECORDED_UNPROVEN]. That status means the check was recorded.
- * It does not mean the touch landed on the expected pixel.
- * [Record.alignmentProven] is always false.
+ * EGY LÉPÉS and continuous INDÍTÁS call [allowsSingleMoveArm]. Only
+ * [STATUS_MEASURED_WITHIN_TOLERANCE] unlocks them. That status means a raw
+ * touch on our calibration overlay landed inside [MEASURED_TOLERANCE_PX].
+ * [STATUS_RECORDED_UNPROVEN] is luma-only / not measured and does not unlock.
+ * [Record.alignmentProven] is always false. Within tolerance is not proof.
  *
  * The record lives in this process. Process death clears it. A new process
  * must run TESZT ÉRINTÉS again. [com.match3vision.analyzer.input.AutoPlayController.resetForNewSession]
@@ -20,11 +21,24 @@ object CoordinateSelfCheck {
     const val STATUS_RECORDED_UNPROVEN = "RECORDED_UNPROVEN"
 
     /**
-     * A point was recorded and it is not the expected point.
+     * Raw X/Y were measured and the distance to the expected point is within
+     * [MEASURED_TOLERANCE_PX]. This unlocks INDÍTÁS and EGY LÉPÉS.
+     * It does not set [Record.alignmentProven].
+     */
+    const val STATUS_MEASURED_WITHIN_TOLERANCE = "MEASURED_WITHIN_TOLERANCE"
+
+    /**
+     * A raw point was measured and it is outside [MEASURED_TOLERANCE_PX].
      * This does not unlock EGY LÉPÉS or continuous INDÍTÁS.
      * [Record.alignmentProven] stays false either way.
      */
     const val STATUS_OBSERVED_MISMATCH = "OBSERVED_MISMATCH"
+
+    /**
+     * Calibration-target radius in pixels. Not the 29.8 px board oracle.
+     * Landing inside this radius does not prove coordinate alignment.
+     */
+    const val MEASURED_TOLERANCE_PX = 48f
 
     data class Record(
         val status: String,
@@ -96,7 +110,8 @@ object CoordinateSelfCheck {
         current = null
     }
 
-    fun allowsSingleMoveArm(): Boolean = current?.status == STATUS_RECORDED_UNPROVEN
+    fun allowsSingleMoveArm(): Boolean =
+        current?.status == STATUS_MEASURED_WITHIN_TOLERANCE
 
     /** Continuous INDÍTÁS. Same record as [allowsSingleMoveArm]. Never means alignment is proven. */
     fun allowsContinuousStart(): Boolean = allowsSingleMoveArm()
@@ -161,10 +176,17 @@ object CoordinateSelfCheck {
         val frameKnown = frameWidth > 0 || frameHeight > 0
         val sizeMismatch = frameKnown &&
             (frameWidth != screenWidth || frameHeight != screenHeight)
-        val observedDiffers = observedX != null && observedY != null &&
-            (observedX != expectedX || observedY != expectedY)
-        val observedPoint = if (observedX != null && observedY != null) {
-            " observed=(${observedX},${observedY})"
+        val measured = observedX != null && observedY != null
+        val distance = if (measured) {
+            val dx = observedX!! - expectedX
+            val dy = observedY!! - expectedY
+            kotlin.math.sqrt(dx * dx + dy * dy)
+        } else {
+            null
+        }
+        val within = distance != null && distance <= MEASURED_TOLERANCE_PX
+        val observedPoint = if (measured) {
+            " observed=(${observedX},${observedY}) distance=${"%.1f".format(distance)}"
         } else {
             ""
         }
@@ -175,14 +197,20 @@ object CoordinateSelfCheck {
             sizeMismatch -> STATUS_REFUSED to
                 "frame/screen size mismatch frame=${frameWidth}x$frameHeight " +
                 "screen=${screenWidth}x$screenHeight"
-            observedDiffers -> STATUS_OBSERVED_MISMATCH to
+            measured && !within -> STATUS_OBSERVED_MISMATCH to
                 "TESZT ÉRINTÉS observed!=expected expected=(${expectedX},${expectedY})" +
-                "$observedPoint. EGY LÉPÉS stays locked. alignmentProven=false."
+                "$observedPoint tolerance=$MEASURED_TOLERANCE_PX. " +
+                "EGY LÉPÉS stays locked. alignmentProven=false."
+            measured && within -> STATUS_MEASURED_WITHIN_TOLERANCE to
+                "TESZT ÉRINTÉS raw touch within ${MEASURED_TOLERANCE_PX}px " +
+                "expected=(${expectedX},${expectedY})$observedPoint. " +
+                "alignmentProven=false. Physical alignment is NOT proven."
             else -> STATUS_RECORDED_UNPROVEN to
                 "TESZT ÉRINTÉS recorded expected=(${expectedX},${expectedY})" +
                 "$observedPoint " +
                 "screen=${screenWidth}x$screenHeight frame=${frameWidth}x$frameHeight " +
                 "rotation=$rotation. $insetNote. $observed. " +
+                "RECORDED_UNPROVEN does not unlock INDÍTÁS or EGY LÉPÉS. " +
                 "alignmentProven=false. Physical alignment is NOT proven."
         }
         val rec = Record(

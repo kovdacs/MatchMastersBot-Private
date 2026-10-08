@@ -120,7 +120,7 @@ class CoordinateSpaceTest {
     }
 
     @Test
-    fun recordedSelfCheck_isUnproven_andUnlocksEgyLepes() {
+    fun recordedUnproven_doesNotUnlockEgyLepes() {
         val rec = CoordinateSelfCheck.record(
             expectedX = 350f,
             expectedY = 315f,
@@ -138,12 +138,36 @@ class CoordinateSpaceTest {
         assertThat(rec.observedNote).contains("NOT MEASURED")
         assertThat(rec.reason).contains("not applied")
         assertThat(rec.reason).contains("NOT proven")
+        assertThat(CoordinateSelfCheck.allowsSingleMoveArm()).isFalse()
+        assertThat(CoordinateSelfCheck.allowsContinuousStart()).isFalse()
         val (ctrl, channel) = controller()
-        assertThat(ctrl.armSingleMove()).isTrue()
+        assertThat(ctrl.armSingleMove()).isFalse()
+        assertThat(ctrl.onStartRequested()).isFalse()
         assertThat(channel.calls).isEqualTo(0)
         val json = rec.toJson()
         assertThat(json).contains("\"alignmentProven\": false")
         assertThat(json).contains("NOT MEASURED")
+    }
+
+    @Test
+    fun measuredWithinTolerance_unlocksEgyLepes_withoutProvingAlignment() {
+        val rec = CoordinateSelfCheck.record(
+            expectedX = 350f,
+            expectedY = 315f,
+            screenWidth = 700,
+            screenHeight = 700,
+            frameWidth = 700,
+            frameHeight = 700,
+            rotation = 0,
+            observedX = 350f,
+            observedY = 315f,
+        )
+        assertThat(rec.status).isEqualTo(CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
+        assertThat(rec.alignmentProven).isFalse()
+        val (ctrl, channel) = controller()
+        assertThat(ctrl.armSingleMove()).isTrue()
+        assertThat(channel.calls).isEqualTo(0)
+        assertThat(rec.toJson()).contains("\"alignmentProven\": false")
     }
 
     @Test

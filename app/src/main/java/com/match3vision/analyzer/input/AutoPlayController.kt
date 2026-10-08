@@ -109,6 +109,11 @@ class AutoPlayController(
             lastReason = "HOLD — MOVE UNCONFIRMED cap latched; start cannot bypass it"
             return false
         }
+        if (analysisOnly) {
+            enableSwitch.setEnabled(false)
+            lastReason = "analysis-only until STOP — no touch"
+            return false
+        }
         val gate = StartupReadinessGate.evaluate(
             runtimeConnected = a11yConnected,
             settingsEnabled = settingsEnabled,
@@ -240,6 +245,11 @@ class AutoPlayController(
             lastReason = "leállítva — új Indítás kell az alkalmazásban"
             return false
         }
+        if (analysisOnly) {
+            enableSwitch.setEnabled(false)
+            lastReason = "analysis-only until STOP — no touch"
+            return false
+        }
         if (mode == Mode.RUNNING && runStyle == RunStyle.CONTINUOUS) {
             lastReason = "continuous loop is running — pause before arming one move"
             return false
@@ -299,6 +309,7 @@ class AutoPlayController(
             sm.stop("STOP — $reason")
         }
         mode = Mode.STOPPED
+        analysisOnly = false
         lastReason = "leállítva"
         AutoPlayTrace.markStop(reason)
     }
@@ -354,6 +365,7 @@ class AutoPlayController(
             return null
         }
         if (analysisOnly) {
+            enableSwitch.setEnabled(false)
             lastReason = "diagnostic analysis only — no touch"
             return InputLoopController.CycleResult(
                 state = inputLoop.inputEngine().stateMachine().state,

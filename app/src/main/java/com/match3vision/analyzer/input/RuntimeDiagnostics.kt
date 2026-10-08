@@ -257,6 +257,7 @@ object RuntimeLabels {
         "RUNNING" -> "RUNNING"
         "PAUSED" -> "PAUSED"
         "STOPPED" -> "STOPPED"
+        "ANALYSIS_ONLY" -> "ELEMZÉS – NINCS ÉRINTÉS"
         else -> "IDLE"
     }
 

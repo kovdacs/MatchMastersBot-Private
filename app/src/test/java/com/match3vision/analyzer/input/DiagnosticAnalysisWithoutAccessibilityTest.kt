@@ -151,6 +151,11 @@ class DiagnosticAnalysisWithoutAccessibilityTest {
         assertThat(bundle.roiBottomMarginPx).isNotEqualTo("not measured")
         assertThat(bundle.pitchX).contains(",")
         assertThat(bundle.pitchY).contains(",")
+        assertThat(bundle.overlayMaskColumns).isNotEqualTo("not measured")
+        assertThat(bundle.columnPitchMaxMinRatio).isNotEqualTo("not measured")
+        assertThat(bundle.rowPitchMaxMinRatio).isNotEqualTo("not measured")
+        assertThat(bundle.columnPitchMaxMinRatio.toFloat()).isAtLeast(1f)
+        assertThat(bundle.rowPitchMaxMinRatio.toFloat()).isAtLeast(1f)
         assertThat(bundle.specialCropSizes).contains("x")
         assertThat(bundle.specialRejectedCropCount).isAtLeast(0)
         val json = bundle.toJson()
@@ -210,12 +215,12 @@ class DiagnosticAnalysisWithoutAccessibilityTest {
             frameWidth = 1080,
             frameHeight = 2400,
             rotation = 0,
-            observedX = 140f,
+            observedX = 200f,
             observedY = 200f,
         )
         assertThat(rec.status).isEqualTo(CoordinateSelfCheck.STATUS_OBSERVED_MISMATCH)
         assertThat(rec.alignmentProven).isFalse()
-        assertThat(rec.observedX).isEqualTo(140f)
+        assertThat(rec.observedX).isEqualTo(200f)
         assertThat(CoordinateSelfCheck.allowsSingleMoveArm()).isFalse()
         assertThat(CoordinateSelfCheck.allowsContinuousStart()).isFalse()
         val ctrl = AutoPlayController()
@@ -256,6 +261,10 @@ class DiagnosticAnalysisWithoutAccessibilityTest {
             "specialRejectedCropOrigin",
             "gestureStatus",
             "analysisOnly",
+            "overlayMaskColumns",
+            "frameSizeRetained",
+            "columnPitchMaxMinRatio",
+            "rowPitchMaxMinRatio",
             "frameWidth",
             "frameHeight",
             "frameAgeMs",

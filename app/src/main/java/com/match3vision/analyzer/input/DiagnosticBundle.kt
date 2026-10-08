@@ -87,8 +87,31 @@ data class DiagnosticBundle(
     val gestureStatus: String = "NOT CREATED",
     /** Diagnostic capture. True means this cycle did not dispatch. */
     val analysisOnly: Boolean = false,
+    /** OverlayColumnMask.describe() for this frame. */
+    val overlayMaskColumns: String = "not measured",
+    /** True when a 0-size update kept the previous positive frame size. */
+    val frameSizeRetained: Boolean = false,
+    /** max(column pitch) / min(column pitch). */
+    val columnPitchMaxMinRatio: String = "not measured",
+    /** max(row pitch) / min(row pitch). */
+    val rowPitchMaxMinRatio: String = "not measured",
     val simulated: Boolean,
 ) {
+    /** One ring row. This is the checkable per-cycle record. */
+    fun cycleLine(): String = listOf(
+        "seq=$frameSequence",
+        "ts=$captureTimestampMs",
+        "roi=$boardRoi",
+        "grid=${"%.4f".format(gridConfidence)}",
+        "unk=$unknownCount",
+        "latticeScore=$latticeScore",
+        "latticeRoiUsed=$latticeRoiUsed",
+        "overlayGate=$overlayGateResult",
+        "frameAge=$frameAgeMs",
+        "frame=${frameWidth}x$frameHeight",
+        "frameExport=$frameExportStatus",
+    ).joinToString(" ")
+
     fun toJson(): String = buildString {
         append("{\n")
         field("appVersion", appVersion)
@@ -162,6 +185,10 @@ data class DiagnosticBundle(
         field("specialRejectedCropOrigin", specialRejectedCropOrigin)
         field("gestureStatus", gestureStatus)
         field("analysisOnly", analysisOnly.toString(), raw = true)
+        field("overlayMaskColumns", overlayMaskColumns)
+        field("frameSizeRetained", frameSizeRetained.toString(), raw = true)
+        field("columnPitchMaxMinRatio", columnPitchMaxMinRatio)
+        field("rowPitchMaxMinRatio", rowPitchMaxMinRatio)
         field("callbackOutcomeIsDispatchCopy", (callbackOutcome == dispatchStatus).toString(), raw = true)
         field("simulated", simulated.toString(), raw = true, last = true)
         append("}\n")
@@ -338,6 +365,8 @@ data class DiagnosticBundle(
             }
             val pitchX = boundaryPitch(grid?.xBoundaries)
             val pitchY = boundaryPitch(grid?.yBoundaries)
+            val columnPitchMaxMinRatio = pitchMaxMinRatio(grid?.xBoundaries)
+            val rowPitchMaxMinRatio = pitchMaxMinRatio(grid?.yBoundaries)
             val dispatchDecision = recordedDispatch
             val finalSafety = when {
                 !visionPass -> "HOLD $failure: $reason"
@@ -427,6 +456,10 @@ data class DiagnosticBundle(
                 specialRejectedCropOrigin = SpecialCropAudit.originText(),
                 gestureStatus = recordedGesture,
                 analysisOnly = analysisOnly,
+                overlayMaskColumns = diag["overlayColumns"] ?: "not measured",
+                frameSizeRetained = CaptureOverlayTrace.frameSizeRetained,
+                columnPitchMaxMinRatio = columnPitchMaxMinRatio,
+                rowPitchMaxMinRatio = rowPitchMaxMinRatio,
                 simulated = simulated,
             )
         }
@@ -436,6 +469,16 @@ data class DiagnosticBundle(
             return (1 until bounds.size).joinToString(",") { i ->
                 "%.1f".format(bounds[i] - bounds[i - 1])
             }
+        }
+
+        private fun pitchMaxMinRatio(bounds: FloatArray?): String {
+            if (bounds == null || bounds.size < 2) return "not measured"
+            val pitches = (1 until bounds.size).map { bounds[it] - bounds[it - 1] }.filter { it > 0f }
+            if (pitches.isEmpty()) return "not measured"
+            val min = pitches.minOrNull() ?: return "not measured"
+            val max = pitches.maxOrNull() ?: return "not measured"
+            if (min <= 0f) return "not measured"
+            return "%.4f".format(max / min)
         }
 
         fun write(file: File, bundle: DiagnosticBundle) {

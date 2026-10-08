@@ -84,6 +84,7 @@ open class BoardFinder(
         val ch = content.height()
         if (cw < GridGeometry.GRID_SIZE * 4 || ch < GridGeometry.GRID_SIZE * 4) {
             diag["boardRefine"] = "content_too_small_use_as_is"
+            diag["playfieldSnap"] = "content_too_small"
             return content
         }
 
@@ -156,6 +157,7 @@ open class BoardFinder(
         val cw = roi.width()
         val ch = roi.height()
         if (cw < GridGeometry.GRID_SIZE * 8 || ch < cw * TALL_ASPECT_THRESHOLD) {
+            diag["playfieldSnap"] = "not_tall"
             return roi
         }
 
@@ -189,7 +191,12 @@ open class BoardFinder(
             }
         }
         val side = right - left
-        if (side < GridGeometry.GRID_SIZE * 8) return roi
+        if (side < GridGeometry.GRID_SIZE * 8) {
+            // Width collapsed before a separator search. The key must still be
+            // exported: a missing playfieldSnap used to read as "not measured".
+            diag["playfieldSnap"] = "side_collapsed"
+            return roi
+        }
 
         val sepBottom = findDarkSeparatorBottom(pixels, width, left, right, roi.top, roi.bottom)
         if (sepBottom == null) {
@@ -555,6 +562,9 @@ open class BoardFinder(
             note(null, false)
             return null
         }
+        // Phone Test 0 live frame scored 2.47 (candidate 1230,2224,142).
+        // The native screenshot of that scene scores above this bar. Do not
+        // lower [LATTICE_MIN_SCORE] to accept the weak live fit.
         if (fit.score < LATTICE_MIN_SCORE || fit.minStd < LATTICE_MIN_LUMA_STD) {
             note(fit, false)
             return null

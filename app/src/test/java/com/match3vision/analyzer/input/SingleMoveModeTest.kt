@@ -52,7 +52,7 @@ class SingleMoveModeTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
             ),
         )
-        recordUnprovenSelfCheck()
+        recordMeasuredSelfCheck()
         assertThat(ctrl.armSingleMove()).isTrue()
         assertThat(ctrl.singleMove.label()).isEqualTo("ARMED")
         val held = ctrl.runCycleIfActive(vision(seed = 0, pass = false))!!
@@ -175,7 +175,7 @@ class SingleMoveModeTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = executor),
             ),
         )
-        recordUnprovenSelfCheck()
+        recordMeasuredSelfCheck()
         assertThat(ctrl.armSingleMove()).isTrue()
         val ctx = ProductionCycleContext.fromLoopObservation(
             a11yConnected = true,
@@ -212,7 +212,7 @@ class SingleMoveModeTest {
         return before.copy(board = VisionBoard(cells))
     }
 
-    private fun recordUnprovenSelfCheck() {
+    private fun recordMeasuredSelfCheck() {
         val rec = CoordinateSelfCheck.record(
             expectedX = 350f,
             expectedY = 315f,
@@ -221,8 +221,10 @@ class SingleMoveModeTest {
             frameWidth = 700,
             frameHeight = 700,
             rotation = 0,
+            observedX = 350f,
+            observedY = 315f,
         )
-        check(rec.status == CoordinateSelfCheck.STATUS_RECORDED_UNPROVEN)
+        check(rec.status == CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
         check(!rec.alignmentProven)
     }
 

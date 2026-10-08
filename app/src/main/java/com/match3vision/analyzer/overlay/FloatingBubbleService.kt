@@ -23,6 +23,7 @@ import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ScreenMetricsSource
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.CalibrationTouch
 import com.match3vision.analyzer.input.CaptureOverlayTrace
 import com.match3vision.analyzer.input.DiagnosticAnalysisGate
 import com.match3vision.analyzer.input.CoordinateSelfCheck
@@ -36,6 +37,7 @@ import com.match3vision.analyzer.input.DiagnosticExport
 import com.match3vision.analyzer.input.DiagnosticFrame
 import com.match3vision.analyzer.input.DiagnosticHistoryStore
 import com.match3vision.analyzer.input.DiagnosticLuminance
+import com.match3vision.analyzer.input.LoopFailure
 import com.match3vision.analyzer.input.DiagnosticShare
 import com.match3vision.analyzer.input.VerifyTiming
 import com.match3vision.analyzer.input.ProductionCycleContext
@@ -59,7 +61,8 @@ import timber.log.Timber
  * Small movable SYSTEM_ALERT_WINDOW bubble:
  * INDÍTÁS → continuous Vision→Move→swipe→re-analyze
  * SZÜNET → pause loop
- * TESZT ÉRINTÉS → isolated fixed-coordinate touch (no Vision / no play loop)
+ * TESZT ÉRINTÉS → full-screen calibration overlay that records a raw finger point.
+ * It does not inject a gesture.
  * STOP → remove bubble + stop capture/input
  *
  * Main-screen INDÍTÁS can arm the loop via [ACTION_START_LOOP] when a11y is
@@ -73,7 +76,9 @@ class FloatingBubbleService : Service() {
     private var windowManager: WindowManager? = null
     private var bubbleView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+    private var titleView: TextView? = null
     private var statusView: TextView? = null
+    private var calibrationView: View? = null
     private var startBtn: Button? = null
     private var pauseBtn: Button? = null
     private var touchTestBtn: Button? = null
@@ -147,6 +152,7 @@ class FloatingBubbleService : Service() {
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 11f
         }
+        titleView = title
         diagHintView = TextView(this).apply {
             text = "Diagnosztika: kisegítő maradhat KI"
             setTextColor(0xFFB0BEC5.toInt())
@@ -287,6 +293,7 @@ class FloatingBubbleService : Service() {
     }
 
     private fun removeBubble() {
+        dismissCalibrationOverlay()
         val v = bubbleView ?: return
         try {
             windowManager?.removeView(v)
@@ -294,6 +301,7 @@ class FloatingBubbleService : Service() {
         }
         bubbleView = null
         layoutParams = null
+        titleView = null
         statusView = null
         startBtn = null
         pauseBtn = null
@@ -434,10 +442,12 @@ class FloatingBubbleService : Service() {
 
     private fun stopAllAndSelf() {
         startGen++
-        loopJob?.cancel()
+        val job = loopJob
         loopJob = null
         AutoPlaySession.controller.onBubbleStop("bubble STOP")
         AutoPlaySession.syncFrameGateFromMode()
+        job?.cancel()
+        AutoPlaySession.publishStoppedCapture()
         AutoPlaySession.endSession()
         CaptureService.stop(this)
         removeBubble()
@@ -446,121 +456,77 @@ class FloatingBubbleService : Service() {
 
 
     /**
-     * Isolated AUTOMATIC TOUCH TEST — one fixed-coordinate gesture, no Vision / play loop.
-     *
-     * Critical Android fixes vs immediate onClick dispatch:
-     * 1) Delay after button MotionEvent so overlay touch does not cancel the injected gesture.
-     * 2) FLAG_NOT_TOUCHABLE on the bubble while the gesture runs (overlay must not steal it).
-     * 3) Run await off the main thread so GestureResultCallback can complete (no deadlock).
-     * 4) Surface Hungarian Toast/status: a11y igen/nem, coords, dispatch ok/fail reason.
+     * TESZT ÉRINTÉS shows our own full-screen calibration overlay.
+     * The finger is consumed by that window. This does not call
+     * [com.match3vision.analyzer.input.AutomaticTouchTest.runOnce] and it
+     * does not pause the loop for an injected gesture.
      */
     private fun runTouchTestFromBubble() {
-        // Keep Match Masters visible so the user can see the touch.
-        sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
+        showCalibrationOverlay()
+    }
+
+    private fun showCalibrationOverlay() {
+        dismissCalibrationOverlay()
         val (w, h) = screenSizePx()
-        val a11yNow = MatchMastersAccessibilityService.isConnected()
-        val diagnose = MatchMastersAccessibilityService.diagnoseConnected()
-        Timber.i(
-            "TOUCH_TEST: bubble TESZT ÉRINTÉS pressed screen=%dx%d a11y=%s diagnose=%s",
-            w, h, a11yNow, diagnose,
-        )
-        val preHu = if (a11yNow) {
-            "a11y=IGEN képernyő=${w}x${h} — indítás ${TOUCH_TEST_CLICK_DELAY_MS}ms…"
+        Timber.i("TOUCH_TEST: calibration overlay screen=%dx%d — no dispatchGesture", w, h)
+        val view = CalibrationOverlayView(this, w, h) { rawX, rawY ->
+            recordCalibrationTouch(rawX, rawY, w, h)
+            dismissCalibrationOverlay()
+        }
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
-            "a11y=NEM képernyő=${w}x${h} — kapcsold be a Kisegítő lehetőségeket"
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
         }
-        statusView?.text = preHu
-        Toast.makeText(this, preHu, Toast.LENGTH_SHORT).show()
-        AutoPlaySession.publish(statusText = preHu, a11yReady = a11yNow)
-
-        // Avoid concurrent auto-play gestures cancelling the isolated test swipe.
-        if (AutoPlaySession.controller.isLoopActive()) {
-            AutoPlaySession.controller.onBubblePause()
-            AutoPlaySession.syncFrameGateFromMode()
-            Timber.i("TOUCH_TEST: auto-play paused for isolated touch test")
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
         }
+        calibrationView = view
+        try {
+            windowManager?.addView(view, params)
+        } catch (t: Throwable) {
+            calibrationView = null
+            Timber.e(t, "TOUCH_TEST: calibration overlay add failed")
+            val fail = "kalibráló réteg nem nyílt meg"
+            statusView?.text = fail
+            Toast.makeText(this, fail, Toast.LENGTH_LONG).show()
+            return
+        }
+        val hint = "TESZT ÉRINTÉS: érintsd a jelet — nincs játékérintés"
+        statusView?.text = hint
+        Toast.makeText(this, hint, Toast.LENGTH_SHORT).show()
+        AutoPlaySession.publish(statusText = hint)
+    }
 
-        // Let the overlay button MotionEvent finish; otherwise dispatchGesture is often cancelled.
-        setBubbleTouchable(false)
-        Handler(Looper.getMainLooper()).postDelayed({
-            scope.launch(Dispatchers.Default) {
-                val result = try {
-                    AutoPlaySession.touchTest.runOnce(w, h)
-                } catch (t: Throwable) {
-                    Timber.e(t, "TOUCH_TEST: runOnce threw")
-                    null
-                }
-                withContext(Dispatchers.Main) {
-                    setBubbleTouchable(true)
-                    if (result == null) {
-                        CoordinateSelfCheck.refuse("TESZT ÉRINTÉS threw before dispatch")
-                        CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
-                        val fail = "a11y=? FAIL: exception — lásd logcat TOUCH_TEST"
-                        statusView?.text = fail
-                        Toast.makeText(this@FloatingBubbleService, fail, Toast.LENGTH_LONG).show()
-                        AutoPlaySession.publish(statusText = fail)
-                        return@withContext
-                    }
-                    val label = result.huStatus
-                    statusView?.text = label
-                    Toast.makeText(this@FloatingBubbleService, label, Toast.LENGTH_LONG).show()
-                    AutoPlaySession.publish(
-                        statusText = label,
-                        a11yReady = result.a11yEnabled,
-                    )
-                    recordCoordinateSelfCheck(result)
-                    Timber.i(
-                        "TOUCH_TEST: result success=%s reason=%s hu=%s selfCheck=%s",
-                        result.success,
-                        result.reason,
-                        result.huStatus,
-                        CoordinateSelfCheck.statusLabel(),
-                    )
-                    for (line in AutoPlaySession.touchTest.logger().lines().takeLast(16)) {
-                        Timber.i("TOUCH_TEST_LOG: %s", line)
-                    }
-                }
-            }
-        }, TOUCH_TEST_CLICK_DELAY_MS)
+    private fun dismissCalibrationOverlay() {
+        val v = calibrationView ?: return
+        try {
+            windowManager?.removeView(v)
+        } catch (_: Throwable) {
+        }
+        calibrationView = null
     }
 
     /**
-     * Records the TESZT ÉRINTÉS point. A dispatched test with matching sizes and
-     * no rotation/origin offset becomes RECORDED_UNPROVEN. That unlocks EGY LÉPÉS.
-     * alignmentProven stays false. Insets are written into the record and not added
-     * to the expected point.
+     * Records getRawX/getRawY against [CalibrationTouch.expectedPoint].
+     * Insets are written and not added to the expected point.
+     * alignmentProven stays false.
      */
-    private fun recordCoordinateSelfCheck(result: com.match3vision.analyzer.input.AutomaticTouchTest.Result) {
-        if (!result.dispatchAttempted) {
-            CoordinateSelfCheck.refuse("TESZT ÉRINTÉS did not dispatch: ${result.reason}")
-            CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
-            return
-        }
+    private fun recordCalibrationTouch(rawX: Float, rawY: Float, screenW: Int, screenH: Int) {
         val screen = ProductionLiveReaders.screenSource.measure()
         val frame = CaptureService.managerOrNull()?.latestFrame?.value
-        var luma: Float? = null
-        var frameW = 0
-        var frameH = 0
-        if (frame != null && frame.width > 0 && frame.height > 0 && !frame.bitmap.isRecycled) {
-            frameW = frame.width
-            frameH = frame.height
-            val x = result.startX.toInt()
-            val y = result.startY.toInt()
-            if (x in 0 until frameW && y in 0 until frameH) {
-                try {
-                    val px = IntArray(1)
-                    frame.bitmap.getPixels(px, 0, 1, x, y, 1, 1)
-                    val p = px[0]
-                    val r = (p shr 16) and 0xFF
-                    val g = (p shr 8) and 0xFF
-                    val b = p and 0xFF
-                    luma = 0.2126f * r + 0.7152f * g + 0.0722f * b
-                } catch (t: Throwable) {
-                    Timber.w(t, "self-check pixel read failed")
-                    luma = null
-                }
-            }
-        }
+        val frameW = if (frame != null && frame.width > 0) frame.width else 0
+        val frameH = if (frame != null && frame.height > 0) frame.height else 0
         var statusBar = 0
         var navBar = 0
         var cutoutTop = 0
@@ -573,20 +539,36 @@ class FloatingBubbleService : Service() {
                 cutoutTop = insets.displayCutout?.safeInsetTop ?: 0
             }
         }
-        CoordinateSelfCheck.record(
-            expectedX = result.startX,
-            expectedY = result.startY,
-            screenWidth = result.screenWidthPx,
-            screenHeight = result.screenHeightPx,
+        val rec = CalibrationTouch.recordRawTouch(
+            rawX = rawX,
+            rawY = rawY,
+            screenWidth = screenW,
+            screenHeight = screenH,
             frameWidth = frameW,
             frameHeight = frameH,
             rotation = screen.rotation,
             statusBarInsetPx = statusBar,
             navigationBarInsetPx = navBar,
             cutoutInsetPx = cutoutTop,
-            observedLuma = luma,
         )
         CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
+        val toast = when (rec.status) {
+            CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE ->
+                "mérés a tűrésen belül — igazítás NINCS bizonyítva"
+            CoordinateSelfCheck.STATUS_OBSERVED_MISMATCH ->
+                "eltérés — EGY LÉPÉS zárva"
+            else -> rec.reason
+        }
+        statusView?.text = toast
+        Toast.makeText(this, toast, Toast.LENGTH_LONG).show()
+        AutoPlaySession.publish(statusText = toast)
+        Timber.i(
+            "TOUCH_TEST: raw=(%s,%s) status=%s alignmentProven=%s",
+            rawX,
+            rawY,
+            rec.status,
+            rec.alignmentProven,
+        )
     }
 
     /** Physical screen pixels for fixed-coordinate touch test (not Vision). */
@@ -669,6 +651,7 @@ class FloatingBubbleService : Service() {
         } catch (t: Throwable) {
             Timber.w(t, "collapse overlay failed")
         }
+        refreshBubbleUi()
     }
 
     private fun restoreExpandedBubble() {
@@ -691,6 +674,7 @@ class FloatingBubbleService : Service() {
         } catch (t: Throwable) {
             Timber.w(t, "restore overlay failed")
         }
+        refreshBubbleUi()
     }
 
     private fun overlayRectText(): String {
@@ -1365,12 +1349,8 @@ class FloatingBubbleService : Service() {
                         }
                     }
                 } catch (t: Throwable) {
+                    val reason = LoopFailure.reasonOrNull(t) ?: throw t
                     Timber.e(t, "auto-play loop error")
-                    val reason = try {
-                        "HIBA: ${t.message}"
-                    } catch (_: Throwable) {
-                        "HIBA"
-                    }
                     try {
                         ctrl.onFailsafePause(reason)
                     } catch (pauseError: Throwable) {
@@ -1601,9 +1581,23 @@ class FloatingBubbleService : Service() {
         val snap = AutoPlaySession.ui.value
         val ctrl = AutoPlaySession.controller
         val diag = snap.diagnostics
-        // Compact HU status — full P0 fields + FIRST BLOCK (no silent freeze).
-        statusView?.text = diag.bubbleLines(compact = true) +
-            "\nEGY LÉPÉS: ${ctrl.singleMove.label()}"
+        val caption = OverlayPlacement.collapsedChipCaption(
+            collapsedForCapture && ctrl.analysisOnly,
+        )
+        if (caption.isNotEmpty()) {
+            titleView?.text = caption
+            titleView?.textSize = 12f
+            statusView?.maxLines = 2
+            statusView?.textSize = 12f
+            statusView?.text = caption
+        } else {
+            titleView?.text = "Match3 Auto"
+            titleView?.textSize = 11f
+            statusView?.maxLines = 32
+            statusView?.textSize = 8.5f
+            statusView?.text = diag.bubbleLines(compact = true) +
+                "\nEGY LÉPÉS: ${ctrl.singleMove.label()}"
+        }
         startBtn?.isEnabled = ctrl.mode != AutoPlayController.Mode.RUNNING &&
             ctrl.mode != AutoPlayController.Mode.STOPPED
         pauseBtn?.isEnabled = ctrl.mode == AutoPlayController.Mode.RUNNING
@@ -1611,7 +1605,10 @@ class FloatingBubbleService : Service() {
     }
 
     companion object {
-        /** Wait after TESZT ÉRINTÉS click so overlay MotionEvent ends before dispatchGesture. */
+        /**
+         * Kept so older logs can name the delay. TESZT ÉRINTÉS no longer waits
+         * and no longer calls dispatchGesture.
+         */
         const val TOUCH_TEST_CLICK_DELAY_MS = 400L
 
         /** How long INDÍTÁS waits for CaptureService.onCreate before reporting CAPTURE OFF. */

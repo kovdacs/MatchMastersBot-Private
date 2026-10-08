@@ -29,6 +29,13 @@ object CaptureOverlayTrace {
     @Volatile
     var dispatchState: String = "NOT STARTED"
 
+    /**
+     * True when a non-positive size update was dropped because a previous
+     * positive size was already stored. A later positive size clears it.
+     */
+    @Volatile
+    var frameSizeRetained: Boolean = false
+
     fun noteSkip() {
         skippedAfterCollapse += 1
     }
@@ -42,5 +49,6 @@ object CaptureOverlayTrace {
         analyzedFrameTimestampMs = 0L
         gestureStatus = "NOT CREATED"
         dispatchState = "NOT STARTED"
+        frameSizeRetained = false
     }
 }

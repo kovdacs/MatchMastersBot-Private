@@ -53,7 +53,24 @@ class VisionPipeline(
         val gridConf = grid.confidence
         // Combined confidence: blend board + grid (board-weighted)
         val combined = (boardConf * 0.6f + gridConf * 0.4f).coerceIn(0f, 1f)
-        val validation = validator.validate(boardConf, gridConf, unknownCount)
+        val roi = grid.boardRoi
+        val roiImplausible = RoiPlausibility.reject(
+            frameHeight = height,
+            roiTop = roi.top,
+            roiWidth = roi.width(),
+            roiHeight = roi.height(),
+        )
+        val validation = if (roiImplausible) {
+            diag["roiPlausible"] = "no"
+            ValidationResult.Hold(RoiPlausibility.HOLD_REASON)
+        } else {
+            diag["roiPlausible"] = if (height >= RoiPlausibility.PHONE_FRAME_MIN_HEIGHT) {
+                "yes"
+            } else {
+                "not_checked"
+            }
+            validator.validate(boardConf, gridConf, unknownCount)
+        }
 
         diag["unknownCount"] = unknownCount.toString()
         diag["boardConfidence"] = "%.4f".format(boardConf)
