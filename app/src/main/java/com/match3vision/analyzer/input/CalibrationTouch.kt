@@ -27,8 +27,17 @@ object CalibrationTouch {
         statusBarInsetPx: Int = 0,
         navigationBarInsetPx: Int = 0,
         cutoutInsetPx: Int = 0,
+        /**
+         * On-screen centre of the drawn target ([android.view.View.getLocationOnScreen]
+         * plus the canvas point). When set, the 48 px check uses this instead of
+         * [expectedPoint], so a status-bar shift of the window does not fail a hit.
+         */
+        targetX: Float? = null,
+        targetY: Float? = null,
     ): CoordinateSelfCheck.Record {
-        val (expectedX, expectedY) = expectedPoint(screenWidth, screenHeight)
+        val nominal = expectedPoint(screenWidth, screenHeight)
+        val expectedX = targetX ?: nominal.first
+        val expectedY = targetY ?: nominal.second
         return CoordinateSelfCheck.record(
             expectedX = expectedX,
             expectedY = expectedY,

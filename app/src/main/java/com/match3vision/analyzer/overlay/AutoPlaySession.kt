@@ -2,6 +2,7 @@ package com.match3vision.analyzer.overlay
 
 import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.DiagnosticHistoryStore
 import com.match3vision.analyzer.input.CaptureOverlayTrace
 import com.match3vision.analyzer.input.AutoPlayTrace
 import com.match3vision.analyzer.input.AutomaticInputEngine
@@ -458,6 +459,7 @@ object AutoPlaySession {
 
     fun beginNewSession() {
         controller.resetForNewSession()
+        DiagnosticHistoryStore.clearPinForNewSession()
         frameGate.setBubbleLoopRunning(false)
         frameSequenceGate.reset()
         AutoPlayTrace.clearLastStop()

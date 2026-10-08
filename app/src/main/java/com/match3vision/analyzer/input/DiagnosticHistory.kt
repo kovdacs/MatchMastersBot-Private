@@ -104,6 +104,12 @@ class DiagnosticHistory(
         if (pinnedJson == null) pinnedJson = json
     }
 
+    /** Drops the pin only. The ring stays. */
+    fun clearPin() {
+        pinnedFirstHold = null
+        pinnedJson = null
+    }
+
     fun clear() {
         ring.clear()
         pinnedFirstHold = null
@@ -341,13 +347,40 @@ object DiagnosticHistoryStore {
     private var history = DiagnosticHistory()
     private var directory: File? = null
 
-    fun install(dir: File) {
+    fun install(dir: File, versionCode: Int = -1) {
         synchronized(lock) {
             directory = dir
             dir.mkdirs()
             val pin = File(dir, "pinned-first-hold.json")
-            if (pin.isFile) history.adoptPinnedJson(pin.readText())
+            if (!pin.isFile) return
+            val text = pin.readText()
+            val pinnedVersion = pinnedVersionCode(text)
+            if (versionCode >= 0 && pinnedVersion != versionCode) {
+                history.clearPin()
+                dropPinFiles(dir)
+                return
+            }
+            history.adoptPinnedJson(text)
         }
+    }
+
+    /** New bubble session. A pin from an older run must not stay in the export. */
+    fun clearPinForNewSession() {
+        synchronized(lock) {
+            history.clearPin()
+            directory?.let { dropPinFiles(it) }
+        }
+    }
+
+    internal fun pinnedVersionCode(json: String): Int? {
+        val match = Regex("\"versionCode\"\\s*:\\s*(-?\\d+)").find(json) ?: return null
+        return match.groupValues[1].toIntOrNull()
+    }
+
+    private fun dropPinFiles(dir: File) {
+        File(dir, "pinned-first-hold.json").delete()
+        File(dir, "pinned-first-hold.png").delete()
+        File(dir, "pinned-first-hold-status.txt").delete()
     }
 
     fun directory(): File? = directory

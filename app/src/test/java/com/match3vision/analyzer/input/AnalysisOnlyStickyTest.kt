@@ -16,30 +16,59 @@ import com.match3vision.analyzer.vision.VisionThresholds
 import org.junit.Test
 
 /**
- * analysisOnly stays until STOP. Accessibility connecting, or the input
- * switch being forced on, does not start a dispatch.
+ * Analysis-only latches only when accessibility is off at INDÍTÁS.
+ * Connecting the service clears that latch and does not dispatch.
+ * Forcing the input switch on while the latch is held still does not dispatch.
  */
 class AnalysisOnlyStickyTest {
 
     @Test
-    fun a11yConnectsMidRun_analysisOnly_neverDispatches() {
+    fun a11yConnectsMidRun_clearsLatch_andNeverDispatches() {
         val (ctrl, exec) = diagnosticController()
+        assertThat(ctrl.analysisOnlyBecauseA11yOff).isTrue()
         val gate = DiagnosticAnalysisGate.decide(
             captureOn = true,
             hasFrame = true,
-            analysisOnly = ctrl.analysisOnly,
+            analysisOnly = false,
             a11yConnected = true,
+            inputEnabled = false,
         )
         assertThat(gate.analyzeAndExport).isTrue()
         assertThat(gate.callRunCycle).isFalse()
-        val cycle = ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))
-        assertThat(cycle).isNotNull()
-        assertThat(cycle!!.gestureStatus).isEqualTo("NOT CREATED")
-        assertThat(cycle.outcome).isEqualTo(BotLoopOutcome.HOLD)
-        assertThat(exec.dispatched).isEmpty()
-        assertThat(ctrl.analysisOnly).isTrue()
+        ctrl.clearAnalysisOnlyWhenAccessibilityConnects(true)
+        assertThat(ctrl.analysisOnly).isFalse()
+        assertThat(ctrl.analysisOnlyBecauseA11yOff).isFalse()
         assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        val cycle = ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))
+        assertThat(cycle).isNull()
+        assertThat(exec.dispatched).isEmpty()
+    }
+
+    @Test
+    fun a11yOnAtStart_doesNotLatchAnalysisOnly_andDoesNotDispatch() {
+        CoordinateSelfCheck.clear()
+        val exec = RecordingInputGestureExecutor(ready = true)
+        val sw = InputEnableSwitch.disabledByDefault()
+        val ctrl = AutoPlayController(
+            enableSwitch = sw,
+            inputLoop = InputLoopController(
+                inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
+            ),
+        )
+        assertThat(
+            ctrl.onDiagnosticStart(captureReady = true, overlayReady = true, a11yConnected = true),
+        ).isTrue()
+        assertThat(ctrl.analysisOnly).isFalse()
+        assertThat(ctrl.analysisOnlyBecauseA11yOff).isFalse()
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))).isNull()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = false, a11yConnected = true))
+            .isFalse()
+        assertThat(ctrl.lastReason).isEqualTo(FiveMoveArm.NEED_CALIBRATION)
+        assertThat(exec.dispatched).isEmpty()
     }
 
     @Test
@@ -57,7 +86,7 @@ class AnalysisOnlyStickyTest {
     }
 
     @Test
-    fun analysisOnly_staysUntilStop_andIsNotClearedByAccessibility() {
+    fun latchedAnalysisOnly_refusesContinuousStartUntilStop() {
         val (ctrl, exec) = diagnosticController()
         PlayPermit.allowContinuousStart()
         assertThat(

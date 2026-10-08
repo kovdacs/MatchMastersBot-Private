@@ -16,7 +16,9 @@ class Match3AnalyzerApp : Application() {
             Timber.plant(Timber.DebugTree())
         }
         installCrashLogger()
-        DiagnosticHistoryStore.install(File(filesDir, "diagnostics"))
+        val diagnostics = File(filesDir, "diagnostics")
+        DiagnosticHistoryStore.install(diagnostics, BuildConfig.VERSION_CODE)
+        DiagnosticHistoryStore.clearPinForNewSession()
         Timber.i("Match3 Vision Analyzer starting (UI only; input DEFAULT DISABLED)")
     }
 

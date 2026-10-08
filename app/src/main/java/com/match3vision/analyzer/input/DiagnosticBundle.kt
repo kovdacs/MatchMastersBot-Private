@@ -236,6 +236,8 @@ data class DiagnosticBundle(
         const val CLASS_CAPTURE_INVALID = "CAPTURE_INVALID"
         const val SOURCE_IN_GAME = "in_game"
         const val SOURCE_OWN_UI = "own_ui"
+        /** Dimmed calibration layer. Excluded from the ring the same way as [SOURCE_OWN_UI]. */
+        const val SOURCE_CALIBRATION = "calibration_overlay"
 
         fun classify(
             captureOn: Boolean,

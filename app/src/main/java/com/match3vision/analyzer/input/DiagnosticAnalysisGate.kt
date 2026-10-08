@@ -18,6 +18,7 @@ object DiagnosticAnalysisGate {
         hasFrame: Boolean,
         analysisOnly: Boolean,
         a11yConnected: Boolean,
+        inputEnabled: Boolean = true,
     ): Decision {
         if (!captureOn || !hasFrame) {
             return Decision(
@@ -26,7 +27,9 @@ object DiagnosticAnalysisGate {
                 reason = "no frame — analysis not run",
             )
         }
-        if (analysisOnly || !a11yConnected) {
+        // The input switch stays off for capture/export and for the 5-move test.
+        // A connected accessibility service must not fall through to continuous play.
+        if (analysisOnly || !a11yConnected || !inputEnabled) {
             return Decision(
                 analyzeAndExport = true,
                 callRunCycle = false,

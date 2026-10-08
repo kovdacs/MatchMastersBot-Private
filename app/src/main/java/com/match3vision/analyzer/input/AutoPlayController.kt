@@ -83,6 +83,14 @@ class AutoPlayController(
     var analysisOnly: Boolean = false
         private set
 
+    /**
+     * True only when analysis-only was latched because accessibility was off.
+     * A later connection clears [analysisOnly] without enabling the input switch.
+     */
+    @Volatile
+    var analysisOnlyBecauseA11yOff: Boolean = false
+        private set
+
     fun inputLoop(): InputLoopController = inputLoop
     fun enableSwitch(): InputEnableSwitch = enableSwitch
     fun isLoopActive(): Boolean = mode == Mode.RUNNING
@@ -176,6 +184,7 @@ class AutoPlayController(
     fun onDiagnosticStart(
         captureReady: Boolean = true,
         overlayReady: Boolean = true,
+        a11yConnected: Boolean = false,
     ): Boolean {
         if (mode == Mode.STOPPED) {
             lastReason = "leállítva — új Indítás kell az alkalmazásban"
@@ -196,14 +205,34 @@ class AutoPlayController(
             sm.reset()
         }
         runStyle = RunStyle.CONTINUOUS
-        analysisOnly = true
+        // Latch analysis-only only when accessibility is off. A connected service
+        // still keeps the input switch off, so continuous play does not start.
+        analysisOnly = !a11yConnected
+        analysisOnlyBecauseA11yOff = !a11yConnected
         singleMove.resetIdle()
         enableSwitch.setEnabled(false)
         mode = Mode.RUNNING
-        lastReason = "diagnosztika — elemzés és export, nincs érintés"
+        lastReason = if (a11yConnected) {
+            "elemzés — kisegítő be, előbb TESZT ÉRINTÉS"
+        } else {
+            "diagnosztika — elemzés és export, nincs érintés"
+        }
         AutoPlayTrace.clearLastStop()
-        AutoPlayTrace.log("MODE DIAGNOSTIC", "input DISABLED")
+        AutoPlayTrace.log("MODE DIAGNOSTIC", "input DISABLED a11y=$a11yConnected")
         return true
+    }
+
+    /**
+     * Accessibility connected after an a11y-off latch.
+     * Clears analysis-only and leaves the input switch disabled.
+     * Does not call [onStartRequested] and does not dispatch.
+     */
+    fun clearAnalysisOnlyWhenAccessibilityConnects(connected: Boolean) {
+        if (!connected || !analysisOnly || !analysisOnlyBecauseA11yOff) return
+        analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
+        enableSwitch.setEnabled(false)
+        lastReason = "kisegítő be — előbb TESZT ÉRINTÉS kalibráció kell"
     }
 
     /**
@@ -211,10 +240,11 @@ class AutoPlayController(
      * Stay RUNNING so capture, analysis, and export continue.
      * Do not pause, and do not leave input enabled.
      */
-    fun enterAnalysisOnly(reason: String) {
+    fun enterAnalysisOnly(reason: String, becauseA11yOff: Boolean = false) {
         if (mode == Mode.STOPPED) return
         enableSwitch.setEnabled(false)
         analysisOnly = true
+        if (becauseA11yOff) analysisOnlyBecauseA11yOff = true
         if (mode != Mode.RUNNING) {
             mode = Mode.RUNNING
         }
@@ -316,6 +346,7 @@ class AutoPlayController(
         }
         mode = Mode.STOPPED
         analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
         lastReason = "leállítva"
         AutoPlayTrace.markStop(reason)
     }
@@ -515,32 +546,47 @@ class AutoPlayController(
      * Arm the 5-move test from an analysis-only loop.
      * Does not enable continuous play and does not enable the input switch.
      */
-    fun armFiveMoveTest(nowMs: Long, selfCheckThisSession: Boolean): Boolean {
+    fun armFiveMoveTest(
+        nowMs: Long,
+        selfCheckThisSession: Boolean,
+        a11yConnected: Boolean = true,
+        boardVisible: Boolean = true,
+    ): Boolean {
         if (mode == Mode.STOPPED) {
-            lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            lastReason = FiveMoveArm.STOPPED
             return false
         }
-        if (mode != Mode.RUNNING || !analysisOnly) {
+        if (!a11yConnected) {
             enableSwitch.setEnabled(false)
-            lastReason = if (mode == Mode.RUNNING) {
-                "Az 5 lépés az elemző INDÍTÁS után indul. A folyamatos játék külön kapu."
-            } else {
-                "Először INDÍTÁS, várd meg a stabil PLAUSIBLE ROI-t, majd TESZT ÉRINTÉS."
-            }
+            lastReason = FiveMoveArm.NEED_A11Y
             return false
         }
         if (!selfCheckThisSession) {
             enableSwitch.setEnabled(false)
-            lastReason = FiveMoveSession.NEED_SELF_CHECK_HU
+            lastReason = FiveMoveArm.NEED_CALIBRATION
+            return false
+        }
+        if (mode != Mode.RUNNING) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveArm.NEED_START
+            return false
+        }
+        if (enableSwitch.isEnabled()) {
+            lastReason = FiveMoveArm.CONTINUOUS
+            return false
+        }
+        if (!boardVisible) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveArm.NEED_BOARD
             return false
         }
         if (unconfirmedCapLatched) {
             enableSwitch.setEnabled(false)
-            lastReason = "5 LÉPÉS refused — MOVE UNCONFIRMED cap is latched"
+            lastReason = FiveMoveArm.CAP
             return false
         }
         if (!fiveMove.arm(nowMs)) {
-            lastReason = "5 LÉPÉS already running"
+            lastReason = FiveMoveArm.ALREADY
             return false
         }
         enableSwitch.setEnabled(false)
@@ -558,9 +604,9 @@ class AutoPlayController(
         context: RuntimeCycleContext?,
         permit: FiveMoveSession.Permit,
     ): InputLoopController.CycleResult? {
-        if (mode != Mode.RUNNING || !analysisOnly) {
+        if (mode != Mode.RUNNING || (!analysisOnly && enableSwitch.isEnabled())) {
             enableSwitch.setEnabled(false)
-            lastReason = "5 LÉPÉS refused — analysis-only session is required"
+            lastReason = FiveMoveArm.CONTINUOUS
             return null
         }
         if (!fiveMove.consumePermit(permit)) {
@@ -602,6 +648,7 @@ class AutoPlayController(
             mode = Mode.STOPPED
         }
         analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
         lastReason = reason.ifBlank { fiveMove.stopReason }.ifBlank { "5 LÉPÉS TESZT finished" }
     }
 
@@ -623,6 +670,7 @@ class AutoPlayController(
         holdCount = 0
         runStyle = RunStyle.CONTINUOUS
         analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
         singleMove.resetIdle()
         fiveMove.clear()
         awaitingFeedback = false

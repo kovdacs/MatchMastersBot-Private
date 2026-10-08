@@ -1,6 +1,6 @@
 # Match Masters Bot — Match3 Vision Analyzer
 
-**Version:** `0.24.7.1` (versionCode 22)  
+**Version:** `0.24.7.2` (versionCode 23)  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private`
 
