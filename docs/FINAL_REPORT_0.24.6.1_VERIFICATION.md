@@ -7,11 +7,21 @@ Narrow verification round on top of 0.24.6 (`78cc116`). No threshold change. No 
 - versionName: `0.24.6.1`
 - versionCode: **20** (`app/build.gradle.kts`)
 - Branch: `cursor/real-device-roi-overlay-0.24.6-a08e` (PR #5, draft, base `cursor/diagnostics-single-move-0.24.5-9f3b`)
-- Behavior commit: recorded after this commit is pushed. The install candidate is that commit's push artifact, not a later docs-only commit.
-- Local unit tests before this round: **452** passed (0.24.6, `78cc116`).
-- Local unit tests after this round: **461** passed, 0 failed (`./gradlew :app:testDebugUnitTest --offline --rerun-tasks`).
+- Behavior commit (install this): `c7d3cf47bba1f47dd3378018e6d2a5310dc7a93f`
+- analyzer-ci push run: **37814323126** result **success** (event `push`, head `c7d3cf4`)
+- https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37814323126
+- PR check on the same SHA also succeeded (run 37814330890). That run builds the merge commit. It is not the install candidate.
+- Local and CI unit tests before this round: **452** passed (0.24.6, `78cc116`).
+- Local and CI unit tests after this round: **461** passed, 0 failed. CI log count of `PASSED` lines is 461. `testDebugUnitTest` BUILD SUCCESSFUL.
 
-APK name, SHA-256, and the analyzer-ci push run id are filled from the push artifact of the behavior commit once that run finishes. Do not install an APK whose short SHA is a docs-only follow-up.
+APK artifact (push run 37814323126, downloaded and hashed locally; matches the log line `APK_SHA256`):
+
+- Name: `Match3Analyzer-0.24.6.1-c7d3cf4.apk`
+- Size: 25284247 bytes
+- SHA-256: `c478c8cb1b95c457974c2e44af95927aae00c5683326b6775d222a9227479e7d`
+- Signing: `SIGNING_MODE=stable-debug-keystore-committed`
+
+A later docs-only commit that records this hash is not the install candidate. `GIT_COMMIT` is `GITHUB_SHA`, so that commit's APK has different bytes. Install `Match3Analyzer-0.24.6.1-c7d3cf4.apk` only.
 
 ## What each mandatory item changed
 
