@@ -11,8 +11,8 @@ android {
         applicationId = "com.match3vision.analyzer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.24.2-runtime-diagnostics"
+        versionCode = 15
+        versionName = "0.24.3-production-path-audit"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

@@ -27,6 +27,22 @@
 
 `TouchCoordinateMapperAuditTest` — even-split ROI centers, letterboxed ROI, non-monotonic reject, no device literals.
 
+## 0.24.3
+
+`FrameScreenCoordinatePolicy` allows an identity map only when the capture frame
+size and the gesture bounds are the same positive size. A mismatch is refused
+(no scale guess). Cell centers are still the gesture coordinates, with no dp
+or status-bar offset applied in code.
+
+`CaptureDisplaySize` prefers `maximumWindowMetrics` (the same bounds TESZT ÉRINTÉS
+uses) and falls back to real display metrics. That makes the virtual display
+the size we believe `dispatchGesture` uses. Whether a given phone's accessibility
+coordinate space matches that grid is **device-dependent** and is not proven here.
+
+API 34+ capture consent requests the entire default display so a single-app
+share of the analyzer cannot become the only frames the loop sees.
+
 ## Live phone proof
 
 Requires Tier E (operator). See `docs/LIVE_PHONE_TOUCH_PROOF.md`.
+LIVE PHONE: NOT TESTED. FIRST REAL AUTOMATIC TOUCH: NOT PROVEN.

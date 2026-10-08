@@ -29,6 +29,12 @@ data class RuntimeCycleContext(
     val frameHeight: Int = 0,
     /** True only for the JVM continuous harness. Never set on the device loop. */
     val simulated: Boolean = false,
+    /**
+     * [android.os.SystemClock.elapsedRealtime] when the frame was captured.
+     * 0 when the caller did not measure it. The dispatcher remeasures age
+     * from this when the monotonic clock is available.
+     */
+    val capturedElapsedMs: Long = 0L,
 )
 
 /** What the verifier is allowed to look at. Missing / stale / non-new → not SUCCESS. */
@@ -36,7 +42,34 @@ data class VerifyObservation(
     val newFrameAccepted: Boolean,
     val frameFresh: Boolean,
     val reason: String = "",
-)
+    /** Wall time of the frame. -1 when the caller did not measure it. */
+    val frameTimestampMs: Long = -1L,
+    /** Wall time when dispatchGesture's callback completed. -1 if not measured. */
+    val dispatchCompletedAtMs: Long = -1L,
+    /** Monotonic capture time. Preferred over wall time when both ends are set. */
+    val frameElapsedMs: Long = -1L,
+    /** Monotonic time when the gesture callback completed. */
+    val dispatchCompletedElapsedMs: Long = -1L,
+    /** True when the post-move board hash matches the pre-move hash. */
+    val boardUnchanged: Boolean = false,
+) {
+    /**
+     * A verify frame must be strictly after dispatch completion.
+     * When the caller did not supply times (legacy unit tests), this is not
+     * treated as proof — [InputLoopController.completeFeedback] still requires
+     * [newFrameAccepted] and [frameFresh]. When times are supplied, a frame
+     * that is not later fails closed.
+     */
+    fun frameIsAfterDispatch(): Boolean {
+        if (dispatchCompletedElapsedMs > 0L || frameElapsedMs > 0L) {
+            return frameElapsedMs > dispatchCompletedElapsedMs && dispatchCompletedElapsedMs > 0L
+        }
+        if (dispatchCompletedAtMs >= 0L || frameTimestampMs > 0L) {
+            return frameTimestampMs > dispatchCompletedAtMs && dispatchCompletedAtMs >= 0L
+        }
+        return true
+    }
+}
 
 object VerificationPolicy {
     const val PENDING = "PENDING"

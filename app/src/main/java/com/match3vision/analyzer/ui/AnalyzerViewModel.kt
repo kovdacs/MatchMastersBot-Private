@@ -8,10 +8,10 @@ import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ContentRoi
 import com.match3vision.analyzer.overlay.AutoPlaySession
-import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.InputEnableSwitch
 import com.match3vision.analyzer.input.OneStepSmokeController
+import com.match3vision.analyzer.input.ProductionInstall
 import com.match3vision.analyzer.input.SmokeEnableSwitch
 import com.match3vision.analyzer.input.SmokeTestLogger
 import com.match3vision.analyzer.orchestration.AnalysisOrchestrator
@@ -103,7 +103,7 @@ class AnalyzerViewModel @JvmOverloads constructor(
         smokeEnable = smokeEnableSwitch,
         inputEngine = AutomaticInputEngine(
             enableSwitch = inputEnableSwitch,
-            executor = AccessibilityGestureExecutor(),
+            executor = ProductionInstall.accessibilityExecutor(),
         ),
         logger = smokeLogger,
     )
