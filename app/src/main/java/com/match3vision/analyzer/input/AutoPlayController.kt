@@ -20,6 +20,8 @@ class AutoPlayController(
         inputEngine = AutomaticInputEngine(enableSwitch = enableSwitch),
     ),
 ) {
+    enum class RunStyle { CONTINUOUS, SINGLE_MOVE }
+
     enum class Mode {
         /** Bubble may be visible; loop not running; input disabled. */
         IDLE,
@@ -45,6 +47,16 @@ class AutoPlayController(
 
     @Volatile
     var holdCount: Int = 0
+        private set
+
+    @Volatile
+    var runStyle: RunStyle = RunStyle.CONTINUOUS
+        private set
+
+    val singleMove: SingleMoveMachine = SingleMoveMachine()
+
+    @Volatile
+    var consecutiveUnconfirmed: Int = 0
         private set
 
     fun inputLoop(): InputLoopController = inputLoop
@@ -88,10 +100,22 @@ class AutoPlayController(
             AutoPlayTrace.markStop(lastReason)
             return false
         }
+        if (runStyle == RunStyle.SINGLE_MOVE &&
+            singleMove.productionDispatches > 0 &&
+            singleMove.phase != SingleMoveMachine.Phase.STOPPED &&
+            singleMove.phase != SingleMoveMachine.Phase.IDLE &&
+            singleMove.phase != SingleMoveMachine.Phase.PAUSED
+        ) {
+            lastReason = "single-move protocol in progress — not starting continuous"
+            return false
+        }
         val sm = inputLoop.inputEngine().stateMachine()
         if (sm.state == BotLoopState.STOP || sm.state == BotLoopState.HOLD) {
             sm.reset()
         }
+        runStyle = RunStyle.CONTINUOUS
+        singleMove.resetIdle()
+        consecutiveUnconfirmed = 0
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
         lastReason = "fut — felismerés→lépés→húzás"
@@ -113,6 +137,54 @@ class AutoPlayController(
         overlayReady = overlayReady,
         settingsEnabled = settingsEnabled,
     )
+
+    /**
+     * Explicit ONE MOVE arm. Uses the same readiness gate as continuous start.
+     * One successful return permits exactly one later production dispatch.
+     */
+    fun armSingleMove(
+        a11yConnected: Boolean = true,
+        captureReady: Boolean = true,
+        overlayReady: Boolean = true,
+        settingsEnabled: Boolean = false,
+    ): Boolean {
+        if (mode == Mode.STOPPED) {
+            lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            return false
+        }
+        if (mode == Mode.RUNNING && runStyle == RunStyle.CONTINUOUS) {
+            lastReason = "continuous loop is running — pause before arming one move"
+            return false
+        }
+        val gate = StartupReadinessGate.evaluate(
+            runtimeConnected = a11yConnected,
+            settingsEnabled = settingsEnabled,
+            captureReady = captureReady,
+            overlayReady = overlayReady,
+            inputSwitchEnabled = false,
+        )
+        if (!gate.canEnterRunning) {
+            enableSwitch.setEnabled(false)
+            if (mode == Mode.RUNNING) mode = Mode.PAUSED
+            lastReason = gate.blockReason ?: "ACCESSIBILITY: DISCONNECTED"
+            return false
+        }
+        if (!singleMove.arm()) {
+            lastReason = "single-move arm refused from ${singleMove.label()}"
+            return false
+        }
+        val sm = inputLoop.inputEngine().stateMachine()
+        if (sm.state == BotLoopState.STOP || sm.state == BotLoopState.HOLD) {
+            sm.reset()
+        }
+        runStyle = RunStyle.SINGLE_MOVE
+        consecutiveUnconfirmed = 0
+        enableSwitch.setEnabled(true)
+        mode = Mode.RUNNING
+        lastReason = "ARMED — exactly one production move"
+        AutoPlayTrace.log("MODE SINGLE", "ARMED input ENABLED")
+        return true
+    }
 
     /** Bubble SZÜNET / PAUSE — stop loop; keep bubble. */
     fun onBubblePause() {
@@ -139,6 +211,13 @@ class AutoPlayController(
         if (mode == Mode.STOPPED) return
         enableSwitch.setEnabled(false)
         mode = Mode.PAUSED
+        if (runStyle == RunStyle.SINGLE_MOVE) {
+            if (singleMove.productionDispatches > 0) {
+                singleMove.finishStopped()
+            } else {
+                singleMove.resetIdle()
+            }
+        }
         lastReason = "szünet (biztonság): $reason"
         AutoPlayTrace.markStop(lastReason)
     }
@@ -194,6 +273,14 @@ class AutoPlayController(
             AutoPlayTrace.log(AutoPlayTrace.TAG_STOP_REASON, lastReason)
             return null
         }
+        if (runStyle == RunStyle.SINGLE_MOVE) {
+            singleMove.onObserve()
+            if (!singleMove.allowsProductionDispatch()) {
+                lastReason = "single-move PAUSE — production dispatch not permitted " +
+                    "(${singleMove.label()} count=${singleMove.productionDispatches})"
+                return null
+            }
+        }
         val sm = inputLoop.inputEngine().stateMachine()
         if (sm.state == BotLoopState.STOP) {
             onFailsafePause(sm.lastReason)
@@ -205,6 +292,22 @@ class AutoPlayController(
         }
         val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context)
         lastReason = cycle.reason
+        if (runStyle == RunStyle.SINGLE_MOVE &&
+            cycle.executed is AutomaticInputEngine.ExecuteResult.Executed
+        ) {
+            if (!singleMove.tryProductionDispatch()) {
+                enableSwitch.setEnabled(false)
+                mode = Mode.PAUSED
+                lastReason = "single-move refused a second production dispatch"
+                return cycle.copy(
+                    outcome = BotLoopOutcome.HOLD,
+                    reason = lastReason,
+                )
+            }
+            enableSwitch.setEnabled(false)
+            mode = Mode.PAUSED
+            lastReason = "ONE MOVE dispatched — PAUSE (no second production move)"
+        }
         when (cycle.outcome) {
             BotLoopOutcome.CONTINUE -> {
                 if (cycle.executed is AutomaticInputEngine.ExecuteResult.Executed) {
@@ -229,6 +332,9 @@ class AutoPlayController(
         attemptedMove: Move? = null,
     ): InputLoopController.CycleResult? {
         if (mode == Mode.STOPPED) return null
+        val verifyingSingle = runStyle == RunStyle.SINGLE_MOVE &&
+            singleMove.phase == SingleMoveMachine.Phase.ONE_MOVE
+        if (verifyingSingle) singleMove.beginVerify()
         val fb = inputLoop.completeFeedback(
             beforeBoardHash,
             afterVision,
@@ -236,11 +342,39 @@ class AutoPlayController(
             beforeVision,
             attemptedMove,
         )
-        lastReason = fb.reason
-        if (fb.outcome == BotLoopOutcome.STOP) {
-            onFailsafePause(fb.reason)
+        if (verifyingSingle) singleMove.onVerified()
+        var result = fb
+        if (result.verifyStatus == VerificationPolicy.BOARD_CHANGED_UNCONFIRMED &&
+            runStyle == RunStyle.CONTINUOUS
+        ) {
+            consecutiveUnconfirmed += 1
+            if (consecutiveUnconfirmed >= MAX_CONSECUTIVE_UNCONFIRMED) {
+                onFailsafePause(
+                    "HOLD — consecutive MOVE UNCONFIRMED capped at $MAX_CONSECUTIVE_UNCONFIRMED",
+                )
+                result = result.copy(
+                    outcome = BotLoopOutcome.HOLD,
+                    reason = "HOLD — consecutive MOVE UNCONFIRMED capped at " +
+                        "$MAX_CONSECUTIVE_UNCONFIRMED; ${result.reason}",
+                )
+            }
+        } else if (result.verifyStatus != VerificationPolicy.BOARD_CHANGED_UNCONFIRMED) {
+            consecutiveUnconfirmed = 0
         }
-        return fb
+        lastReason = result.reason
+        if (result.outcome == BotLoopOutcome.STOP) {
+            onFailsafePause(result.reason)
+        }
+        return result
+    }
+
+    /** After the single-move verify bundle is exported. Does not dispatch. */
+    fun finishSingleMoveAfterExport() {
+        if (runStyle != RunStyle.SINGLE_MOVE) return
+        singleMove.finishStopped()
+        enableSwitch.setEnabled(false)
+        if (mode != Mode.STOPPED) mode = Mode.PAUSED
+        lastReason = "STOPPED — single-move protocol finished after export. A new arm is required."
     }
 
     fun resetForNewSession() {
@@ -250,10 +384,16 @@ class AutoPlayController(
         lastReason = "tétlen"
         moveCount = 0
         holdCount = 0
+        runStyle = RunStyle.CONTINUOUS
+        consecutiveUnconfirmed = 0
+        singleMove.resetIdle()
         AutoPlayTrace.clear()
     }
 
     companion object {
         const val STATUS_IDLE = "tétlen"
+
+        /** Continuous mode pauses after this many MOVE UNCONFIRMED results in a row. */
+        const val MAX_CONSECUTIVE_UNCONFIRMED = 2
     }
 }

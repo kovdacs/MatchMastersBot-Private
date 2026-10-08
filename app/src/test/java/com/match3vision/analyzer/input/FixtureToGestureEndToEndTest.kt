@@ -127,21 +127,40 @@ class FixtureToGestureEndToEndTest {
         assertThat(gesture).isEqualTo(executed.gesture)
         val move = executed.move.move
         val grid = vision.grid
-        val expectedStartX = (grid.xBoundaries[move.c1] + grid.xBoundaries[move.c1 + 1]) * 0.5f
-        val expectedStartY = (grid.yBoundaries[move.r1] + grid.yBoundaries[move.r1 + 1]) * 0.5f
-        val expectedEndX = (grid.xBoundaries[move.c2] + grid.xBoundaries[move.c2 + 1]) * 0.5f
-        val expectedEndY = (grid.yBoundaries[move.r2] + grid.yBoundaries[move.r2 + 1]) * 0.5f
-        assertThat(gesture.startX).isWithin(0.05f).of(expectedStartX)
-        assertThat(gesture.startY).isWithin(0.05f).of(expectedStartY)
-        assertThat(gesture.endX).isWithin(0.05f).of(expectedEndX)
-        assertThat(gesture.endY).isWithin(0.05f).of(expectedEndY)
+        val handStartX = HandMeasuredPvpCenters.columnCenterX[move.c1]
+        val handStartY = HandMeasuredPvpCenters.rowCenterY[move.r1]
+        val handEndX = HandMeasuredPvpCenters.columnCenterX[move.c2]
+        val handEndY = HandMeasuredPvpCenters.rowCenterY[move.r2]
+        assertThat(gesture.startX).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handStartX)
+        assertThat(gesture.startY).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handStartY)
+        assertThat(gesture.endX).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handEndX)
+        assertThat(gesture.endY).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handEndY)
+        var maxDx = 0f
+        var maxDy = 0f
+        for (r in 0 until 7) {
+            for (c in 0 until 7) {
+                val box = grid.cellBox(r, c)
+                val dx = kotlin.math.abs(box.centerX() - HandMeasuredPvpCenters.columnCenterX[c])
+                val dy = kotlin.math.abs(box.centerY() - HandMeasuredPvpCenters.rowCenterY[r])
+                if (dx > maxDx) maxDx = dx
+                if (dy > maxDy) maxDy = dy
+                assertThat(box.centerX())
+                    .isWithin(HandMeasuredPvpCenters.TOLERANCE_PX)
+                    .of(HandMeasuredPvpCenters.columnCenterX[c])
+                assertThat(box.centerY())
+                    .isWithin(HandMeasuredPvpCenters.TOLERANCE_PX)
+                    .of(HandMeasuredPvpCenters.rowCenterY[r])
+            }
+        }
         assertThat(gesture.durationMs).isEqualTo(InputThresholds.SWIPE_DURATION_MS)
         assertThat(cycle.verifyStatus).isEqualTo(VerificationPolicy.PENDING)
         assertThat(cycle.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
         println(
             "E2E_FIXTURE SIMULATION move=${move.r1},${move.c1}->${move.r2},${move.c2} " +
-                "expected=(${expectedStartX},${expectedStartY})->(${expectedEndX},${expectedEndY}) " +
+                "hand=(${handStartX},${handStartY})->(${handEndX},${handEndY}) " +
                 "actual=(${gesture.startX},${gesture.startY})->(${gesture.endX},${gesture.endY}) " +
+                "tolerancePx=${HandMeasuredPvpCenters.TOLERANCE_PX} " +
+                "maxAbsDx=$maxDx maxAbsDy=$maxDy " +
                 "channelCalls=${channel.dispatchGestureCalls} " +
                 "alignmentProven=${ctx.coordinateAlignmentProven}",
         )

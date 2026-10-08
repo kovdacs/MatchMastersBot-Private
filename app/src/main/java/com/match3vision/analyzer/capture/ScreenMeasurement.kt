@@ -95,6 +95,16 @@ object IndependentScreenMetrics {
 /**
  * Live display read. JVM unit tests do not construct this; they pass a
  * [ScreenMeasurement] from [IndependentScreenMetrics.choose] or a fixture.
+ *
+ * Production context: [com.match3vision.analyzer.overlay.FloatingBubbleService]
+ * passes itself (`this`) from `installLiveReaders`. That service Context's
+ * `WINDOW_SERVICE` is the [WindowManager] read below. Density falls back to
+ * `context.resources.displayMetrics.densityDpi` only when real metrics do not
+ * report one. This is not MainActivity, not the capture bitmap, and not the
+ * frame width or height. [com.match3vision.analyzer.input.AccessibilityGestureExecutor.dispatchChecked]
+ * reads it again through [com.match3vision.analyzer.input.ProductionLiveReaders.screenSource]
+ * immediately before `dispatchGesture`.
+ *
  * What remains unverified without a device: that WindowManager on the
  * accessibility service returns the same pixel grid dispatchGesture uses.
  */

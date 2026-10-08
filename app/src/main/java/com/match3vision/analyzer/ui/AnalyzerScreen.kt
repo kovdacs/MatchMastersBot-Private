@@ -118,6 +118,27 @@ fun AnalyzerScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("STOP — buborék + rögzítés leállítása") }
 
+            Section("DIAGNOSZTIKA — HOLD") {
+                Text(
+                    "Az első HOLD megmarad, amíg a DIAG TÖRLÉS nem törli. " +
+                        "Megosztás és másolás ADB nélkül. A diagnosztika nem ad PASS-t. " +
+                        "TESZT ÉRINTÉS külön van az EGY LÉPÉS gyártási húzástól.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = { viewModel.shareDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Diagnosztika megosztása") }
+                OutlinedButton(
+                    onClick = { viewModel.copyDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Diagnosztika másolása") }
+                OutlinedButton(
+                    onClick = { viewModel.clearDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Első HOLD törlése") }
+            }
+
             PermissionStatusCard(
                 overlayReady = auto.overlayReady,
                 a11yReady = auto.a11yReady,

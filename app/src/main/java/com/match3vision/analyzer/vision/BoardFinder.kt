@@ -364,6 +364,7 @@ class BoardFinder(
         internal fun pickSevenCellBoundariesInternal(
             energy: FloatArray,
             softOutlierFrac: Float? = null,
+            strongPeakCountOut: IntArray? = null,
         ): FloatArray? {
             val n = energy.size
             if (n < GridGeometry.GRID_SIZE * 3) return null
@@ -402,6 +403,9 @@ class BoardFinder(
                     raw[g] = ideal
                     peakE[g] = 0f
                 }
+            }
+            if (strongPeakCountOut != null && strongPeakCountOut.isNotEmpty()) {
+                strongPeakCountOut[0] = strongPeaks
             }
             if (strongPeaks < 4) return null
 
@@ -599,6 +603,8 @@ class BoardFinder(
         val relVarY: Float,
         val xLocal: FloatArray,
         val yLocal: FloatArray,
+        val peakCountX: Int,
+        val peakCountY: Int,
     )
 
     private fun writeProjectionDiag(diag: MutableMap<String, String>, attempt: ProjAttempt) {
@@ -606,6 +612,8 @@ class BoardFinder(
         val bh = attempt.grid.boardRoi.height()
         diag["projRelVarX"] = "%.4f".format(attempt.relVarX)
         diag["projRelVarY"] = "%.4f".format(attempt.relVarY)
+        diag["projPeakCountX"] = attempt.peakCountX.toString()
+        diag["projPeakCountY"] = attempt.peakCountY.toString()
         val periodX = bw.toFloat() / GridGeometry.GRID_SIZE
         val periodY = bh.toFloat() / GridGeometry.GRID_SIZE
         diag["projGuttersX"] = (1 until GridGeometry.GRID_SIZE).joinToString(",") { g ->
@@ -663,8 +671,10 @@ class BoardFinder(
 
         suppressBannerEnergy(pixels, width, boardRoi, colEnergy, rowEnergy)
 
-        val xLocal = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac) ?: return null
-        val yLocal = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac) ?: return null
+        val peakX = IntArray(1)
+        val peakY = IntArray(1)
+        val xLocal = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac, peakX) ?: return null
+        val yLocal = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac, peakY) ?: return null
 
         val xBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
             boardRoi.left + xLocal[i]
@@ -685,7 +695,7 @@ class BoardFinder(
         // *1.5f maps typical clean gutter variance to ≥ MIN_GRID without lowering the gate.
         val conf = (1f - (relVarX + relVarY) * 1.5f).coerceIn(projectionMinConfidence, 0.99f)
         val grid = GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, boardRoi)
-        return ProjAttempt(grid, relVarX, relVarY, xLocal, yLocal)
+        return ProjAttempt(grid, relVarX, relVarY, xLocal, yLocal, peakX[0], peakY[0])
     }
 
     /**

@@ -46,6 +46,22 @@ data class DiagnosticBundle(
     val callbackOutcome: String,
     val verificationStatus: String,
     val verificationReason: String,
+    val gridMethod: String,
+    val relVarX: String,
+    val relVarY: String,
+    val projectionPeakCountX: String,
+    val projectionPeakCountY: String,
+    val meanLuminance: String,
+    val blackFrame: String,
+    val visionDecisions: String,
+    val dispatchDecision: String,
+    val finalSafetyDecision: String,
+    val frameExportStatus: String,
+    val frameExportReason: String,
+    val gridBoundaries: String,
+    val frameTimestampMeaning: String = VerifyTiming.FRAME_TIMESTAMP_MEANING,
+    /** Always false. Exporting this bundle does not grant a vision or verify PASS. */
+    val diagnosticInfluencesGate: Boolean = false,
     val simulated: Boolean,
 ) {
     fun toJson(): String = buildString {
@@ -84,6 +100,22 @@ data class DiagnosticBundle(
         field("callbackOutcome", callbackOutcome)
         field("verificationStatus", verificationStatus)
         field("verificationReason", verificationReason)
+        field("gridMethod", gridMethod)
+        field("relVarX", relVarX)
+        field("relVarY", relVarY)
+        field("projectionPeakCountX", projectionPeakCountX)
+        field("projectionPeakCountY", projectionPeakCountY)
+        field("meanLuminance", meanLuminance)
+        field("blackFrame", blackFrame)
+        field("visionDecisions", visionDecisions)
+        field("dispatchDecision", dispatchDecision)
+        field("finalSafetyDecision", finalSafetyDecision)
+        field("frameExportStatus", frameExportStatus)
+        field("frameExportReason", frameExportReason)
+        field("gridBoundaries", gridBoundaries)
+        field("frameTimestampMeaning", frameTimestampMeaning)
+        field("diagnosticInfluencesGate", diagnosticInfluencesGate.toString(), raw = true)
+        field("callbackOutcomeIsDispatchCopy", (callbackOutcome == dispatchStatus).toString(), raw = true)
         field("simulated", simulated.toString(), raw = true, last = true)
         append("}\n")
     }
@@ -158,6 +190,10 @@ data class DiagnosticBundle(
             verificationStatus: String,
             verificationReason: String,
             simulated: Boolean,
+            meanLuminance: String = "not measured",
+            blackFrame: String = "not measured — frame pixels were not supplied",
+            frameExportStatus: String = DiagnosticFrame.STATUS_NOT_EXPORTED,
+            frameExportReason: String = "frame pixels were not supplied",
         ): DiagnosticBundle {
             val gate = when {
                 vision == null -> "NONE"
@@ -193,6 +229,36 @@ data class DiagnosticBundle(
                 verificationFailed = verificationStatus.equals(VerificationPolicy.FAILED, ignoreCase = true),
             )
             val moveText = if (!visionPass) "none" else selectedMove.ifBlank { "none" }
+            val diag = vision?.diagnostics ?: emptyMap()
+            val gridMethod = vision?.method?.name ?: "not measured"
+            val relVarX = diag["projRelVarX"] ?: "not measured"
+            val relVarY = diag["projRelVarY"] ?: "not measured"
+            val peakX = diag["projPeakCountX"] ?: "not measured"
+            val peakY = diag["projPeakCountY"] ?: "not measured"
+            val boundaries = vision?.grid?.let { grid ->
+                "x=" + grid.xBoundaries.joinToString(",") { "%.1f".format(it) } +
+                    ";y=" + grid.yBoundaries.joinToString(",") { "%.1f".format(it) }
+            } ?: "not measured"
+            val decisions = listOf(
+                "method=$gridMethod",
+                "validation=$reason",
+                "gridRecover=${diag["gridRecover"] ?: "not measured"}",
+                "fallback=${diag["fallback"] ?: "none"}",
+                "projectionRejected=${diag["projectionRejected"] ?: "none"}",
+            ).joinToString("; ")
+            val recordedVerify = if (verificationStatus.equals(VerificationPolicy.SUCCESS, ignoreCase = true)) {
+                "REFUSED — diagnostic does not record VERIFY SUCCESS"
+            } else {
+                verificationStatus.ifBlank { VerificationPolicy.PENDING }
+            }
+            val dispatchDecision = if (visionPass) dispatchStatus else "NOT STARTED"
+            val finalSafety = when {
+                !visionPass -> "HOLD $failure: $reason"
+                recordedVerify == VerificationPolicy.BOARD_CHANGED_UNCONFIRMED ->
+                    VerificationPolicy.BOARD_CHANGED_UNCONFIRMED
+                failure != CLASS_NONE -> "HOLD $failure"
+                else -> "vision PASS — diagnostic does not grant a move"
+            }
             return DiagnosticBundle(
                 appVersion = appVersion,
                 versionCode = versionCode,
@@ -228,8 +294,22 @@ data class DiagnosticBundle(
                 selectedMove = moveText,
                 dispatchStatus = if (visionPass) dispatchStatus else "NOT STARTED",
                 callbackOutcome = if (visionPass) callbackOutcome else "not dispatched",
-                verificationStatus = verificationStatus.ifBlank { VerificationPolicy.PENDING },
+                verificationStatus = recordedVerify,
                 verificationReason = verificationReason,
+                gridMethod = gridMethod,
+                relVarX = relVarX,
+                relVarY = relVarY,
+                projectionPeakCountX = peakX,
+                projectionPeakCountY = peakY,
+                meanLuminance = meanLuminance,
+                blackFrame = blackFrame,
+                visionDecisions = decisions,
+                dispatchDecision = dispatchDecision,
+                finalSafetyDecision = finalSafety,
+                frameExportStatus = frameExportStatus,
+                frameExportReason = frameExportReason,
+                gridBoundaries = boundaries,
+                diagnosticInfluencesGate = false,
                 simulated = simulated,
             )
         }

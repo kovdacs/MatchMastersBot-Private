@@ -142,9 +142,50 @@ class ContinuousCycleHarnessTest {
     }
 
     @Test fun continuous_1_move() = runNMoves(1)
-    @Test fun continuous_5_moves() = runNMoves(5)
-    @Test fun continuous_10_moves() = runNMoves(10)
-    @Test fun continuous_20_moves() = runNMoves(20)
+
+    @Test
+    fun continuous_unconfirmedCap_allowsTwoThenPauses_noThirdDispatch() {
+        val (ctrl, exec, seq) = harness()
+        assertThat(ctrl.onStartRequested()).isTrue()
+        var frameSeq = 1L
+        for (i in 0 until AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED) {
+            val before = visionPass(seed = i)
+            val frameId = FrameSequenceGate.FrameId(frameSeq, identity = 1000L + i, timestampMs = 1_000L + i)
+            assertThat(seq.evaluate(frameId).allow).isTrue()
+            val cycle = ctrl.runCycleIfActive(before)!!
+            val executed = cycle.executed as AutomaticInputEngine.ExecuteResult.Executed
+            seq.markGestureDispatched(frameId)
+            frameSeq += 1
+            val after = afterBoard(before, seed = i)
+            val fb = ctrl.completeFeedback(
+                executed.beforeBoardHash,
+                after,
+                VerifyObservation(
+                    newFrameAccepted = true,
+                    frameFresh = true,
+                    gestureEligible = true,
+                    frameElapsedMs = 5_000L + i,
+                    dispatchCompletedElapsedMs = 4_000L + i,
+                    preDispatchSequence = frameSeq - 1,
+                    afterSequence = frameSeq,
+                ),
+            )!!
+            assertThat(fb.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+            assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+            if (i + 1 < AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED) {
+                assertThat(fb.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
+                assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+            } else {
+                assertThat(fb.outcome).isEqualTo(BotLoopOutcome.HOLD)
+                assertThat(fb.reason).contains("capped at 2")
+                assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)
+                assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+            }
+        }
+        assertThat(ctrl.runCycleIfActive(visionPass(99))).isNull()
+        assertThat(exec.dispatched).hasSize(AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED)
+        assertThat(ctrl.moveCount).isEqualTo(AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED)
+    }
 
     @Test
     fun verifyUnchanged_stops_noBlindRetry() {

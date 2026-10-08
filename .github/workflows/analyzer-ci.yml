@@ -86,37 +86,15 @@ jobs:
                   print(body[:4000])
           PY
 
-      - name: Prepare fixed CI debug keystore when secrets exist
-        env:
-          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
-          ANDROID_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
-          ANDROID_DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
-          ANDROID_DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
+      - name: Confirm committed stable debug keystore
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_DEBUG_KEYSTORE_BASE64:-}" ] && \
-             [ -n "${ANDROID_DEBUG_KEYSTORE_PASSWORD:-}" ] && \
-             [ -n "${ANDROID_DEBUG_KEY_ALIAS:-}" ] && \
-             [ -n "${ANDROID_DEBUG_KEY_PASSWORD:-}" ]; then
-            KS_PATH="$RUNNER_TEMP/ci-debug.keystore"
-            printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
-            echo "ANDROID_DEBUG_KEYSTORE_PATH=$KS_PATH" >> "$GITHUB_ENV"
-            echo "ANDROID_DEBUG_KEYSTORE_PASSWORD=$ANDROID_DEBUG_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "ANDROID_DEBUG_KEY_ALIAS=$ANDROID_DEBUG_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "ANDROID_DEBUG_KEY_PASSWORD=$ANDROID_DEBUG_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "SIGNING_MODE=fixed-ci-debug-keystore"
-            echo "Stable signing identity will be used. Passwords are not printed."
-          else
-            echo "SIGNING_MODE=ephemeral-agp-debug-keystore"
-            echo "SIGNING_FALLBACK=Fixed CI debug keystore secrets are absent."
-            echo "The owner must add GitHub Actions secrets:"
-            echo "  ANDROID_DEBUG_KEYSTORE_BASE64"
-            echo "  ANDROID_DEBUG_KEYSTORE_PASSWORD"
-            echo "  ANDROID_DEBUG_KEY_ALIAS"
-            echo "  ANDROID_DEBUG_KEY_PASSWORD"
-            echo "Until those secrets exist, assembleDebug uses the runner-generated debug keystore."
-            echo "A new CI APK then may not update-install over the previous CI APK."
-          fi
+          test -f signing/match3-stable-debug.keystore
+          echo "SIGNING_MODE=stable-debug-keystore-committed"
+          echo "STABLE DEBUG KEY — NEVER USE FOR RELEASE"
+          echo "Debug assemble uses signing/match3-stable-debug.keystore (alias androiddebugkey)."
+          echo "The release build type does not use this key."
+          echo "GitHub Actions signing secrets are not used."
 
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug

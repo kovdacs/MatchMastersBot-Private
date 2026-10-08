@@ -11,8 +11,8 @@ android {
         applicationId = "com.match3vision.analyzer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.24.4-production-safety-integration"
+        versionCode = 17
+        versionName = "0.24.5-diagnostics-single-move"
         val gitCommit = System.getenv("GITHUB_SHA") ?: "unknown"
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -21,31 +21,21 @@ android {
         }
     }
 
-    val ciKeystorePath = System.getenv("ANDROID_DEBUG_KEYSTORE_PATH")
-    val ciKeystorePassword = System.getenv("ANDROID_DEBUG_KEYSTORE_PASSWORD")
-    val ciKeyAlias = System.getenv("ANDROID_DEBUG_KEY_ALIAS")
-    val ciKeyPassword = System.getenv("ANDROID_DEBUG_KEY_PASSWORD")
-    val ciSigningReady = !ciKeystorePath.isNullOrBlank() &&
-        !ciKeystorePassword.isNullOrBlank() &&
-        !ciKeyAlias.isNullOrBlank() &&
-        !ciKeyPassword.isNullOrBlank()
-
+    // STABLE DEBUG KEY — NEVER USE FOR RELEASE.
+    // Debug builds, local and CI, use the committed debug-only keystore.
+    // The release build type does not reference it.
     signingConfigs {
-        if (ciSigningReady) {
-            create("ciDebug") {
-                storeFile = file(ciKeystorePath!!)
-                storePassword = ciKeystorePassword
-                keyAlias = ciKeyAlias
-                keyPassword = ciKeyPassword
-            }
+        create("stableDebug") {
+            storeFile = rootProject.file("signing/match3-stable-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
     buildTypes {
         debug {
-            if (ciSigningReady) {
-                signingConfig = signingConfigs.getByName("ciDebug")
-            }
+            signingConfig = signingConfigs.getByName("stableDebug")
         }
         release {
             isMinifyEnabled = false
