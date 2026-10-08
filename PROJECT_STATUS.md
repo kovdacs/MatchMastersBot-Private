@@ -4,7 +4,7 @@
 **Version:** `0.24.3-production-path-audit`  
 **Previous tip:** `22eca0a` / 0.24.2-runtime-diagnostics  
 **This pack:** production path integration audit. Live phone still **NOT TESTED**. See `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
-**CI:** analyzer-ci on GitHub Actions (no JDK on box)  
+**CI:** push run 37773265584 SUCCESS (`eadf97c`, 388 tests). PR run 37773270896 SUCCESS (merge `01a59ea`). See `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)
