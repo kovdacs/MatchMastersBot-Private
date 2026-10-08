@@ -110,7 +110,21 @@ class InputLoopControllerTest {
         assertThat(Board.fromVision(after.board).contentHash())
             .isNotEqualTo(executed.beforeBoardHash)
 
-        val fb = ctrl.completeFeedback(executed.beforeBoardHash, after)
+        val fb = ctrl.completeFeedback(
+            executed.beforeBoardHash,
+            after,
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+                preDispatchSequence = 1L,
+                afterSequence = 2L,
+            ),
+        )
+        assertThat(fb.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
         assertThat(fb.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
         assertThat(fb.feedback)
             .isInstanceOf(AutomaticInputEngine.FeedbackResult.Success::class.java)

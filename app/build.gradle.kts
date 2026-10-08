@@ -11,15 +11,42 @@ android {
         applicationId = "com.match3vision.analyzer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.24.3-production-path-audit"
+        versionCode = 16
+        versionName = "0.24.4-production-safety-integration"
+        val gitCommit = System.getenv("GITHUB_SHA") ?: "unknown"
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
     }
 
+    val ciKeystorePath = System.getenv("ANDROID_DEBUG_KEYSTORE_PATH")
+    val ciKeystorePassword = System.getenv("ANDROID_DEBUG_KEYSTORE_PASSWORD")
+    val ciKeyAlias = System.getenv("ANDROID_DEBUG_KEY_ALIAS")
+    val ciKeyPassword = System.getenv("ANDROID_DEBUG_KEY_PASSWORD")
+    val ciSigningReady = !ciKeystorePath.isNullOrBlank() &&
+        !ciKeystorePassword.isNullOrBlank() &&
+        !ciKeyAlias.isNullOrBlank() &&
+        !ciKeyPassword.isNullOrBlank()
+
+    signingConfigs {
+        if (ciSigningReady) {
+            create("ciDebug") {
+                storeFile = file(ciKeystorePath!!)
+                storePassword = ciKeystorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (ciSigningReady) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

@@ -1,6 +1,6 @@
 # Match Masters Bot — Match3 Vision Analyzer
 
-**Version:** `0.24.3-production-path-audit`  
+**Version:** `0.24.4-production-safety-integration`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private`
 

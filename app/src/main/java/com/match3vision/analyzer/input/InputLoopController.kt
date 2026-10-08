@@ -2,6 +2,7 @@ package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.evaluation.MoveEvaluation
+import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.moves.MoveAnalysisEngine
 import com.match3vision.analyzer.vision.VisionResult
 
@@ -256,80 +257,86 @@ class InputLoopController(
     }
 
     /**
-     * After animation wait + a **new** vision frame.
+     * After animation wait + a newer vision frame.
      *
-     * When [verify] is present, a non-new or stale frame is FAILED without
-     * reading the board — dispatch success cannot become VERIFY SUCCESS.
-     * When [verify] is null (existing unit callers that already supply a fresh
-     * vision), the verifier result is the decision.
+     * [verify] must carry derived sequence, freshness, and timestamps.
+     * A null observation fails closed. A whole-board hash change is
+     * [VerificationPolicy.BOARD_CHANGED_UNCONFIRMED], not VERIFY SUCCESS.
+     * [beforeVision] and [attemptedMove] enable the swap-region check.
      */
     fun completeFeedback(
         beforeBoardHash: Long,
         afterVision: VisionResult,
         verify: VerifyObservation? = null,
+        beforeVision: VisionResult? = null,
+        attemptedMove: Move? = null,
     ): CycleResult {
-        val frameTooEarly = verify != null && !verify.frameIsAfterDispatch()
-        val boardSame = verify?.boardUnchanged == true
-        if (verify != null && (!verify.newFrameAccepted || !verify.frameFresh || frameTooEarly || boardSame)) {
-            val reason = verify.reason.ifBlank {
-                when {
-                    boardSame ->
-                        "VERIFY FAILED — board unchanged (identical to pre-move; no SUCCESS)"
-                    frameTooEarly ->
-                        "VERIFY FAILED — frame is not later than dispatch completion (no SUCCESS)"
-                    else ->
-                        "VERIFY FAILED — stale or non-new frame cannot decide (no SUCCESS)"
-                }
-            }
-            val sm = inputEngine.stateMachine()
-            if (sm.state != BotLoopState.STOP) {
-                sm.stop("STOP — $reason")
-            }
-            AutoPlayTrace.log("VERIFY", "FAILED $reason")
-            AutoPlayTrace.markStop(reason)
-            return CycleResult(
-                state = sm.state,
-                outcome = BotLoopOutcome.STOP,
-                reason = reason,
-                verifyStatus = VerificationPolicy.decide(
-                    newFrameAccepted = verify.newFrameAccepted,
-                    frameFresh = verify.frameFresh,
-                    frameVerifiable = false,
-                    boardChanged = false,
-                ),
-                // The gesture was already dispatched; this failure is verification.
-                lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
-                gestureStatus = "CREATED",
+        if (verify == null) {
+            return verificationStop(
+                "VERIFY FAILED — required timing information absent (fail closed)",
+            )
+        }
+        if (!verify.gestureEligible) {
+            return verificationStop(
+                verify.reason.ifBlank {
+                    "VERIFY FAILED — gesture not eligible for verification " +
+                        "(dispatch scheduling is not completion)"
+                },
+            )
+        }
+        if (!verify.newFrameAccepted || !verify.frameFresh) {
+            return verificationStop(
+                verify.reason.ifBlank {
+                    "VERIFY FAILED — stale or non-new frame cannot decide (no SUCCESS)"
+                },
+            )
+        }
+        val timing = verify.timingFailure()
+        if (timing != null) {
+            return verificationStop("VERIFY FAILED — $timing (no SUCCESS)")
+        }
+        if (verify.boardUnchanged) {
+            return verificationStop(
+                "VERIFY FAILED — board unchanged (identical to pre-move; no SUCCESS)",
             )
         }
         val fb = inputEngine.verifyAfterInput(beforeBoardHash, afterVision)
         val sm = inputEngine.stateMachine()
         return when (fb) {
             is AutomaticInputEngine.FeedbackResult.Success -> {
-                val label = VerificationPolicy.decide(
-                    newFrameAccepted = true,
-                    frameFresh = verify?.frameFresh ?: true,
-                    frameVerifiable = true,
-                    boardChanged = true,
-                )
-                AutoPlayTrace.log("VERIFY", "$label board changed")
-                CycleResult(
-                    state = sm.state,
-                    outcome = if (label == VerificationPolicy.SUCCESS) {
-                        BotLoopOutcome.CONTINUE
-                    } else {
-                        BotLoopOutcome.STOP
-                    },
-                    reason = if (label == VerificationPolicy.SUCCESS) {
-                        "board changed — next move allowed"
-                    } else {
-                        "VERIFY FAILED — policy refused SUCCESS"
-                    },
-                    feedback = fb,
-                    verifyStatus = label,
-                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
-                    gestureStatus = "CREATED",
-                )
+                val region = when {
+                    beforeVision != null && attemptedMove != null ->
+                        SwapRegionCheck.intendedCellsChanged(beforeVision, afterVision, attemptedMove)
+                    else -> verify.intendedRegionChanged
+                }
+                val label = VerificationPolicy.afterBoardChange(region)
+                if (region == false) {
+                    val reason =
+                        "VERIFY FAILED — board changed outside the intended swap region (no SUCCESS)"
+                    if (sm.state != BotLoopState.STOP) sm.stop("STOP — $reason")
+                    AutoPlayTrace.log("VERIFY", reason)
+                    AutoPlayTrace.markStop(reason)
+                    CycleResult(
+                        state = sm.state,
+                        outcome = BotLoopOutcome.STOP,
+                        reason = reason,
+                        feedback = fb,
+                        verifyStatus = VerificationPolicy.FAILED,
+                        lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                        gestureStatus = "CREATED",
+                    )
+                } else {
+                    AutoPlayTrace.log("VERIFY", label)
+                    CycleResult(
+                        state = sm.state,
+                        outcome = BotLoopOutcome.CONTINUE,
+                        reason = label,
+                        feedback = fb,
+                        verifyStatus = label,
+                        lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                        gestureStatus = "CREATED",
+                    )
+                }
             }
             is AutomaticInputEngine.FeedbackResult.Held -> {
                 AutoPlayTrace.log("VERIFY", "FAILED/HOLD ${fb.reason}")
@@ -351,5 +358,22 @@ class InputLoopController(
                 )
             }
         }
+    }
+
+    private fun verificationStop(reason: String): CycleResult {
+        val sm = inputEngine.stateMachine()
+        if (sm.state != BotLoopState.STOP) {
+            sm.stop("STOP — $reason")
+        }
+        AutoPlayTrace.log("VERIFY", "FAILED $reason")
+        AutoPlayTrace.markStop(reason)
+        return CycleResult(
+            state = sm.state,
+            outcome = BotLoopOutcome.STOP,
+            reason = reason,
+            verifyStatus = VerificationPolicy.FAILED,
+            lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+            gestureStatus = "CREATED",
+        )
     }
 }

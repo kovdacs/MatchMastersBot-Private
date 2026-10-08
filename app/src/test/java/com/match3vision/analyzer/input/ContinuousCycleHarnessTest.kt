@@ -63,7 +63,7 @@ class ContinuousCycleHarnessTest {
     }
 
     private fun afterBoard(before: VisionResult, seed: Int): VisionResult {
-        // Mutate one cell so contentHash changes (verify SUCCESS).
+        // Mutate the board so contentHash changes. The honest label is unconfirmed.
         return visionPass(seed = seed + 17)
     }
 
@@ -107,10 +107,24 @@ class ContinuousCycleHarnessTest {
             assertThat(Board.fromVision(after.board).contentHash())
                 .isNotEqualTo(executed.beforeBoardHash)
 
-            val fb = ctrl.completeFeedback(executed.beforeBoardHash, after)
+            val fb = ctrl.completeFeedback(
+                executed.beforeBoardHash,
+                after,
+                VerifyObservation(
+                    newFrameAccepted = true,
+                    frameFresh = true,
+                    gestureEligible = true,
+                    frameElapsedMs = 5_000L + i,
+                    dispatchCompletedElapsedMs = 4_000L + i,
+                    preDispatchSequence = frameSeq - 1,
+                    afterSequence = frameSeq,
+                ),
+            )
             assertThat(fb).isNotNull()
             assertThat(fb!!.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
-            assertThat(fb.reason).contains("board changed")
+            assertThat(fb.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+            assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+            assertThat(fb.reason).contains("BOARD CHANGED")
             // Still RUNNING — no silent PAUSE/STOP freeze
             assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
             assertThat(ctrl.enableSwitch().isEnabled()).isTrue()
@@ -140,7 +154,17 @@ class ContinuousCycleHarnessTest {
         val cycle = ctrl.runCycleIfActive(before)!!
         val executed = cycle.executed as AutomaticInputEngine.ExecuteResult.Executed
         // Same board hash → verify FAIL → failsafe PAUSE (no retry loop)
-        val fb = ctrl.completeFeedback(executed.beforeBoardHash, before)
+        val fb = ctrl.completeFeedback(
+            executed.beforeBoardHash,
+            before,
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+            ),
+        )
         assertThat(fb!!.outcome).isEqualTo(BotLoopOutcome.STOP)
         assertThat(fb.reason).contains("unchanged")
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)

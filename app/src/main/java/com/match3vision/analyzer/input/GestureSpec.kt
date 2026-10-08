@@ -29,6 +29,15 @@ data class GestureSpec(
 
 /** Outcome of attempting to dispatch a gesture to the OS. */
 sealed class InputDispatchResult {
-    data class Dispatched(val gesture: GestureSpec) : InputDispatchResult()
+    /**
+     * The channel accepted the gesture.
+     * [callbackCompleted] is true only after GestureResultCallback.onCompleted.
+     * Scheduling alone leaves it false, so verification must not start.
+     */
+    data class Dispatched(
+        val gesture: GestureSpec,
+        val callbackCompleted: Boolean = false,
+    ) : InputDispatchResult()
+
     data class Failed(val reason: String) : InputDispatchResult()
 }

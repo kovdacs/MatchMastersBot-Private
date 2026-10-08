@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.match3vision.analyzer.capture.CaptureConsent
 import com.match3vision.analyzer.capture.CaptureDisplaySize
 import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.capture.ScreenMeasurement
 import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.vision.CellVision
@@ -109,6 +110,11 @@ class ProductionPathIntegrationTest {
         frameTimestampMs = 1_700_000_000_000L,
         frameWidth = width,
         frameHeight = height,
+        screen = ScreenMeasurement(
+            widthPx = width,
+            heightPx = height,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        ),
     )
 
     @Test
@@ -177,10 +183,10 @@ class ProductionPathIntegrationTest {
     @Test
     fun productionInstall_isAccessibilityExecutor_notRecording() {
         var consulted = 0
-        val exec = ProductionInstall.accessibilityExecutor {
+        val exec = ProductionInstall.accessibilityExecutor(serviceProvider = {
             consulted++
             null
-        }
+        })
         assertThat(exec).isInstanceOf(AccessibilityGestureExecutor::class.java)
         assertThat(exec).isNotInstanceOf(RecordingInputGestureExecutor::class.java)
         assertThat(ProductionPath.role(exec))
@@ -193,10 +199,10 @@ class ProductionPathIntegrationTest {
     @Test
     fun productionExecutor_refusesNullContext_withoutConsultingService() {
         var consulted = 0
-        val exec = ProductionInstall.accessibilityExecutor {
+        val exec = ProductionInstall.accessibilityExecutor(serviceProvider = {
             consulted++
             error("service must not be consulted without a measured context")
-        }
+        })
         val eng = AutomaticInputEngine(
             enableSwitch = InputEnableSwitch(initiallyEnabled = true),
             executor = exec,
@@ -211,10 +217,10 @@ class ProductionPathIntegrationTest {
     @Test
     fun productionExecutor_refusesSimulatedContext_withoutConsultingService() {
         var consulted = 0
-        val exec = ProductionInstall.accessibilityExecutor {
+        val exec = ProductionInstall.accessibilityExecutor(serviceProvider = {
             consulted++
             error("service must not be consulted for a simulated context")
-        }
+        })
         val eng = AutomaticInputEngine(
             enableSwitch = InputEnableSwitch(initiallyEnabled = true),
             executor = exec,
@@ -229,7 +235,7 @@ class ProductionPathIntegrationTest {
 
     @Test
     fun productionExecutor_nullService_doesNotDispatchEvenIfContextSaysConnected() {
-        val exec = ProductionInstall.accessibilityExecutor { null }
+        val exec = ProductionInstall.accessibilityExecutor(serviceProvider = { null })
         val sw = InputEnableSwitch.disabledByDefault()
         val ctrl = AutoPlayController(
             enableSwitch = sw,
@@ -251,21 +257,43 @@ class ProductionPathIntegrationTest {
     }
 
     @Test
-    fun productionCycleContext_copiesMeasurements_andIsNeverSimulated() {
-        val ctx = measured(width = 1080, height = 2400, ageMs = 40L, a11y = false, capture = false)
+    fun productionCycleContext_keepsIndependentScreen_andIsNeverSimulated() {
+        val screen = ScreenMeasurement(
+            widthPx = 1440,
+            heightPx = 3200,
+            rotation = 0,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        )
+        val ctx = ProductionCycleContext.fromLoopObservation(
+            a11yConnected = false,
+            captureManagerPresent = false,
+            hasFrame = true,
+            frameAgeMs = 40L,
+            frameSequenceDecision = null,
+            frameTimestampMs = 1L,
+            frameWidth = 1080,
+            frameHeight = 2400,
+            screen = screen,
+            frameSequence = 7L,
+        )
         assertThat(ctx.simulated).isFalse()
         assertThat(ctx.a11yConnected).isFalse()
         assertThat(ctx.captureOn).isFalse()
         assertThat(ctx.frameAgeMs).isEqualTo(40L)
         assertThat(ctx.frameWidth).isEqualTo(1080)
-        assertThat(ctx.screenWidth).isEqualTo(ctx.frameWidth)
-        assertThat(ctx.screenHeight).isEqualTo(ctx.frameHeight)
+        assertThat(ctx.frameHeight).isEqualTo(2400)
+        assertThat(ctx.screenWidth).isEqualTo(1440)
+        assertThat(ctx.screenHeight).isEqualTo(3200)
+        assertThat(ctx.screenWidth).isNotEqualTo(ctx.frameWidth)
+        assertThat(ctx.screenSource).isEqualTo(ScreenMeasurement.SOURCE_MAXIMUM_WINDOW)
+        assertThat(ctx.screenSource).isNotEqualTo(ScreenMeasurement.SOURCE_FRAME)
+        assertThat(ctx.coordinateAlignmentProven).isFalse()
+        assertThat(ctx.frameSequence).isEqualTo(7L)
         val space = FrameScreenCoordinatePolicy.assess(
             ctx.frameWidth, ctx.frameHeight, ctx.screenWidth, ctx.screenHeight,
         )
-        assertThat(space.mapping)
-            .isEqualTo(FrameScreenCoordinatePolicy.Mapping.IDENTITY_FRAME_PIXELS)
-        assertThat(space.deviceDependent).isTrue()
+        assertThat(space.mapping).isEqualTo(FrameScreenCoordinatePolicy.Mapping.REFUSED)
+        assertThat(space.alignmentProven).isFalse()
     }
 
     @Test
@@ -318,6 +346,8 @@ class ProductionPathIntegrationTest {
             .isEqualTo(FrameScreenCoordinatePolicy.Mapping.IDENTITY_FRAME_PIXELS)
         assertThat(same.deviceDependent).isTrue()
         assertThat(same.reason).contains("no dp")
+        assertThat(same.reason).contains("UNPROVEN")
+        assertThat(same.alignmentProven).isFalse()
 
         val mismatch = FrameScreenCoordinatePolicy.assess(1080, 2400, 1440, 3200)
         assertThat(mismatch.mapping).isEqualTo(FrameScreenCoordinatePolicy.Mapping.REFUSED)
@@ -455,12 +485,33 @@ class ProductionPathIntegrationTest {
         val (ctrl2, exec2) = simulationController()
         val cycle2 = ctrl2.runCycleIfActive(visionPass(seed = 0), measured())
         val executed2 = cycle2!!.executed as AutomaticInputEngine.ExecuteResult.Executed
-        val ok = ctrl2.completeFeedback(
+        val missingTimes = ctrl2.completeFeedback(
             executed2.beforeBoardHash,
             visionPass(seed = 3),
-            VerifyObservation(newFrameAccepted = true, frameFresh = true),
+            VerifyObservation(newFrameAccepted = true, frameFresh = true, gestureEligible = true),
         )
-        assertThat(ok!!.verifyStatus).isEqualTo(VerificationPolicy.SUCCESS)
+        assertThat(missingTimes!!.verifyStatus).isEqualTo(VerificationPolicy.FAILED)
+        assertThat(missingTimes.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+        assertThat(missingTimes.reason).contains("missing timestamp")
+
+        val (ctrl3, exec3) = simulationController()
+        val cycle3 = ctrl3.runCycleIfActive(visionPass(seed = 0), measured())
+        val executed3 = cycle3!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+        val ok = ctrl3.completeFeedback(
+            executed3.beforeBoardHash,
+            visionPass(seed = 3),
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 8_000L,
+                dispatchCompletedElapsedMs = 7_000L,
+                preDispatchSequence = 1L,
+                afterSequence = 2L,
+            ),
+        )
+        assertThat(ok!!.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(ok.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
         assertThat(exec2.dispatched).hasSize(1)
         assertThat(ProductionPath.role(exec2))
             .isEqualTo(ProductionPath.ExecutorRole.SIMULATION_RECORDING)

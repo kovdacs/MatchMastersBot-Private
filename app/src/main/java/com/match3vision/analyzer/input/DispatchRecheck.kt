@@ -27,6 +27,8 @@ data class DispatchPermit(
     val sequenceAllowed: Boolean,
     /** Monotonic capture time. 0 if the frame did not record one. */
     val capturedElapsedMs: Long = 0L,
+    /** Independent screen-measurement source. Empty when a unit permit omitted it. */
+    val screenSource: String = "",
 ) {
     companion object {
         fun from(
@@ -55,6 +57,7 @@ data class DispatchPermit(
                 simulated = context.simulated,
                 sequenceAllowed = seqOk,
                 capturedElapsedMs = context.capturedElapsedMs,
+                screenSource = context.screenSource,
             )
         }
     }
@@ -65,15 +68,17 @@ object DispatchRecheck {
 
     /**
      * [nowElapsedMs] is the monotonic clock at the dispatch call.
-     * When both it and [DispatchPermit.capturedElapsedMs] are positive, age is
-     * recomputed. Otherwise the age already on the permit is used.
+     * Age is recomputed from [DispatchPermit.capturedElapsedMs]. A missing or
+     * non-positive sample fails closed. The plan-time age is not a fallback.
      */
     fun evaluate(permit: DispatchPermit, nowElapsedMs: Long = 0L): Result {
-        val ageMs = if (permit.capturedElapsedMs > 0L && nowElapsedMs > 0L) {
-            FrameClock.ageMs(permit.capturedElapsedMs, nowElapsedMs)
-        } else {
-            permit.frameAgeMs
+        if (permit.capturedElapsedMs <= 0L || nowElapsedMs <= 0L) {
+            return Result(false, "monotonic frame age unavailable (fail closed)")
         }
+        if (nowElapsedMs < permit.capturedElapsedMs) {
+            return Result(false, "backwards monotonic frame age (fail closed)")
+        }
+        val ageMs = FrameClock.ageMs(permit.capturedElapsedMs, nowElapsedMs)
         if (permit.simulated) {
             return Result(false, "simulated context is not a production dispatch")
         }

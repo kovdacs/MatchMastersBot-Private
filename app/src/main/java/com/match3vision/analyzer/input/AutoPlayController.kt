@@ -1,5 +1,6 @@
 package com.match3vision.analyzer.input
 
+import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.vision.VisionResult
 
 /**
@@ -224,9 +225,17 @@ class AutoPlayController(
         beforeBoardHash: Long,
         afterVision: VisionResult,
         verify: VerifyObservation? = null,
+        beforeVision: VisionResult? = null,
+        attemptedMove: Move? = null,
     ): InputLoopController.CycleResult? {
         if (mode == Mode.STOPPED) return null
-        val fb = inputLoop.completeFeedback(beforeBoardHash, afterVision, verify)
+        val fb = inputLoop.completeFeedback(
+            beforeBoardHash,
+            afterVision,
+            verify,
+            beforeVision,
+            attemptedMove,
+        )
         lastReason = fb.reason
         if (fb.outcome == BotLoopOutcome.STOP) {
             onFailsafePause(fb.reason)

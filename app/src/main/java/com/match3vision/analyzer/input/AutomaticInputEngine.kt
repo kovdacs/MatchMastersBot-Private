@@ -34,6 +34,11 @@ class AutomaticInputEngine(
             val gesture: GestureSpec,
             val beforeBoardHash: Long,
             val move: MoveEvaluation,
+            /**
+             * True only when the channel reported callback completion.
+             * Dispatch scheduling does not set this.
+             */
+            val verificationEligible: Boolean = false,
         ) : ExecuteResult()
 
         data class Held(val reason: String) : ExecuteResult()
@@ -192,10 +197,18 @@ class AutomaticInputEngine(
         }
         return when (dispatch) {
             is InputDispatchResult.Dispatched -> {
-                AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "SUCCESS")
+                AutoPlayTrace.log(
+                    AutoPlayTrace.TAG_DISPATCH_RESULT,
+                    "DISPATCHED callbackCompleted=${dispatch.callbackCompleted} (not VERIFY SUCCESS)",
+                )
                 val hash = Board.fromVision(vision.board).contentHash()
                 stateMachine.onInputExecuted()
-                ExecuteResult.Executed(dispatch.gesture, hash, move)
+                ExecuteResult.Executed(
+                    gesture = dispatch.gesture,
+                    beforeBoardHash = hash,
+                    move = move,
+                    verificationEligible = dispatch.callbackCompleted,
+                )
             }
             is InputDispatchResult.Failed -> {
                 AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "FAILED — ${dispatch.reason}")
