@@ -55,6 +55,23 @@ object AutoPlaySession {
         val moveCount: Int = 0,
         /** Heartbeat tick so UI proves the loop is alive (no silent freeze). */
         val heartbeatMs: Long = 0L,
+        /** CREATED / NOT CREATED from the last cycle, not a constant. */
+        val gestureStatus: String = "NOT CREATED",
+        val frameTimestampMs: Long = -1L,
+        val frameWidth: Int = 0,
+        val frameHeight: Int = 0,
+        /** FRESH / STALE / NONE measured from frame age. */
+        val frameFreshness: String = "NONE",
+        /** Candidates from MoveAnalysis. -1 = not measured this tick. */
+        val moveCandidates: Int = -1,
+        val inputBlockReason: String? = null,
+        val simulated: Boolean = false,
+        val gestureAttemptFailed: Boolean = false,
+        val coordinateBlocked: Boolean = false,
+        /** Explicit vision pass bit when the caller has a VisionResult. Null → string sniff. */
+        val visionPassFlag: Boolean? = null,
+        /** Explicit frame-present bit. Null → string sniff of [frame]. */
+        val hasFrameFlag: Boolean? = null,
     ) {
         fun bubbleLines(compact: Boolean = true): String {
             val status = LivePipelineStatus(
@@ -76,6 +93,16 @@ object AutoPlaySession {
                 frameAgeMs = frameAgeMs,
                 captureStatus = captureStatus,
                 firstBlock = firstBlock,
+                gestureStatus = gestureStatus,
+                frameTimestampMs = frameTimestampMs,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                frameFreshness = frameFreshness,
+                moveCandidates = moveCandidates,
+                inputBlockReason = inputBlockReason,
+                simulated = simulated,
+                gestureAttemptFailed = gestureAttemptFailed,
+                coordinateBlocked = coordinateBlocked,
             )
             val body = status.bubbleLines(compact = compact)
             return if (!stopReason.isNullOrBlank() && firstBlock != stopReason) {
@@ -193,6 +220,18 @@ object AutoPlaySession {
         frameSequenceAllow: Boolean? = null,
         heartbeatMs: Long? = null,
         cycleReason: String? = null,
+        gestureStatus: String? = null,
+        frameTimestampMs: Long? = null,
+        frameWidth: Int? = null,
+        frameHeight: Int? = null,
+        frameFreshness: String? = null,
+        moveCandidates: Int? = null,
+        inputBlockReason: String? = null,
+        simulated: Boolean? = null,
+        gestureAttemptFailed: Boolean? = null,
+        coordinateBlocked: Boolean? = null,
+        visionPassFlag: Boolean? = null,
+        hasFrameFlag: Boolean? = null,
     ) {
         if (clearStopReason) {
             AutoPlayTrace.clearLastStop()
@@ -233,6 +272,22 @@ object AutoPlaySession {
                     frameAgeMs = frameAgeMs ?: cur.diagnostics.frameAgeMs,
                     captureStatus = captureStatus ?: cur.diagnostics.captureStatus,
                     heartbeatMs = heartbeatMs ?: System.currentTimeMillis(),
+                    gestureStatus = gestureStatus ?: cur.diagnostics.gestureStatus,
+                    frameTimestampMs = frameTimestampMs ?: cur.diagnostics.frameTimestampMs,
+                    frameWidth = frameWidth ?: cur.diagnostics.frameWidth,
+                    frameHeight = frameHeight ?: cur.diagnostics.frameHeight,
+                    frameFreshness = frameFreshness ?: cur.diagnostics.frameFreshness,
+                    moveCandidates = moveCandidates ?: cur.diagnostics.moveCandidates,
+                    inputBlockReason = when (inputBlockReason) {
+                        null -> cur.diagnostics.inputBlockReason
+                        "" -> null
+                        else -> inputBlockReason
+                    },
+                    simulated = simulated ?: cur.diagnostics.simulated,
+                    gestureAttemptFailed = gestureAttemptFailed ?: cur.diagnostics.gestureAttemptFailed,
+                    coordinateBlocked = coordinateBlocked ?: cur.diagnostics.coordinateBlocked,
+                    visionPassFlag = visionPassFlag ?: cur.diagnostics.visionPassFlag,
+                    hasFrameFlag = hasFrameFlag ?: cur.diagnostics.hasFrameFlag,
                 ),
                 a11yConnected = connected,
                 captureOn = cur.captureReady,
@@ -277,11 +332,16 @@ object AutoPlaySession {
             explicit = null,
             clear = false,
         )
-        val visionPass = base.vision.contains("PASS", ignoreCase = true) &&
-            !base.vision.contains("HOLD", ignoreCase = true)
+        val visionPass = base.visionPassFlag ?: (
+            base.vision.contains("PASS", ignoreCase = true) &&
+                !base.vision.contains("HOLD", ignoreCase = true)
+            )
         val hasMove = base.move.isNotBlank() &&
             !base.move.equals("none", ignoreCase = true)
-        val hasFrame = base.frame.contains("received", ignoreCase = true)
+        val hasFrame = base.hasFrameFlag ?: (
+            base.frame.contains("received", ignoreCase = true) ||
+                base.frame.contains("seq=", ignoreCase = true)
+            )
         val seqAllow = frameSequenceAllow ?: !base.frameSequence.contains("REJECT", ignoreCase = true)
         val dispatchEnum = when (base.lastDispatch) {
             "SUCCESS" -> StartupReadinessGate.LastDispatch.SUCCESS
@@ -306,16 +366,39 @@ object AutoPlaySession {
             lastDispatch = dispatchEnum,
             verifyStatus = base.verifyStatus,
             cycleReason = cycleReason ?: stopResolved,
+            coordinateBlocked = base.coordinateBlocked,
+            coordinateReason = if (base.coordinateBlocked) base.inputBlockReason else null,
+            gestureAttemptFailed = base.gestureAttemptFailed,
+            inputBlockReason = when {
+                gate.inputReady -> null
+                !a11yConnected -> gate.blockReason ?: "ACCESSIBILITY: DISCONNECTED"
+                !captureOn -> "CAPTURE: OFF"
+                !overlayReady -> "OVERLAY not ready"
+                !inputEnabled -> "input switch DISABLED"
+                else -> base.inputBlockReason ?: "input channel not ready"
+            },
         )
+        val blockedReason = if (gate.inputReady) {
+            base.inputBlockReason
+        } else {
+            when {
+                !a11yConnected -> gate.blockReason ?: "ACCESSIBILITY: DISCONNECTED"
+                !captureOn -> "CAPTURE: OFF"
+                !overlayReady -> "OVERLAY not ready"
+                !inputEnabled -> "input switch DISABLED"
+                else -> base.inputBlockReason ?: "input channel not ready"
+            }
+        }
         return base.copy(
             mode = modeLabel,
             capture = if (captureOn) "ON" else "OFF",
             input = if (inputEnabled) "ENABLED" else "DISABLED",
             accessibility = if (a11yConnected) "CONNECTED" else "DISCONNECTED",
-            inputReady = if (gate.inputReady) "YES" else "NO",
+            inputReady = if (gate.inputReady) "READY" else "BLOCKED",
             stopReason = stopResolved,
             moveCount = controller.moveCount,
             firstBlock = block,
+            inputBlockReason = blockedReason,
             boardRoi = if (base.boardRoi != "—" && base.boardRoi.isNotBlank()) {
                 base.boardRoi
             } else {

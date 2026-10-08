@@ -1,6 +1,6 @@
 # Match Masters Bot — Match3 Vision Analyzer
 
-**Version:** `0.24.1-live-pipeline`  
+**Version:** `0.24.2-runtime-diagnostics`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private`
 

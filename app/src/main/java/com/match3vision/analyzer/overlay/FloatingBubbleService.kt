@@ -22,8 +22,14 @@ import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
+import com.match3vision.analyzer.input.GestureFailSafe
 import com.match3vision.analyzer.input.InputThresholds
 import com.match3vision.analyzer.input.MatchMastersAccessibilityService
+import com.match3vision.analyzer.input.RuntimeCycleContext
+import com.match3vision.analyzer.input.RuntimeLabels
+import com.match3vision.analyzer.input.StartupReadinessGate
+import com.match3vision.analyzer.input.VerificationPolicy
+import com.match3vision.analyzer.input.VerifyObservation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -116,7 +122,7 @@ class FloatingBubbleService : Service() {
             text = "várakozik"
             setTextColor(0xFFB0BEC5.toInt())
             textSize = 8.5f
-            maxLines = 16
+            maxLines = 32
             setLineSpacing(0f, 1.05f)
         }
         startBtn = Button(this).apply {
@@ -223,11 +229,43 @@ class FloatingBubbleService : Service() {
         touchTestBtn = null
     }
 
+    private var startGen: Int = 0
+
     private fun startLoopFromBubble() {
+        val gen = ++startGen
+        startLoopFromBubbleAttempt(attempt = 0, gen = gen)
+    }
+
+    /**
+     * CaptureService is started asynchronously. A single immediate check often
+     * sees a null manager and leaves the loop IDLE after the user already
+     * pressed INDÍTÁS — on device that looks like "the app does nothing".
+     * Retry briefly, and keep the first block on CAPTURE: OFF while waiting.
+     */
+    private fun startLoopFromBubbleAttempt(attempt: Int, gen: Int) {
+        if (gen != startGen) return
         val a11y = MatchMastersAccessibilityService.isConnected()
         val captureOk = CaptureService.managerOrNull() != null
         val overlayOk = android.provider.Settings.canDrawOverlays(this)
         AutoPlaySession.publish(a11yReady = a11y, captureReady = captureOk, overlayReady = overlayOk)
+        if (!captureOk && a11y && overlayOk && attempt < CAPTURE_START_RETRIES) {
+            val waiting = "CAPTURE: OFF — CaptureService még nem él"
+            AutoPlaySession.updateDiagnostics(
+                frameReceived = false,
+                a11yConnected = a11y,
+                captureStatus = "OFF",
+                phase = "RÖGZÍTÉS",
+                stopReason = waiting,
+                cycleReason = waiting,
+                hasFrameFlag = false,
+            )
+            refreshBubbleUi()
+            Handler(Looper.getMainLooper()).postDelayed(
+                { startLoopFromBubbleAttempt(attempt + 1, gen) },
+                CAPTURE_START_RETRY_MS,
+            )
+            return
+        }
         val ok = AutoPlaySession.controller.onBubbleStart(
             a11yConnected = a11y,
             captureReady = captureOk,
@@ -255,6 +293,7 @@ class FloatingBubbleService : Service() {
     }
 
     private fun pauseLoopFromBubble() {
+        startGen++
         AutoPlaySession.controller.onBubblePause()
         AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("szünet")
@@ -262,6 +301,7 @@ class FloatingBubbleService : Service() {
     }
 
     private fun stopAllAndSelf() {
+        startGen++
         loopJob?.cancel()
         loopJob = null
         AutoPlaySession.controller.onBubbleStop("bubble STOP")
@@ -412,23 +452,72 @@ class FloatingBubbleService : Service() {
                     continue
                 }
                 val manager = CaptureService.managerOrNull()
-                val frame = manager?.latestFrame?.value
+                if (manager == null) {
+                    val reason = "CAPTURE: OFF (CaptureService stopped mid-run)"
+                    ctrl.onCaptureLost(reason)
+                    AutoPlaySession.publish(captureReady = false, a11yReady = a11yLive)
+                    AutoPlaySession.updateDiagnostics(
+                        frameReceived = false,
+                        hasFrameFlag = false,
+                        a11yConnected = a11yLive,
+                        phase = "SZÜNET",
+                        captureStatus = "OFF",
+                        stopReason = reason,
+                        cycleReason = reason,
+                        heartbeatMs = System.currentTimeMillis(),
+                    )
+                    AutoPlaySession.refreshFromController()
+                    refreshBubbleUi()
+                    delay(400L)
+                    continue
+                }
+                val frame = manager.latestFrame.value
+                val capturing = manager.isCapturing.value
                 val seqGate = AutoPlaySession.frameSequenceGate
                 if (frame == null) {
                     val miss = seqGate.evaluate(null)
+                    AutoPlaySession.publish(captureReady = capturing)
                     AutoPlaySession.updateDiagnostics(
                         frameReceived = false,
+                        hasFrameFlag = false,
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
                         phase = "RÖGZÍTÉS",
-                        captureStatus = if (manager?.isCapturing?.value == true) "ON (no frame)" else "OFF",
+                        captureStatus = if (capturing) "ON (no frame)" else "OFF",
                         frameSequence = seqGate.statusText(),
+                        frameFreshness = "NONE",
+                        gestureStatus = "NOT CREATED",
                     )
                     if (!miss.allow) {
                         ctrl.onFailsafePause(miss.reason)
                     }
-                    AutoPlaySession.refreshFromController("vár képkockára…")
+                    AutoPlaySession.refreshFromController(
+                        if (capturing) "vár képkockára…" else "CAPTURE: OFF",
+                    )
                     refreshBubbleUi()
                     delay(150L)
+                    continue
+                }
+                if (!capturing) {
+                    val reason = "CAPTURE: OFF (projection stopped mid-run)"
+                    ctrl.onCaptureLost(reason)
+                    AutoPlaySession.publish(captureReady = false)
+                    AutoPlaySession.updateDiagnostics(
+                        frameReceived = true,
+                        hasFrameFlag = true,
+                        a11yConnected = a11yLive,
+                        captureStatus = "OFF",
+                        phase = "SZÜNET",
+                        stopReason = reason,
+                        cycleReason = reason,
+                        frameTimestampMs = frame.timestampMs,
+                        frameWidth = frame.width,
+                        frameHeight = frame.height,
+                        frameAgeMs = frame.ageMs(),
+                        frameFreshness = RuntimeLabels.freshness(true, frame.ageMs()),
+                    )
+                    AutoPlaySession.refreshFromController()
+                    refreshBubbleUi()
+                    delay(400L)
                     continue
                 }
                 val frameId = frame.toSequenceId()
@@ -436,15 +525,23 @@ class FloatingBubbleService : Service() {
                 if (!seqDecision.allow) {
                     AutoPlaySession.updateDiagnostics(
                         frameReceived = true,
+                        hasFrameFlag = true,
                         visionText = "HOLD — ${seqDecision.reason}",
+                        visionPassFlag = false,
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
                         phase = "TARTÁS",
                         frameSequence = "${seqDecision.verdict}",
                         frameAgeMs = frame.ageMs(),
+                        frameTimestampMs = frame.timestampMs,
+                        frameWidth = frame.width,
+                        frameHeight = frame.height,
+                        frameFreshness = RuntimeLabels.freshness(true, frame.ageMs()),
                         captureStatus = "ON",
                         frameSequenceAllow = false,
                         heartbeatMs = System.currentTimeMillis(),
                         cycleReason = seqDecision.reason,
+                        gestureStatus = "NOT CREATED",
+                        verifyStatus = VerificationPolicy.PENDING,
                     )
                     AutoPlaySession.refreshFromController(seqDecision.reason)
                     refreshBubbleUi()
@@ -460,8 +557,27 @@ class FloatingBubbleService : Service() {
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
                         "${vision.grid.boardRoi.right},${vision.grid.boardRoi.bottom})"
                     val boardDet = vision.method.name + "/" + boardRoiStr
-                    val cycle = withContext(Dispatchers.Default) {
-                        ctrl.runCycleIfActive(vision)
+                    val cycleContext = RuntimeCycleContext(
+                        a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                        captureOn = CaptureService.managerOrNull() != null,
+                        hasFrame = true,
+                        frameAgeMs = useFrame.ageMs(),
+                        frameSequenceDecision = seqDecision,
+                        screenWidth = useFrame.width,
+                        screenHeight = useFrame.height,
+                        frameTimestampMs = useFrame.timestampMs,
+                        frameWidth = useFrame.width,
+                        frameHeight = useFrame.height,
+                        simulated = false,
+                    )
+                    // Overlay must not cancel the injected gesture (same fix as TESZT ÉRINTÉS).
+                    setBubbleTouchable(false)
+                    val cycle = try {
+                        withContext(Dispatchers.Default) {
+                            ctrl.runCycleIfActive(vision, cycleContext)
+                        }
+                    } finally {
+                        setBubbleTouchable(true)
                     }
                     if (cycle == null) {
                         AutoPlaySession.updateDiagnostics(
@@ -505,6 +621,20 @@ class FloatingBubbleService : Service() {
                         frameSequenceAllow = seqDecision.allow,
                         heartbeatMs = System.currentTimeMillis(),
                         cycleReason = cycle.reason,
+                        gestureStatus = cycle.gestureStatus,
+                        gestureAttemptFailed = cycle.gestureAttemptFailed,
+                        coordinateBlocked = cycle.coordinateBlocked,
+                        frameTimestampMs = useFrame.timestampMs,
+                        frameWidth = useFrame.width,
+                        frameHeight = useFrame.height,
+                        frameFreshness = RuntimeLabels.freshness(true, useFrame.ageMs()),
+                        moveCandidates = cycle.moveCandidates,
+                        inputBlockReason = cycle.inputBlockReason ?: "",
+                        verifyStatus = cycle.verifyStatus,
+                        visionPassFlag = cycle.visionGate.contains("PASS", ignoreCase = true) &&
+                            !cycle.visionGate.contains("HOLD", ignoreCase = true),
+                        hasFrameFlag = true,
+                        simulated = false,
                     )
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
@@ -530,16 +660,32 @@ class FloatingBubbleService : Service() {
                                     afterDecision = seqGate.evaluate(after?.toSequenceId())
                                 }
                                 val afterFrame = after
-                                if (afterFrame == null || !afterDecision.allow) {
-                                    ctrl.onFailsafePause(
-                                        afterDecision.reason.ifBlank {
-                                            "nincs húzás utáni ÚJ képkocka"
-                                        },
-                                    )
+                                val afterAge = afterFrame?.ageMs() ?: -1L
+                                val afterFresh = afterFrame != null &&
+                                    afterAge <= GestureFailSafe.MAX_FRAME_AGE_MS
+                                if (afterFrame == null || !afterDecision.allow || !afterFresh) {
+                                    val reason = when {
+                                        afterFrame == null ->
+                                            afterDecision.reason.ifBlank { "nincs húzás utáni ÚJ képkocka" }
+                                        !afterDecision.allow -> afterDecision.reason
+                                        else ->
+                                            "VERIFY FAILED — stale frame age=${afterAge}ms (not used)"
+                                    }
+                                    ctrl.onFailsafePause(reason)
                                     AutoPlaySession.updateDiagnostics(
                                         phase = "ELLENŐRZÉS",
                                         frameSequence = afterDecision.verdict.name,
-                                        captureStatus = if (afterFrame == null) "MISSING" else "STALE",
+                                        captureStatus = if (afterFrame == null) "MISSING" else "ON",
+                                        verifyStatus = VerificationPolicy.FAILED,
+                                        lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                                        gestureStatus = "CREATED",
+                                        stopReason = reason,
+                                        cycleReason = reason,
+                                        frameAgeMs = afterAge,
+                                        frameFreshness = if (afterFrame == null) "NONE" else "STALE",
+                                        frameTimestampMs = afterFrame?.timestampMs ?: -1L,
+                                        frameWidth = afterFrame?.width ?: 0,
+                                        frameHeight = afterFrame?.height ?: 0,
                                     )
                                     AutoPlaySession.refreshFromController()
                                     refreshBubbleUi()
@@ -548,32 +694,51 @@ class FloatingBubbleService : Service() {
                                 val afterVision = withContext(Dispatchers.Default) {
                                     analyzeFrame(afterFrame)
                                 }
-                                AutoPlaySession.updateDiagnostics(phase = "ELLENŐRZÉS")
-                                val fb = withContext(Dispatchers.Default) {
-                                    ctrl.completeFeedback(executed.beforeBoardHash, afterVision)
-                                }
-                                val verifyLabel = when {
-                                    fb == null -> "NONE"
-                                    fb.outcome == BotLoopOutcome.CONTINUE -> "SUCCESS"
-                                    fb.outcome == BotLoopOutcome.STOP -> "FAILED"
-                                    else -> "FAILED"
-                                }
-                                // No uncontrolled retry: verify FAILED/STOP already pauses via failsafe.
                                 AutoPlaySession.updateDiagnostics(
-                                    phase = if (verifyLabel == "SUCCESS") "LÁTÁS OK" else "ELLENŐRZÉS",
-                                    verifyStatus = verifyLabel,
-                                    lastDispatch = if (verifyLabel == "SUCCESS") {
-                                        com.match3vision.analyzer.input.StartupReadinessGate.LastDispatch.SUCCESS
+                                    phase = "ELLENŐRZÉS",
+                                    verifyStatus = VerificationPolicy.PENDING,
+                                    gestureStatus = "CREATED",
+                                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                                )
+                                val fb = withContext(Dispatchers.Default) {
+                                    ctrl.completeFeedback(
+                                        executed.beforeBoardHash,
+                                        afterVision,
+                                        VerifyObservation(
+                                            newFrameAccepted = true,
+                                            frameFresh = true,
+                                        ),
+                                    )
+                                }
+                                // Policy label only — CONTINUE is not itself VERIFY SUCCESS.
+                                val verifyLabel = fb?.verifyStatus ?: VerificationPolicy.FAILED
+                                AutoPlaySession.updateDiagnostics(
+                                    phase = if (verifyLabel == VerificationPolicy.SUCCESS) {
+                                        "LÁTÁS OK"
                                     } else {
-                                        com.match3vision.analyzer.input.StartupReadinessGate.LastDispatch.FAILED
+                                        "ELLENŐRZÉS"
                                     },
-                                    stopReason = if (verifyLabel == "FAILED") fb?.reason else null,
+                                    verifyStatus = verifyLabel,
+                                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                                    gestureStatus = "CREATED",
+                                    stopReason = if (verifyLabel == VerificationPolicy.FAILED) {
+                                        fb?.reason
+                                    } else {
+                                        null
+                                    },
                                     heartbeatMs = System.currentTimeMillis(),
                                     cycleReason = fb?.reason,
                                     unknownCount = afterVision.unknownCount,
                                     gridConfidence = afterVision.gridConfidence,
                                     boardConfidence = afterVision.boardConfidence,
                                     boardRoi = afterVision.diagnostics["boardRoi"] ?: boardRoiStr,
+                                    frameTimestampMs = afterFrame.timestampMs,
+                                    frameWidth = afterFrame.width,
+                                    frameHeight = afterFrame.height,
+                                    frameAgeMs = afterAge,
+                                    frameFreshness = "FRESH",
+                                    hasFrameFlag = true,
+                                    visionPassFlag = afterVision.validation.isPass,
                                 )
                                 AutoPlaySession.refreshFromController()
                                 refreshBubbleUi()
@@ -647,6 +812,10 @@ class FloatingBubbleService : Service() {
     companion object {
         /** Wait after TESZT ÉRINTÉS click so overlay MotionEvent ends before dispatchGesture. */
         const val TOUCH_TEST_CLICK_DELAY_MS = 400L
+
+        /** How long INDÍTÁS waits for CaptureService.onCreate before reporting CAPTURE OFF. */
+        const val CAPTURE_START_RETRIES = 8
+        const val CAPTURE_START_RETRY_MS = 250L
 
         const val ACTION_STOP_ALL = "com.match3vision.analyzer.overlay.STOP_ALL"
         const val ACTION_START_LOOP = "com.match3vision.analyzer.overlay.START_LOOP"

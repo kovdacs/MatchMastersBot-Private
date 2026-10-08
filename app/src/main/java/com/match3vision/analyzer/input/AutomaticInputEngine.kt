@@ -87,8 +87,24 @@ class AutomaticInputEngine(
      * Attempt to execute [move] if gates pass. On failure → HOLD (no input).
      * On success returns pre-board hash for the feedback loop.
      */
-    fun tryExecute(vision: VisionResult, move: MoveEvaluation?): ExecuteResult {
-        val gate = evaluateGate(vision, move)
+    fun tryExecute(
+        vision: VisionResult,
+        move: MoveEvaluation?,
+        context: RuntimeCycleContext? = null,
+    ): ExecuteResult {
+        val gate = if (context == null) {
+            evaluateGate(vision, move)
+        } else {
+            evaluateGate(
+                vision = vision,
+                move = move,
+                a11yConnected = context.a11yConnected,
+                captureOk = context.captureOn,
+                hasFrame = context.hasFrame,
+                frameAgeMs = context.frameAgeMs,
+                frameSequenceDecision = context.frameSequenceDecision,
+            )
+        }
         if (!gate.allow || move == null) {
             stateMachine.onInputBlocked(gate.reason)
             return ExecuteResult.Held(gate.reason)
@@ -96,10 +112,20 @@ class AutomaticInputEngine(
         val gesture = try {
             coordinateMapper.toGesture(move.move, vision.grid)
         } catch (t: Throwable) {
-            val reason = "HOLD — coord conversion failed: ${t.message}"
-            stateMachine.onInputBlocked(reason)
-            AutoPlayTrace.log("HOLD", reason)
-            return ExecuteResult.Held(reason)
+            // One failed build must not spin. STOP — caller pauses, no second dispatch.
+            val reason = "STOP — gesture NOT CREATED: coord conversion failed: ${t.message}"
+            stateMachine.stop(reason)
+            AutoPlayTrace.log("GESTURE", reason)
+            return ExecuteResult.Stopped(reason)
+        }
+        if (context != null) {
+            val coord = CoordinateBounds.check(gesture, context.screenWidth, context.screenHeight)
+            if (!coord.allow) {
+                val reason = "STOP — gesture NOT CREATED: ${coord.reason}"
+                stateMachine.stop(reason)
+                AutoPlayTrace.log("GESTURE", reason)
+                return ExecuteResult.Stopped(reason)
+            }
         }
         AutoPlayTrace.log(
             AutoPlayTrace.TAG_GESTURE_CREATED,
@@ -138,9 +164,10 @@ class AutomaticInputEngine(
             }
             is InputDispatchResult.Failed -> {
                 AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "FAILED — ${dispatch.reason}")
-                val reason = "HOLD — input dispatch failed: ${dispatch.reason}"
-                stateMachine.onInputBlocked(reason)
-                ExecuteResult.Held(reason)
+                // One failed dispatch does not retry. STOP → controller pauses.
+                val reason = "STOP — input dispatch failed (no retry): ${dispatch.reason}"
+                stateMachine.stop(reason)
+                ExecuteResult.Stopped(reason)
             }
         }
     }

@@ -120,6 +120,11 @@ class ContinuousCycleHarnessTest {
         assertThat(exec.dispatched).hasSize(n)
         // No uncontrolled retry: one dispatch per move
         assertThat(exec.dispatched.size).isEqualTo(ctrl.moveCount)
+        val marker = SimulationMarker.label(n, exec.dispatched.size)
+        assertThat(marker).contains("SIMULATION")
+        assertThat(marker).contains("not a live-phone proof")
+        assertThat(SimulationMarker.BANNER).contains("LIVE PHONE: NOT TESTED")
+        assertThat(SimulationMarker.BANNER).contains("FIRST REAL AUTOMATIC TOUCH: NOT PROVEN")
     }
 
     @Test fun continuous_1_move() = runNMoves(1)

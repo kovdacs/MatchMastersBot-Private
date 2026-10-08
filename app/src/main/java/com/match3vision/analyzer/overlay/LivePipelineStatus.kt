@@ -2,6 +2,8 @@ package com.match3vision.analyzer.overlay
 
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.BotLoopOutcome
+import com.match3vision.analyzer.input.RuntimeLabels
+import com.match3vision.analyzer.input.RuntimeSnapshot
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.vision.VisionThresholds
 
@@ -31,44 +33,91 @@ data class LivePipelineStatus(
     val captureStatus: String,
     /** First gate that blocks progress, or null when cycle may proceed. */
     val firstBlock: String?,
+    /** CREATED only after a finite in-bounds GestureSpec exists. Otherwise NOT CREATED. */
+    val gestureStatus: String = "NOT CREATED",
+    val frameTimestampMs: Long = -1L,
+    val frameWidth: Int = 0,
+    val frameHeight: Int = 0,
+    /** FRESH / STALE / NONE — from measured age, not a constant. */
+    val frameFreshness: String = "NONE",
+    /** MoveAnalysis candidate count (not executed-move counter). -1 = not measured. */
+    val moveCandidates: Int = -1,
+    val inputBlockReason: String? = null,
+    /** JVM harness only. Device snapshots stay false. */
+    val simulated: Boolean = false,
+    /** True only when gesture build was attempted and failed. */
+    val gestureAttemptFailed: Boolean = false,
+    val coordinateBlocked: Boolean = false,
 ) {
+    fun toSnapshot(): RuntimeSnapshot {
+        val hasFrame = frame.contains("received", ignoreCase = true) ||
+            frame.contains("seq=", ignoreCase = true) ||
+            frameFreshness == "FRESH" || frameFreshness == "STALE" ||
+            frameTimestampMs >= 0L
+        val fresh = when (frameFreshness.uppercase()) {
+            "FRESH", "STALE", "NONE" -> frameFreshness.uppercase()
+            else -> RuntimeLabels.freshness(hasFrame, frameAgeMs)
+        }
+        return RuntimeSnapshot(
+            autoplay = RuntimeLabels.autoplay(mode),
+            capture = RuntimeLabels.capture(captureStatus),
+            frameTimestampMs = frameTimestampMs,
+            frameWidth = frameWidth,
+            frameHeight = frameHeight,
+            freshness = fresh,
+            frameAgeMs = frameAgeMs,
+            visionGate = visionGate,
+            visionReason = visionGate,
+            moveCandidates = moveCandidates,
+            selectedMove = selectedMove,
+            accessibility = RuntimeLabels.accessibility(a11y),
+            inputReadiness = RuntimeLabels.inputReadiness(inputReady),
+            inputBlockReason = inputBlockReason,
+            gesture = RuntimeLabels.gesture(gestureStatus),
+            dispatch = RuntimeLabels.dispatch(lastDispatch),
+            verification = RuntimeLabels.verify(verifyStatus),
+            firstBlock = firstBlock,
+            simulated = simulated,
+        )
+    }
+
     fun bubbleLines(compact: Boolean = false): String {
-        if (compact) {
-            return buildString {
+        val snapshot = toSnapshot().lines()
+        val legacy = if (compact) {
+            buildString {
                 appendLine("FÁZIS: $phase  MODE: $mode")
                 appendLine("GATE: $visionGate  unk=$unknownCount")
                 appendLine("grid=${fmt(gridConf)} board=${fmt(boardConf)}")
                 appendLine("MOVE #$moveCount: $selectedMove")
                 appendLine("A11Y: $a11y  READY: $inputReady")
-                appendLine("DISPATCH: $lastDispatch  VERIFY: $verifyStatus")
+                append("DISPATCH: $lastDispatch  VERIFY: $verifyStatus")
+            }.trimEnd()
+        } else {
+            buildString {
+                appendLine("FÁZIS: $phase")
+                appendLine("MODE: $mode")
+                appendLine("FRAME: $frame")
+                appendLine("BOARD ROI: $boardRoi")
+                appendLine("GRID CONF: ${fmt(gridConf)}")
+                appendLine("BOARD CONF: ${fmt(boardConf)}")
+                appendLine("UNKNOWN: $unknownCount")
+                appendLine("PASS/HOLD: $visionGate")
+                appendLine("MOVE COUNT: $moveCount")
+                appendLine("SELECTED MOVE: $selectedMove")
+                appendLine("A11Y: $a11y")
+                appendLine("INPUT READY: $inputReady")
+                appendLine("LAST DISPATCH: $lastDispatch")
+                appendLine("VERIFY: $verifyStatus")
+                appendLine("FRAME SEQ: $frameSequence ageMs=$frameAgeMs")
+                appendLine("CAPTURE: $captureStatus")
                 if (!firstBlock.isNullOrBlank()) {
-                    append("BLOKK: $firstBlock")
+                    append("FIRST BLOCK: $firstBlock")
+                } else {
+                    append("FIRST BLOCK: —")
                 }
             }.trimEnd()
         }
-        return buildString {
-            appendLine("FÁZIS: $phase")
-            appendLine("MODE: $mode")
-            appendLine("FRAME: $frame")
-            appendLine("BOARD ROI: $boardRoi")
-            appendLine("GRID CONF: ${fmt(gridConf)}")
-            appendLine("BOARD CONF: ${fmt(boardConf)}")
-            appendLine("UNKNOWN: $unknownCount")
-            appendLine("PASS/HOLD: $visionGate")
-            appendLine("MOVE COUNT: $moveCount")
-            appendLine("SELECTED MOVE: $selectedMove")
-            appendLine("A11Y: $a11y")
-            appendLine("INPUT READY: $inputReady")
-            appendLine("LAST DISPATCH: $lastDispatch")
-            appendLine("VERIFY: $verifyStatus")
-            appendLine("FRAME SEQ: $frameSequence ageMs=$frameAgeMs")
-            appendLine("CAPTURE: $captureStatus")
-            if (!firstBlock.isNullOrBlank()) {
-                append("FIRST BLOCK: $firstBlock")
-            } else {
-                append("FIRST BLOCK: —")
-            }
-        }.trimEnd()
+        return snapshot + "\n" + legacy
     }
 
     companion object {
@@ -98,9 +147,29 @@ data class LivePipelineStatus(
             verifyStatus: String,
             outcome: BotLoopOutcome? = null,
             cycleReason: String? = null,
+            coordinateBlocked: Boolean = false,
+            coordinateReason: String? = null,
+            gestureAttemptFailed: Boolean = false,
+            inputBlockReason: String? = null,
         ): String? {
             when (mode) {
-                AutoPlayController.Mode.IDLE -> return "MODE IDLE — nyomd meg az INDÍTÁS-t"
+                AutoPlayController.Mode.IDLE -> {
+                    // User already pressed INDÍTÁS and a concrete gate rejected it.
+                    // Don't hide that behind "press start".
+                    val concrete = cycleReason?.takeIf { reason ->
+                        reason.isNotBlank() &&
+                            !reason.equals("tétlen", ignoreCase = true) &&
+                            !reason.equals("idle", ignoreCase = true) &&
+                            (
+                                reason.contains("CAPTURE", ignoreCase = true) ||
+                                    reason.contains("ACCESSIBILITY", ignoreCase = true) ||
+                                    reason.contains("OVERLAY", ignoreCase = true) ||
+                                    reason.contains("DISCONNECTED", ignoreCase = true)
+                                )
+                    }
+                    if (concrete != null) return concrete
+                    return "MODE IDLE — nyomd meg az INDÍTÁS-t"
+                }
                 AutoPlayController.Mode.PAUSED -> return "MODE PAUSED — ${cycleReason ?: "szünet"}"
                 AutoPlayController.Mode.STOPPED -> return "MODE STOPPED — ${cycleReason ?: "leállítva"}"
                 AutoPlayController.Mode.RUNNING -> Unit
@@ -127,9 +196,15 @@ data class LivePipelineStatus(
                 return "unknownCount=$unknownCount > ${VisionThresholds.MAX_UNKNOWN_COUNT}"
             }
             if (!hasSelectedMove) return "MOVE: none"
-            if (!inputReady) return "INPUT READY: NO"
+            if (!inputReady) {
+                return inputBlockReason?.let { "INPUT: BLOCKED — $it" } ?: "INPUT: BLOCKED"
+            }
+            if (coordinateBlocked) {
+                return coordinateReason ?: "COORD: off-screen / invalid (blocked before dispatch)"
+            }
+            if (gestureAttemptFailed) return "GESTURE: NOT CREATED"
             if (lastDispatch == StartupReadinessGate.LastDispatch.FAILED) {
-                return "LAST DISPATCH: FAILED"
+                return "DISPATCH: FAILED"
             }
             if (verifyStatus.equals("FAILED", ignoreCase = true)) {
                 return "VERIFY: FAILED — ${cycleReason ?: "board unchanged / invalid"}"

@@ -1,5 +1,6 @@
 package com.match3vision.analyzer.input
 
+import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.moves.MoveAnalysisEngine
 import com.match3vision.analyzer.vision.VisionResult
@@ -28,8 +29,17 @@ class InputLoopController(
         val moveLabel: String = "none",
         val inputReady: Boolean = false,
         val lastDispatch: StartupReadinessGate.LastDispatch = StartupReadinessGate.LastDispatch.NONE,
-        /** NONE | SUCCESS | FAILED — board-changed verification. */
-        val verifyStatus: String = "NONE",
+        /**
+         * PENDING until a new fresh frame is judged.
+         * SUCCESS only from [VerificationPolicy], never from dispatch itself.
+         */
+        val verifyStatus: String = VerificationPolicy.PENDING,
+        val gestureStatus: String = "NOT CREATED",
+        val moveCandidates: Int = 0,
+        val inputBlockReason: String? = null,
+        val simulated: Boolean = false,
+        val gestureAttemptFailed: Boolean = false,
+        val coordinateBlocked: Boolean = false,
     )
 
     fun inputEngine(): AutomaticInputEngine = inputEngine
@@ -40,16 +50,43 @@ class InputLoopController(
      * Does **not** wait/sleep; returns [animationWaitMs] so the caller can wait
      * before [completeFeedback].
      */
-    fun runAnalyzeAndMaybeInput(vision: VisionResult): CycleResult {
+    fun runAnalyzeAndMaybeInput(
+        vision: VisionResult,
+        context: RuntimeCycleContext? = null,
+    ): CycleResult {
         val sm = inputEngine.stateMachine()
         if (sm.state == BotLoopState.STOP) {
             AutoPlayTrace.markStop(sm.lastReason)
-            return CycleResult(sm.state, BotLoopOutcome.STOP, sm.lastReason)
+            return CycleResult(
+                sm.state, BotLoopOutcome.STOP, sm.lastReason,
+                simulated = context?.simulated == true,
+            )
         }
         if (sm.state == BotLoopState.IDLE || sm.state == BotLoopState.HOLD ||
             sm.state == BotLoopState.CAPTURE
         ) {
             if (sm.state != BotLoopState.CAPTURE) sm.startCapture()
+        }
+
+        // Stale / missing / non-new frames are not a new decision. No MoveAnalysis dispatch.
+        if (context != null) {
+            val pre = preDecisionBlock(context)
+            if (pre != null) {
+                AutoPlayTrace.log("FRAME", pre)
+                val t = sm.onValidationHold(pre)
+                return CycleResult(
+                    state = t.to,
+                    outcome = t.outcome,
+                    reason = pre,
+                    visionGate = "HOLD — $pre",
+                    moveLabel = "none",
+                    inputReady = false,
+                    verifyStatus = VerificationPolicy.PENDING,
+                    gestureStatus = "NOT CREATED",
+                    simulated = context.simulated,
+                    inputBlockReason = pre,
+                )
+            }
         }
 
         if (!vision.validation.isPass) {
@@ -70,6 +107,7 @@ class InputLoopController(
         sm.onValidationPass()
 
         val analysis = moveAnalysis.analyze(vision)
+        val candidateCount = analysis.top5.size
         if (analysis.blocked) {
             val reason = analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED
             AutoPlayTrace.log("MOVE none", reason)
@@ -78,6 +116,8 @@ class InputLoopController(
                 t.to, t.outcome, t.reason,
                 visionGate = "PASS",
                 moveLabel = "none",
+                moveCandidates = 0,
+                simulated = context?.simulated == true,
             )
         }
         sm.onAnalysisReady()
@@ -90,6 +130,8 @@ class InputLoopController(
                 topMove = null,
                 visionGate = "PASS",
                 moveLabel = "none",
+                moveCandidates = 0,
+                simulated = context?.simulated == true,
             )
         }
 
@@ -105,8 +147,13 @@ class InputLoopController(
             if (inputReady) "YES" else "NO (switch=$switchOn channel=$channelReady)",
         )
 
-        if (!switchOn) {
-            val t = sm.onInputBlocked(AutomaticInputEngine.HOLD_INPUT_DISABLED)
+        if (!switchOn || (context != null && !context.a11yConnected) || !channelReady) {
+            val reason = when {
+                !switchOn -> AutomaticInputEngine.HOLD_INPUT_DISABLED
+                context != null && !context.a11yConnected -> "ACCESSIBILITY: DISCONNECTED"
+                else -> AutomaticInputEngine.HOLD_INPUT_CHANNEL_NOT_READY
+            }
+            val t = sm.onInputBlocked(reason)
             AutoPlayTrace.log("HOLD", t.reason)
             return CycleResult(
                 t.to, t.outcome, t.reason,
@@ -114,10 +161,16 @@ class InputLoopController(
                 visionGate = "PASS",
                 moveLabel = "selected $moveLabel",
                 inputReady = false,
+                moveCandidates = candidateCount,
+                inputBlockReason = reason,
+                gestureStatus = "NOT CREATED",
+                lastDispatch = StartupReadinessGate.LastDispatch.NONE,
+                verifyStatus = VerificationPolicy.PENDING,
+                simulated = context?.simulated == true,
             )
         }
 
-        val exec = inputEngine.tryExecute(vision, top)
+        val exec = inputEngine.tryExecute(vision, top, context)
         return when (exec) {
             is AutomaticInputEngine.ExecuteResult.Executed ->
                 CycleResult(
@@ -131,26 +184,36 @@ class InputLoopController(
                     moveLabel = "selected $moveLabel",
                     inputReady = true,
                     lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                    // Dispatch succeeded. Verification is still pending a new frame.
+                    verifyStatus = VerificationPolicy.afterDispatch(dispatchSucceeded = true),
+                    gestureStatus = "CREATED",
+                    moveCandidates = candidateCount,
+                    simulated = context?.simulated == true,
                 )
             is AutomaticInputEngine.ExecuteResult.Held -> {
                 AutoPlayTrace.log("HOLD", exec.reason)
-                val dispatch = when {
-                    exec.reason.contains("dispatch failed", ignoreCase = true) ->
-                        StartupReadinessGate.LastDispatch.FAILED
-                    else -> StartupReadinessGate.LastDispatch.NONE
-                }
                 CycleResult(
                     sm.state, BotLoopOutcome.HOLD, exec.reason,
                     executed = exec,
                     topMove = top,
                     visionGate = "PASS",
                     moveLabel = "selected $moveLabel",
-                    inputReady = inputReady,
-                    lastDispatch = dispatch,
+                    inputReady = false,
+                    lastDispatch = StartupReadinessGate.LastDispatch.NONE,
+                    verifyStatus = VerificationPolicy.PENDING,
+                    gestureStatus = "NOT CREATED",
+                    moveCandidates = candidateCount,
+                    inputBlockReason = exec.reason,
+                    simulated = context?.simulated == true,
                 )
             }
             is AutomaticInputEngine.ExecuteResult.Stopped -> {
                 AutoPlayTrace.markStop(exec.reason)
+                val notCreated = exec.reason.contains("NOT CREATED", ignoreCase = true)
+                val dispatchFailed = exec.reason.contains("dispatch failed", ignoreCase = true)
+                val coordBlocked = exec.reason.contains("off-screen", ignoreCase = true) ||
+                    exec.reason.contains("bounds unknown", ignoreCase = true) ||
+                    exec.reason.contains("non-finite", ignoreCase = true)
                 CycleResult(
                     sm.state, BotLoopOutcome.STOP, exec.reason,
                     executed = exec,
@@ -158,37 +221,113 @@ class InputLoopController(
                     visionGate = "PASS",
                     moveLabel = "selected $moveLabel",
                     inputReady = inputReady,
-                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                    lastDispatch = if (dispatchFailed) {
+                        StartupReadinessGate.LastDispatch.FAILED
+                    } else {
+                        StartupReadinessGate.LastDispatch.NONE
+                    },
+                    verifyStatus = VerificationPolicy.PENDING,
+                    gestureStatus = if (notCreated) "NOT CREATED" else "CREATED",
+                    gestureAttemptFailed = notCreated,
+                    coordinateBlocked = coordBlocked,
+                    moveCandidates = candidateCount,
+                    inputBlockReason = exec.reason,
+                    simulated = context?.simulated == true,
                 )
             }
         }
     }
 
-    /** After animation wait + new vision frame. */
+    /**
+     * Frame problems that must not become a move decision.
+     * Null means the frame may be analyzed.
+     */
+    private fun preDecisionBlock(context: RuntimeCycleContext): String? {
+        if (!context.captureOn) return "CAPTURE: OFF"
+        if (!context.hasFrame) return "FRAME: no frame"
+        val seq = context.frameSequenceDecision
+        if (seq != null && !seq.allow) return seq.reason
+        if (context.frameAgeMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
+            return FrameSequenceGate.HOLD_STALE_FRAME +
+                " age=${context.frameAgeMs}ms > ${GestureFailSafe.MAX_FRAME_AGE_MS}ms"
+        }
+        return null
+    }
+
+    /**
+     * After animation wait + a **new** vision frame.
+     *
+     * When [verify] is present, a non-new or stale frame is FAILED without
+     * reading the board — dispatch success cannot become VERIFY SUCCESS.
+     * When [verify] is null (existing unit callers that already supply a fresh
+     * vision), the verifier result is the decision.
+     */
     fun completeFeedback(
         beforeBoardHash: Long,
         afterVision: VisionResult,
+        verify: VerifyObservation? = null,
     ): CycleResult {
+        if (verify != null && (!verify.newFrameAccepted || !verify.frameFresh)) {
+            val reason = verify.reason.ifBlank {
+                "VERIFY FAILED — stale or non-new frame cannot decide (no SUCCESS)"
+            }
+            val sm = inputEngine.stateMachine()
+            if (sm.state != BotLoopState.STOP) {
+                sm.stop("STOP — $reason")
+            }
+            AutoPlayTrace.log("VERIFY", "FAILED $reason")
+            AutoPlayTrace.markStop(reason)
+            return CycleResult(
+                state = sm.state,
+                outcome = BotLoopOutcome.STOP,
+                reason = reason,
+                verifyStatus = VerificationPolicy.decide(
+                    newFrameAccepted = verify.newFrameAccepted,
+                    frameFresh = verify.frameFresh,
+                    frameVerifiable = false,
+                    boardChanged = false,
+                ),
+                // The gesture was already dispatched; this failure is verification.
+                lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                gestureStatus = "CREATED",
+            )
+        }
         val fb = inputEngine.verifyAfterInput(beforeBoardHash, afterVision)
         val sm = inputEngine.stateMachine()
         return when (fb) {
             is AutomaticInputEngine.FeedbackResult.Success -> {
-                AutoPlayTrace.log("VERIFY", "SUCCESS board changed")
+                val label = VerificationPolicy.decide(
+                    newFrameAccepted = true,
+                    frameFresh = verify?.frameFresh ?: true,
+                    frameVerifiable = true,
+                    boardChanged = true,
+                )
+                AutoPlayTrace.log("VERIFY", "$label board changed")
                 CycleResult(
                     state = sm.state,
-                    outcome = BotLoopOutcome.CONTINUE,
-                    reason = "board changed — next move allowed",
+                    outcome = if (label == VerificationPolicy.SUCCESS) {
+                        BotLoopOutcome.CONTINUE
+                    } else {
+                        BotLoopOutcome.STOP
+                    },
+                    reason = if (label == VerificationPolicy.SUCCESS) {
+                        "board changed — next move allowed"
+                    } else {
+                        "VERIFY FAILED — policy refused SUCCESS"
+                    },
                     feedback = fb,
-                    verifyStatus = "SUCCESS",
+                    verifyStatus = label,
                     lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                    gestureStatus = "CREATED",
                 )
             }
             is AutomaticInputEngine.FeedbackResult.Held -> {
                 AutoPlayTrace.log("VERIFY", "FAILED/HOLD ${fb.reason}")
                 CycleResult(
                     sm.state, BotLoopOutcome.HOLD, fb.reason, feedback = fb,
-                    verifyStatus = "FAILED",
-                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                    verifyStatus = VerificationPolicy.FAILED,
+                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                    gestureStatus = "CREATED",
                 )
             }
             is AutomaticInputEngine.FeedbackResult.Stopped -> {
@@ -196,8 +335,9 @@ class InputLoopController(
                 AutoPlayTrace.markStop(fb.reason)
                 CycleResult(
                     sm.state, BotLoopOutcome.STOP, fb.reason, feedback = fb,
-                    verifyStatus = "FAILED",
-                    lastDispatch = StartupReadinessGate.LastDispatch.FAILED,
+                    verifyStatus = VerificationPolicy.FAILED,
+                    lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
+                    gestureStatus = "CREATED",
                 )
             }
         }
