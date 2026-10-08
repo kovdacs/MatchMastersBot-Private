@@ -143,11 +143,51 @@ class AutoPlayController(
     }
 
     /**
+     * CaptureService gone or projection stopped while the loop was active.
+     * Pauses. Does not dispatch.
+     */
+    fun onCaptureLost(reason: String = "CAPTURE: OFF (service stopped mid-run)") {
+        if (mode != Mode.RUNNING) {
+            lastReason = reason
+            return
+        }
+        onFailsafePause(reason)
+    }
+
+    /**
      * One analyze→maybe-input cycle. Returns null when loop is not RUNNING
      * (IDLE / PAUSED / STOPPED) — never auto-executes before START.
+     *
+     * [context] is the live observation (frame age, capture, a11y, bounds).
+     * Null keeps the previous unit-test path (executor readiness only).
      */
-    fun runCycleIfActive(vision: VisionResult): InputLoopController.CycleResult? {
+    fun runCycleIfActive(
+        vision: VisionResult,
+        context: RuntimeCycleContext? = null,
+    ): InputLoopController.CycleResult? {
         if (mode != Mode.RUNNING) return null
+        if (context != null && !context.a11yConnected) {
+            onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
+            return InputLoopController.CycleResult(
+                state = inputLoop.inputEngine().stateMachine().state,
+                outcome = BotLoopOutcome.STOP,
+                reason = "ACCESSIBILITY: DISCONNECTED (mid-run)",
+                verifyStatus = VerificationPolicy.PENDING,
+                gestureStatus = "NOT CREATED",
+                inputBlockReason = "ACCESSIBILITY: DISCONNECTED",
+            )
+        }
+        if (context != null && !context.captureOn) {
+            onCaptureLost("CAPTURE: OFF (service stopped mid-run)")
+            return InputLoopController.CycleResult(
+                state = inputLoop.inputEngine().stateMachine().state,
+                outcome = BotLoopOutcome.STOP,
+                reason = "CAPTURE: OFF (service stopped mid-run)",
+                verifyStatus = VerificationPolicy.PENDING,
+                gestureStatus = "NOT CREATED",
+                inputBlockReason = "CAPTURE: OFF",
+            )
+        }
         if (!enableSwitch.isEnabled()) {
             lastReason = "bevitel ki — várakozás INDÍTÁS-ra"
             AutoPlayTrace.log(AutoPlayTrace.TAG_STOP_REASON, lastReason)
@@ -162,7 +202,7 @@ class AutoPlayController(
                 reason = sm.lastReason,
             )
         }
-        val cycle = inputLoop.runAnalyzeAndMaybeInput(vision)
+        val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context)
         lastReason = cycle.reason
         when (cycle.outcome) {
             BotLoopOutcome.CONTINUE -> {
@@ -183,9 +223,10 @@ class AutoPlayController(
     fun completeFeedback(
         beforeBoardHash: Long,
         afterVision: VisionResult,
+        verify: VerifyObservation? = null,
     ): InputLoopController.CycleResult? {
         if (mode == Mode.STOPPED) return null
-        val fb = inputLoop.completeFeedback(beforeBoardHash, afterVision)
+        val fb = inputLoop.completeFeedback(beforeBoardHash, afterVision, verify)
         lastReason = fb.reason
         if (fb.outcome == BotLoopOutcome.STOP) {
             onFailsafePause(fb.reason)

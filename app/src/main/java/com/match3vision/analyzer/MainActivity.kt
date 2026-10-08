@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             CaptureService.start(this, result.resultCode, result.data!!)
             viewModel.onCaptureServiceStarted()
-            AutoPlaySession.publish(captureReady = true)
+            AutoPlaySession.publish(captureReady = CaptureService.managerOrNull() != null)
             FloatingBubbleService.start(this)
             AutoPlaySession.publish(bubbleVisible = true)
             Timber.i("MediaProjection granted — CaptureService + bubble starting")
@@ -228,7 +228,7 @@ class MainActivity : ComponentActivity() {
         val connected = MatchMastersAccessibilityService.isConnected()
         val settingsOn = isAccessibilityEnabledInSettings()
         AutoPlaySession.publish(
-            captureReady = true,
+            captureReady = CaptureService.managerOrNull() != null,
             bubbleVisible = true,
             a11yReady = connected,
             a11ySettingsEnabled = settingsOn,

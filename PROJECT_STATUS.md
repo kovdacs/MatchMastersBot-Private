@@ -1,8 +1,9 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
-**Date:** 2026-09-28 (Europe/Vienna)  
-**Version:** `0.24.1-live-pipeline`  
-**Tip / CI:** `e96fadc` / run 36468136011 SUCCESS  
+**Date:** 2026-10-08  
+**Version:** `0.24.2-runtime-diagnostics`  
+**Previous tip:** `c085dac` / 0.24.1 CI run 36468136011 SUCCESS  
+**This pack:** runtime diagnostics and readiness gate. Live phone still **NOT TESTED**. See `docs/FINAL_REPORT_0.24.2_RUNTIME_DIAGNOSTICS.md`.  
 **CI:** analyzer-ci on GitHub Actions (no JDK on box)  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  

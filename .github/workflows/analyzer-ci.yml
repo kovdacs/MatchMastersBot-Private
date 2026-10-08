@@ -2,7 +2,9 @@ name: analyzer-ci
 
 on:
   push:
-    branches: [main]
+    # cursor/** so the existing job runs on the agent branch, not only after merge to main.
+    branches: [main, "cursor/**"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
