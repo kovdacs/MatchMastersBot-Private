@@ -17,28 +17,34 @@ VERSION:
 0.24.6-real-device-roi-overlay (versionCode 19, `app/build.gradle.kts:14-15`). Supersedes 0.24.5-diagnostics-single-move (versionCode 18).
 
 COMMIT:
-The git revision that adds the vision, overlay, and crash fixes and this file. That revision is the phone candidate once its push artifact exists. A later commit that only records the artifact hash is not a behavior change except `BuildConfig.GIT_COMMIT`.
+78cc116aca0a1c9e37bcf183096079694a1d5777
+
+That commit is the phone candidate. It contains the vision, overlay, and crash fixes. The push artifact below was built from it. `BuildConfig.GIT_COMMIT` is `GITHUB_SHA`, so a later commit that only records this hash produces a different APK. Install the named artifact. Do not install a rebuild whose short SHA is not `78cc116`.
 
 BASE COMMIT:
 59e11be1fa3c46df349a980e08c580e5b85a09be (0.24.5 corrections). The fixture commit on the start branch is 622d42e. The pull request base is the 0.24.5 branch, so the diff includes the fixture plus this round.
 
 CI PUSH RUN:
-PENDING_PUSH_RUN
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37804589344
+Run id 37804589344. Event `push`. Head `78cc116aca0a1c9e37bcf183096079694a1d5777`. Conclusion `success`.
 
 CI PR RUN:
-PENDING_PR_RUN
+https://github.com/kovdacs/MatchMastersBot-Private/actions/runs/37804621882
+Run id 37804621882. Event `pull_request`. Reported head `78cc116aca0a1c9e37bcf183096079694a1d5777`. Conclusion `success`. The job built merge commit `ab09155`. That APK is not the candidate.
 
 CI STATUS:
-Local `testDebugUnitTest` before the push: 452 passed, 0 failed, 0 skipped (`--rerun-tasks`). analyzer-ci on the candidate commit is the gate. The pull-request job checks out a merge commit, so its APK bytes differ.
+Both analyzer-ci runs on `78cc116` completed with conclusion `success`. The push log and the pull-request log each contain 452 `PASSED` lines. assembleDebug succeeded. The failing-test dump step was skipped. Local `testDebugUnitTest` before the push: 452 passed, 0 failed, 0 skipped (`--rerun-tasks`).
 
 CANDIDATE APK:
-PENDING_APK_NAME
-versionCode 19. versionName 0.24.6-real-device-roi-overlay. Produced by the push job of the candidate commit. `app-debug.apk` is the pre-rename file and is not the candidate.
+`Match3Analyzer-0.24.6-real-device-roi-overlay-78cc116.apk`
+Size 25251499 bytes. versionCode 19. versionName 0.24.6-real-device-roi-overlay. Push artifact of run 37804589344. `app-debug.apk` is the pre-rename file and was not uploaded.
+
+The pull-request artifact is `Match3Analyzer-0.24.6-real-device-roi-overlay-ab09155.apk` (25251499 bytes, SHA-256 `f43bb8781ce4f04cd7dbe72f9127128a6e3148e512ae189cdc09fa4d18ac649b`). Same size and the same certificate. Different bytes, because it was built from merge commit `ab09155`. It is not the candidate.
 
 APK SHA-256:
-PENDING_APK_SHA256
+73b94249fe33fe04429ead7e89be867217f82d118b855beb978c8a4707e21c61
 
-`BuildConfig.GIT_COMMIT` is `GITHUB_SHA` at assemble time (`.github/workflows/analyzer-ci.yml` assembleDebug, name `Match3Analyzer-<versionName>-<first 7 of GITHUB_SHA>.apk`). Writing the finished hash back into this file creates another commit and another APK. The four PENDING lines above are filled from the candidate push run. If that fill is a later commit, the named artifact stays the phone candidate. Do not install a different SHA-256 from the documentation commit.
+Taken from the push log line `APK_SHA256` and recomputed with `sha256sum` on the APK downloaded from run 37804589344. The two hashes match.
 
 SIGNING IDENTITY:
 STABLE DEBUG KEY — NEVER USE FOR RELEASE
@@ -198,4 +204,4 @@ Not edited: `VisionThresholds`, `MoveAnalysisEngine`, accessibility disconnect h
 
 ## Next step
 
-Repeat the same controlled Test 0 with the candidate APK named above. Capture on. Do not start a touch. Confirm ROI, bubble position, and that the loop does not pause with `index=-2`.
+Repeat the same controlled Test 0 with `Match3Analyzer-0.24.6-real-device-roi-overlay-78cc116.apk` (SHA-256 `73b94249fe33fe04429ead7e89be867217f82d118b855beb978c8a4707e21c61`) from push run 37804589344. Capture on. Do not start a touch. Confirm ROI, bubble position, and that the loop does not pause with `index=-2`.
