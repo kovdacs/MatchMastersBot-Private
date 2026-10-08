@@ -114,6 +114,7 @@ object ProductionCycleContext {
         frameTimestampMs: Long,
         frameWidth: Int,
         frameHeight: Int,
+        capturedElapsedMs: Long = 0L,
     ): RuntimeCycleContext {
         check(!hasFrame || (frameWidth > 0 && frameHeight > 0)) {
             "production frame must carry a positive size"
@@ -133,6 +134,7 @@ object ProductionCycleContext {
             frameWidth = frameWidth,
             frameHeight = frameHeight,
             simulated = false,
+            capturedElapsedMs = capturedElapsedMs,
         )
     }
 }

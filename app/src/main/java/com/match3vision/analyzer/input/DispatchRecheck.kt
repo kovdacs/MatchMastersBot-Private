@@ -25,6 +25,8 @@ data class DispatchPermit(
     val gesture: GestureSpec,
     val simulated: Boolean,
     val sequenceAllowed: Boolean,
+    /** Monotonic capture time. 0 if the frame did not record one. */
+    val capturedElapsedMs: Long = 0L,
 ) {
     companion object {
         fun from(
@@ -52,6 +54,7 @@ data class DispatchPermit(
                 gesture = gesture,
                 simulated = context.simulated,
                 sequenceAllowed = seqOk,
+                capturedElapsedMs = context.capturedElapsedMs,
             )
         }
     }
@@ -60,8 +63,17 @@ data class DispatchPermit(
 object DispatchRecheck {
     data class Result(val allow: Boolean, val reason: String)
 
-    /** Order matches the audit chain. First failure wins. Does not dispatch. */
-    fun evaluate(permit: DispatchPermit): Result {
+    /**
+     * [nowElapsedMs] is the monotonic clock at the dispatch call.
+     * When both it and [DispatchPermit.capturedElapsedMs] are positive, age is
+     * recomputed. Otherwise the age already on the permit is used.
+     */
+    fun evaluate(permit: DispatchPermit, nowElapsedMs: Long = 0L): Result {
+        val ageMs = if (permit.capturedElapsedMs > 0L && nowElapsedMs > 0L) {
+            FrameClock.ageMs(permit.capturedElapsedMs, nowElapsedMs)
+        } else {
+            permit.frameAgeMs
+        }
         if (permit.simulated) {
             return Result(false, "simulated context is not a production dispatch")
         }
@@ -70,8 +82,8 @@ object DispatchRecheck {
         if (!permit.sequenceAllowed) {
             return Result(false, "frame sequence rejected")
         }
-        if (permit.frameAgeMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
-            return Result(false, "stale frame age=${permit.frameAgeMs}ms")
+        if (ageMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
+            return Result(false, "stale frame age=${ageMs}ms")
         }
         if (!permit.visionPass) return Result(false, "VISION HOLD")
         if (!permit.inputEnabled) return Result(false, "input disabled")

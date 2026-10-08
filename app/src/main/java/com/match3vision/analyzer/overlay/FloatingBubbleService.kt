@@ -566,6 +566,7 @@ class FloatingBubbleService : Service() {
                         frameTimestampMs = useFrame.timestampMs,
                         frameWidth = useFrame.width,
                         frameHeight = useFrame.height,
+                        capturedElapsedMs = useFrame.elapsedRealtimeMs,
                     )
                     // Overlay must not cancel the injected gesture (same fix as TESZT ÉRINTÉS).
                     setBubbleTouchable(false)

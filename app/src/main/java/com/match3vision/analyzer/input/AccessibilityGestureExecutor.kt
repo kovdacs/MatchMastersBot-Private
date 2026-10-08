@@ -30,6 +30,8 @@ interface AccessibilityGestureChannel {
 class AccessibilityGestureExecutor(
     private val serviceProvider: () -> AccessibilityGestureChannel? =
         { MatchMastersAccessibilityService.instanceOrNull() },
+    /** Monotonic clock at the moment of dispatch. JVM tests inject this. */
+    private val nowElapsedMs: () -> Long = { FrameClock.tryElapsed() },
 ) : InputGestureExecutor {
 
     override fun isReady(): Boolean {
@@ -46,6 +48,7 @@ class AccessibilityGestureExecutor(
         val live = serviceProvider()?.canDispatchGestures() == true
         val again = DispatchRecheck.evaluate(
             permit.copy(a11yConnected = permit.a11yConnected && live),
+            nowElapsedMs = nowElapsedMs(),
         )
         if (!again.allow) {
             return InputDispatchResult.Failed(

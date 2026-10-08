@@ -29,6 +29,12 @@ data class RuntimeCycleContext(
     val frameHeight: Int = 0,
     /** True only for the JVM continuous harness. Never set on the device loop. */
     val simulated: Boolean = false,
+    /**
+     * [android.os.SystemClock.elapsedRealtime] when the frame was captured.
+     * 0 when the caller did not measure it. The dispatcher remeasures age
+     * from this when the monotonic clock is available.
+     */
+    val capturedElapsedMs: Long = 0L,
 )
 
 /** What the verifier is allowed to look at. Missing / stale / non-new → not SUCCESS. */

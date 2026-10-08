@@ -69,7 +69,7 @@ class ProductionDispatchGuardTest {
     /** Real executor. Channel is the only substitute. */
     private fun blocked(permit: DispatchPermit, ready: Boolean = true) {
         val channel = CountingChannel(ready = ready)
-        val executor = AccessibilityGestureExecutor { channel }
+        val executor = AccessibilityGestureExecutor(serviceProvider = { channel })
         val result = executor.dispatchChecked(permit)
         assertThat(result).isInstanceOf(InputDispatchResult.Failed::class.java)
         assertThat(channel.dispatchGestureCalls).isEqualTo(0)
@@ -131,6 +131,22 @@ class ProductionDispatchGuardTest {
     @Test
     fun guard_rotationSwapsAxes_realDispatcher_doesNotCallDispatchGesture() {
         blocked(okPermit().copy(frameWidth = 1080, frameHeight = 2400, screenWidth = 2400, screenHeight = 1080))
+    }
+
+    @Test
+    fun guard_frameAgedDuringAnalysis_realDispatcher_remeasuresBeforeDispatchGesture() {
+        val channel = CountingChannel()
+        val executor = AccessibilityGestureExecutor(
+            serviceProvider = { channel },
+            nowElapsedMs = { 1_000L + 4_000L },
+        )
+        // Plan-time age was 10 ms. The monotonic clock at dispatch is 4 s later.
+        val permit = okPermit().copy(frameAgeMs = 10L, capturedElapsedMs = 1_000L)
+        val result = executor.dispatchChecked(permit)
+        assertThat(channel.dispatchGestureCalls).isEqualTo(0)
+        assertThat(result).isInstanceOf(InputDispatchResult.Failed::class.java)
+        assertThat((result as InputDispatchResult.Failed).reason).contains("stale")
+        assertThat((result as InputDispatchResult.Failed).reason).contains("dispatchGesture")
     }
 
     @Test
