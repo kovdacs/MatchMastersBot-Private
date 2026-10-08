@@ -447,7 +447,13 @@ class RuntimeDiagnosticsAcceptanceTest {
         val fb = ctrl.completeFeedback(
             executed.beforeBoardHash,
             before,
-            VerifyObservation(newFrameAccepted = true, frameFresh = true),
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+            ),
         )
         assertThat(fb!!.verifyStatus).isEqualTo(VerificationPolicy.FAILED)
         assertThat(fb.reason.lowercase()).contains("unchanged")
@@ -472,7 +478,13 @@ class RuntimeDiagnosticsAcceptanceTest {
         val fb = ctrl.completeFeedback(
             executed.beforeBoardHash,
             changedButHold,
-            VerifyObservation(newFrameAccepted = true, frameFresh = true),
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+            ),
         )
         assertThat(fb!!.verifyStatus).isEqualTo(VerificationPolicy.FAILED)
         assertThat(fb.outcome).isEqualTo(BotLoopOutcome.STOP)
@@ -480,7 +492,7 @@ class RuntimeDiagnosticsAcceptanceTest {
     }
 
     @Test
-    fun verify_newFreshChangedBoard_success() {
+    fun verify_newFreshChangedBoard_isUnconfirmed_notSuccess() {
         val (ctrl, exec) = started()
         val before = visionPass(0)
         val cycle = ctrl.runCycleIfActive(before, fresh())!!
@@ -489,12 +501,23 @@ class RuntimeDiagnosticsAcceptanceTest {
         val fb = ctrl.completeFeedback(
             executed.beforeBoardHash,
             after,
-            VerifyObservation(newFrameAccepted = true, frameFresh = true),
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 9_000L,
+                dispatchCompletedElapsedMs = 8_000L,
+                preDispatchSequence = 3L,
+                afterSequence = 4L,
+            ),
         )
-        assertThat(fb!!.verifyStatus).isEqualTo(VerificationPolicy.SUCCESS)
+        assertThat(fb!!.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
         assertThat(fb.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
         assertThat(exec.dispatched).hasSize(1)
+        assertThat(VerificationPolicy.afterDispatch(dispatchSucceeded = true))
+            .isEqualTo(VerificationPolicy.PENDING)
     }
 
     @Test
@@ -565,7 +588,15 @@ class RuntimeDiagnosticsAcceptanceTest {
                 frameVerifiable = true,
                 boardChanged = true,
             ),
-        ).isEqualTo(VerificationPolicy.SUCCESS)
+        ).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(
+            VerificationPolicy.decide(
+                newFrameAccepted = true,
+                frameFresh = true,
+                frameVerifiable = true,
+                boardChanged = true,
+            ),
+        ).isNotEqualTo(VerificationPolicy.SUCCESS)
         assertThat(
             VerificationPolicy.decide(true, true, true, false),
         ).isEqualTo(VerificationPolicy.FAILED)

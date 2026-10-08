@@ -1,6 +1,7 @@
 package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.capture.FrameSequenceGate
+import com.match3vision.analyzer.capture.ScreenMeasurement
 
 /**
  * Production composition rules for the live auto-play chain.
@@ -33,7 +34,7 @@ object ProductionPath {
             " -> AutoPlayController.runCycleIfActive" +
             " -> InputLoopController.runAnalyzeAndMaybeInput" +
             " -> AutomaticInputEngine.tryExecute" +
-            " -> AccessibilityGestureExecutor" +
+            " -> AccessibilityGestureExecutor.dispatchChecked" +
             " -> MatchMastersAccessibilityService.dispatchGesture" +
             " -> VerificationPolicy on a new fresh frame"
 
@@ -93,8 +94,14 @@ object ProductionInstall {
     fun accessibilityExecutor(
         serviceProvider: () -> AccessibilityGestureChannel? =
             { MatchMastersAccessibilityService.instanceOrNull() },
+        nowElapsedMs: () -> Long = { FrameClock.tryElapsed() },
+        liveProbe: LiveDispatchProbe = LiveDispatchProbe.unavailable(),
     ): AccessibilityGestureExecutor {
-        val exec = AccessibilityGestureExecutor(serviceProvider)
+        val exec = AccessibilityGestureExecutor(
+            serviceProvider = serviceProvider,
+            nowElapsedMs = nowElapsedMs,
+            liveProbe = liveProbe,
+        )
         ProductionPath.requireProductionExecutor(exec)
         return exec
     }
@@ -102,7 +109,10 @@ object ProductionInstall {
 
 /**
  * Builds the [RuntimeCycleContext] the bubble loop passes in.
- * [simulated] is hard-coded false. Fields come from the caller’s measurements.
+ * [simulated] is hard-coded false.
+ *
+ * [screen] is an independent display measurement. This function does not copy
+ * [frameWidth] or [frameHeight] into the screen fields.
  */
 object ProductionCycleContext {
     fun fromLoopObservation(
@@ -115,9 +125,14 @@ object ProductionCycleContext {
         frameWidth: Int,
         frameHeight: Int,
         capturedElapsedMs: Long = 0L,
+        screen: ScreenMeasurement,
+        frameSequence: Long = -1L,
     ): RuntimeCycleContext {
         check(!hasFrame || (frameWidth > 0 && frameHeight > 0)) {
             "production frame must carry a positive size"
+        }
+        require(!screen.source.equals(ScreenMeasurement.SOURCE_FRAME, ignoreCase = true)) {
+            "refusing screen measurement derived from the capture frame"
         }
         return RuntimeCycleContext(
             a11yConnected = a11yConnected,
@@ -125,16 +140,17 @@ object ProductionCycleContext {
             hasFrame = hasFrame,
             frameAgeMs = frameAgeMs,
             frameSequenceDecision = frameSequenceDecision,
-            // Gesture bounds are the capture bitmap pixels. Same numbers are
-            // stored as the frame size so the mapping stays identity.
-            // Equality with the accessibility display is device-dependent.
-            screenWidth = frameWidth,
-            screenHeight = frameHeight,
+            screenWidth = screen.widthPx,
+            screenHeight = screen.heightPx,
             frameTimestampMs = frameTimestampMs,
             frameWidth = frameWidth,
             frameHeight = frameHeight,
             simulated = false,
             capturedElapsedMs = capturedElapsedMs,
+            screenSource = screen.source,
+            screenRotation = screen.rotation,
+            coordinateAlignmentProven = false,
+            frameSequence = frameSequence,
         )
     }
 }
@@ -144,11 +160,12 @@ object ProductionCycleContext {
  *
  * Identity is allowed only when the supplied frame size and the supplied
  * screen size are the same positive size, or when a separate frame size was
- * not provided (legacy callers that already put the bitmap size in screenWidth).
- * A size mismatch is refused — this code does not guess a scale.
+ * not provided. A size mismatch or a rotation/axis swap is refused — this
+ * code does not guess a scale.
  *
- * Whether those pixels are the accessibility screen is device-dependent
+ * Matching sizes do not prove the pixels are the accessibility screen
  * (rotation, cutout, OEM scale, single-app vs entire-display capture).
+ * [Assessment.alignmentProven] stays false.
  */
 object FrameScreenCoordinatePolicy {
     enum class Mapping { IDENTITY_FRAME_PIXELS, REFUSED }
@@ -158,6 +175,11 @@ object FrameScreenCoordinatePolicy {
         val reason: String,
         /** True when a phone is still required to prove the pixels are the touch space. */
         val deviceDependent: Boolean,
+        /**
+         * Always false. Equal width and height let the other checks continue.
+         * They do not prove the coordinate origins are the same.
+         */
+        val alignmentProven: Boolean = false,
     )
 
     fun assess(
@@ -184,9 +206,23 @@ object FrameScreenCoordinatePolicy {
         if (frameWidth == screenWidth && frameHeight == screenHeight) {
             return Assessment(
                 mapping = Mapping.IDENTITY_FRAME_PIXELS,
-                reason = "1:1 frame px == supplied screen px " +
-                    "(${frameWidth}x$frameHeight); no dp or status-bar offset in code",
+                reason = "sizes match ${frameWidth}x$frameHeight; coordinate checks continue; " +
+                    "coordinate origin alignment UNPROVEN " +
+                    "(matching dimensions are not proof); no dp or status-bar offset in code",
                 deviceDependent = true,
+                alignmentProven = false,
+            )
+        }
+        val swapped = frameWidth == screenHeight &&
+            frameHeight == screenWidth &&
+            frameWidth != frameHeight
+        if (swapped) {
+            return Assessment(
+                mapping = Mapping.REFUSED,
+                reason = "rotation/axis swap frame=${frameWidth}x$frameHeight " +
+                    "screen=${screenWidth}x$screenHeight (refusing to scale)",
+                deviceDependent = true,
+                alignmentProven = false,
             )
         }
         return Assessment(
@@ -194,6 +230,7 @@ object FrameScreenCoordinatePolicy {
             reason = "frame/screen size mismatch frame=${frameWidth}x$frameHeight " +
                 "screen=${screenWidth}x$screenHeight (refusing to scale)",
             deviceDependent = true,
+            alignmentProven = false,
         )
     }
 }

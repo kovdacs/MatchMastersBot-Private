@@ -132,8 +132,11 @@ class AutomaticTouchTest(
                 "durationMs=${gesture.durationMs} (FIXED predetermined; no Vision)",
         )
 
+        logger.log(
+            "MANUAL PATH — TESZT ÉRINTÉS — not evidence that the vision-gated automatic path works",
+        )
         logger.log("gesture dispatch happening…")
-        val dispatch = executor.dispatch(gesture)
+        val dispatch = dispatchManual(gesture)
         return when (dispatch) {
             is InputDispatchResult.Dispatched -> {
                 val msg =
@@ -183,6 +186,20 @@ class AutomaticTouchTest(
                     screenHeightPx = screenHeightPx,
                 )
             }
+        }
+    }
+
+    /**
+     * Production executor refuses [InputGestureExecutor.dispatch]. The manual
+     * test uses [AccessibilityGestureExecutor.dispatchManualTest] so it cannot
+     * be mistaken for [AccessibilityGestureExecutor.dispatchChecked].
+     */
+    private fun dispatchManual(gesture: GestureSpec): InputDispatchResult {
+        val channel = executor
+        return if (channel is AccessibilityGestureExecutor) {
+            channel.dispatchManualTest(gesture)
+        } else {
+            channel.dispatch(gesture)
         }
     }
 

@@ -22,15 +22,27 @@ object GestureCallbackPolicy {
 
     data class Decision(val kind: Kind, val reason: String) {
         fun toResult(gesture: GestureSpec): InputDispatchResult = when (kind) {
-            Kind.COMPLETED, Kind.SCHEDULED_ONLY -> InputDispatchResult.Dispatched(gesture)
+            Kind.COMPLETED -> InputDispatchResult.Dispatched(
+                gesture,
+                callbackCompleted = true,
+            )
+            Kind.SCHEDULED_ONLY -> InputDispatchResult.Failed(
+                "SCHEDULED_ONLY — gesture scheduled only; callback was not awaited; " +
+                    "not eligible for verification",
+            )
             else -> InputDispatchResult.Failed(reason)
         }
 
-        /** Dispatch accepted or completed. Never VERIFY SUCCESS. */
+        /**
+         * onCompleted is still not a verified move.
+         * [Kind.SCHEDULED_ONLY] is not eligible: the gesture may not have run.
+         */
         fun verifyLabel(): String = when (kind) {
-            Kind.COMPLETED, Kind.SCHEDULED_ONLY -> VerificationPolicy.PENDING
+            Kind.COMPLETED -> VerificationPolicy.PENDING
             else -> VerificationPolicy.FAILED
         }
+
+        fun eligibleForVerification(): Boolean = kind == Kind.COMPLETED
     }
 
     fun decide(
@@ -46,7 +58,7 @@ object GestureCallbackPolicy {
         if (!awaitCallback) {
             return Decision(
                 Kind.SCHEDULED_ONLY,
-                "dispatch scheduled on main thread; callback not awaited",
+                "SCHEDULED_ONLY — dispatch scheduled on main thread; callback not awaited",
             )
         }
         if (!callbackArrived) {

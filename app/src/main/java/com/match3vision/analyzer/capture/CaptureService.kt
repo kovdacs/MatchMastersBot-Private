@@ -80,6 +80,14 @@ class CaptureService : Service() {
     }
 
     private fun startProjection(resultCode: Int, data: Intent) {
+        val refusal = CaptureConsent.reuseRefusal(
+            alreadyCapturing = captureManager?.isCapturing?.value == true,
+            hasResultData = true,
+        )
+        if (refusal != null) {
+            Timber.e(refusal)
+            return
+        }
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val projection: MediaProjection? = mpm.getMediaProjection(resultCode, data)
         if (projection == null) {

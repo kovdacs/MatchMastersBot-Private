@@ -3,6 +3,7 @@ package com.match3vision.analyzer.input
 import com.google.common.truth.Truth.assertThat
 import com.match3vision.analyzer.capture.ContentRoi
 import com.match3vision.analyzer.capture.FrameSequenceGate
+import com.match3vision.analyzer.capture.ScreenMeasurement
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.overlay.LivePipelineStatus
@@ -66,11 +67,32 @@ class ProductionDispatchGuardTest {
         sequenceAllowed = true,
     )
 
-    /** Real executor. Channel is the only substitute. */
+    /** Real executor. Channel is the only substitute. Live probe echoes the permit. */
     private fun blocked(permit: DispatchPermit, ready: Boolean = true) {
         val channel = CountingChannel(ready = ready)
-        val executor = AccessibilityGestureExecutor(serviceProvider = { channel })
-        val result = executor.dispatchChecked(permit)
+        val captured = if (permit.capturedElapsedMs > 0L) permit.capturedElapsedMs else 10_000L
+        val age = permit.frameAgeMs.coerceAtLeast(0L)
+        val screen = if (permit.screenWidth > 0 && permit.screenHeight > 0) {
+            ScreenMeasurement(
+                widthPx = permit.screenWidth,
+                heightPx = permit.screenHeight,
+                source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+            )
+        } else {
+            ScreenMeasurement.unavailable()
+        }
+        val executor = AccessibilityGestureExecutor(
+            serviceProvider = { channel },
+            nowElapsedMs = { captured + age },
+            liveProbe = LiveDispatchProbe(
+                inputEnabled = { permit.inputEnabled },
+                stopped = { false },
+                captureReady = { permit.captureOn },
+                screen = { screen },
+            ),
+        )
+        val stamped = permit.copy(capturedElapsedMs = captured)
+        val result = executor.dispatchChecked(stamped)
         assertThat(result).isInstanceOf(InputDispatchResult.Failed::class.java)
         assertThat(channel.dispatchGestureCalls).isEqualTo(0)
         assertThat((result as InputDispatchResult.Failed).reason).contains("TOCTOU")
@@ -134,11 +156,47 @@ class ProductionDispatchGuardTest {
     }
 
     @Test
+    fun guard_missingMonotonicClock_failsClosed() {
+        val channel = CountingChannel()
+        val screen = ScreenMeasurement(
+            widthPx = 1080,
+            heightPx = 2400,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        )
+        val executor = AccessibilityGestureExecutor(
+            serviceProvider = { channel },
+            nowElapsedMs = { 0L },
+            liveProbe = LiveDispatchProbe(
+                inputEnabled = { true },
+                stopped = { false },
+                captureReady = { true },
+                screen = { screen },
+            ),
+        )
+        val permit = okPermit().copy(frameAgeMs = 10L, capturedElapsedMs = 0L)
+        val result = executor.dispatchChecked(permit)
+        assertThat(channel.dispatchGestureCalls).isEqualTo(0)
+        assertThat((result as InputDispatchResult.Failed).reason)
+            .contains("monotonic frame age unavailable")
+    }
+
+    @Test
     fun guard_frameAgedDuringAnalysis_realDispatcher_remeasuresBeforeDispatchGesture() {
         val channel = CountingChannel()
+        val screen = ScreenMeasurement(
+            widthPx = 1080,
+            heightPx = 2400,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        )
         val executor = AccessibilityGestureExecutor(
             serviceProvider = { channel },
             nowElapsedMs = { 1_000L + 4_000L },
+            liveProbe = LiveDispatchProbe(
+                inputEnabled = { true },
+                stopped = { false },
+                captureReady = { true },
+                screen = { screen },
+            ),
         )
         // Plan-time age was 10 ms. The monotonic clock at dispatch is 4 s later.
         val permit = okPermit().copy(frameAgeMs = 10L, capturedElapsedMs = 1_000L)
@@ -162,7 +220,21 @@ class ProductionDispatchGuardTest {
     @Test
     fun happyPath_realDispatcher_callsDispatchGestureOnce_andIsNotVerifySuccess() {
         val channel = CountingChannel()
-        val executor = ProductionInstall.accessibilityExecutor { channel }
+        val screen = ScreenMeasurement(
+            widthPx = 1080,
+            heightPx = 2400,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        )
+        val executor = ProductionInstall.accessibilityExecutor(
+            serviceProvider = { channel },
+            nowElapsedMs = { 10_400L },
+            liveProbe = LiveDispatchProbe(
+                inputEnabled = { true },
+                stopped = { false },
+                captureReady = { true },
+                screen = { screen },
+            ),
+        )
         val sw = InputEnableSwitch(initiallyEnabled = true)
         val engine = AutomaticInputEngine(enableSwitch = sw, executor = executor)
         val vision = passVision(ContentRoi(37, 511, 1043, 2018))
@@ -175,7 +247,11 @@ class ProductionDispatchGuardTest {
             frameTimestampMs = 5_000L,
             frameWidth = 1080,
             frameHeight = 2400,
+            capturedElapsedMs = 10_000L,
+            screen = screen,
         )
+        assertThat(ctx.screenSource).isEqualTo(ScreenMeasurement.SOURCE_MAXIMUM_WINDOW)
+        assertThat(ctx.coordinateAlignmentProven).isFalse()
         val result = engine.tryExecute(vision, goodMove(Move(4, 2, 4, 3)), ctx)
         assertThat(channel.dispatchGestureCalls).isEqualTo(1)
         assertThat(result).isInstanceOf(AutomaticInputEngine.ExecuteResult.Executed::class.java)
@@ -292,10 +368,13 @@ class ProductionDispatchGuardTest {
                 frameFresh = true,
                 frameTimestampMs = 8_000L,
                 dispatchCompletedAtMs = 8_000L,
+                gestureEligible = true,
             ),
         )
         assertThat(sameInstant!!.verifyStatus).isEqualTo(VerificationPolicy.FAILED)
-        assertThat(sameInstant.reason).contains("not later than dispatch")
+        assertThat(sameInstant.reason).contains("equal to dispatch completion")
+        assertThat(sameInstant.reason).contains("no SUCCESS")
+        assertThat(sameInstant.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
         assertThat(exec.dispatched).hasSize(1)
         assertThat(ProductionPath.isSimulationExecutor(exec)).isTrue()
     }
@@ -323,7 +402,13 @@ class ProductionDispatchGuardTest {
         val same = ctrl.completeFeedback(
             executed.beforeBoardHash,
             before,
-            VerifyObservation(newFrameAccepted = true, frameFresh = true),
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+            ),
         )
         assertThat(same!!.verifyStatus).isEqualTo(VerificationPolicy.FAILED)
         assertThat(same.reason.lowercase()).contains("unchanged")
@@ -384,7 +469,21 @@ class ProductionDispatchGuardTest {
     @Test
     fun engine_staleContext_doesNotReachRealDispatchGesture() {
         val channel = CountingChannel()
-        val executor = ProductionInstall.accessibilityExecutor { channel }
+        val screen = ScreenMeasurement(
+            widthPx = 1080,
+            heightPx = 2400,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        )
+        val executor = ProductionInstall.accessibilityExecutor(
+            serviceProvider = { channel },
+            nowElapsedMs = { 20_000L },
+            liveProbe = LiveDispatchProbe(
+                inputEnabled = { true },
+                stopped = { false },
+                captureReady = { true },
+                screen = { screen },
+            ),
+        )
         val sw = InputEnableSwitch(initiallyEnabled = true)
         val engine = AutomaticInputEngine(enableSwitch = sw, executor = executor)
         val ctx = ProductionCycleContext.fromLoopObservation(
@@ -400,6 +499,8 @@ class ProductionDispatchGuardTest {
             frameTimestampMs = 1L,
             frameWidth = 1080,
             frameHeight = 2400,
+            capturedElapsedMs = 1_000L,
+            screen = screen,
         )
         val result = engine.tryExecute(passVision(), goodMove(), ctx)
         assertThat(channel.dispatchGestureCalls).isEqualTo(0)
@@ -469,6 +570,11 @@ class ProductionDispatchGuardTest {
         frameTimestampMs = 1_700_000_000_000L,
         frameWidth = 1080,
         frameHeight = 2400,
+        screen = ScreenMeasurement(
+            widthPx = 1080,
+            heightPx = 2400,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        ),
     )
 
     /** Probe executor so verify tests can obtain a before-hash. Not the production channel. */

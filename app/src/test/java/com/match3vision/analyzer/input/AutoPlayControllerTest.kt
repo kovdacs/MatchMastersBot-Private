@@ -111,8 +111,20 @@ class AutoPlayControllerTest {
         val after = vision(colors = afterColors)
         assertThat(Board.fromVision(after.board).contentHash())
             .isNotEqualTo(executed.beforeBoardHash)
-        val fb = ctrl.completeFeedback(executed.beforeBoardHash, after)
-        assertThat(fb!!.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
+        val fb = ctrl.completeFeedback(
+            executed.beforeBoardHash,
+            after,
+            VerifyObservation(
+                newFrameAccepted = true,
+                frameFresh = true,
+                gestureEligible = true,
+                frameElapsedMs = 6_000L,
+                dispatchCompletedElapsedMs = 5_000L,
+            ),
+        )
+        assertThat(fb!!.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+        assertThat(fb.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
 
         ctrl.onBubblePause()
         assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)

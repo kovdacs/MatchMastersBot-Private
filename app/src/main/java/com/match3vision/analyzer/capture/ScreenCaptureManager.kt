@@ -43,6 +43,7 @@ class ScreenCaptureManager(
     private val running = AtomicBoolean(false)
     private var lastEmitMs: Long = 0L
     private var frameSequence: Long = 0L
+    val cadence: FrameCadence = FrameCadence()
     private var widthPx: Int = 0
     private var heightPx: Int = 0
     private var densityDpi: Int = 0
@@ -148,6 +149,7 @@ class ScreenCaptureManager(
         val prev = _latestFrame.value
         _latestFrame.value = null
         frameSequence = 0L
+        cadence.reset()
         if (prev != null && !prev.bitmap.isRecycled) {
             try {
                 prev.bitmap.recycle()
@@ -172,22 +174,19 @@ class ScreenCaptureManager(
             val buffer: ByteBuffer = plane.buffer
             val pixelStride = plane.pixelStride
             val rowStride = plane.rowStride
-
-            // Explicit RGBA_8888 → packed ARGB ints. copyPixelsFromBuffer is
-            // brittle across devices when ImageReader format ≠ Bitmap memory layout;
-            // wrong channels yield high gridConf (luma gutters OK) but unk≈all cells.
-            val argb = IntArray(widthPx * heightPx)
-            var dst = 0
-            for (row in 0 until heightPx) {
-                var pos = row * rowStride
-                for (col in 0 until widthPx) {
-                    val r = buffer.get(pos).toInt() and 0xFF
-                    val g = buffer.get(pos + 1).toInt() and 0xFF
-                    val b = buffer.get(pos + 2).toInt() and 0xFF
-                    val a = buffer.get(pos + 3).toInt() and 0xFF
-                    argb[dst++] = (a shl 24) or (r shl 16) or (g shl 8) or b
-                    pos += pixelStride
-                }
+            val argb = RgbaBufferUnpack.unpack(
+                buffer = buffer,
+                width = widthPx,
+                height = heightPx,
+                rowStride = rowStride,
+                pixelStride = pixelStride,
+            )
+            if (argb == null) {
+                Timber.e(
+                    "ImageReader plane rejected width=$widthPx height=$heightPx " +
+                        "rowStride=$rowStride pixelStride=$pixelStride capacity=${buffer.capacity()}",
+                )
+                return
             }
             val cropped = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
             cropped.setPixels(argb, 0, widthPx, 0, 0, widthPx, heightPx)
@@ -208,6 +207,7 @@ class ScreenCaptureManager(
                 sequence = ++frameSequence,
                 elapsedRealtimeMs = elapsed,
             )
+            if (elapsed > 0L) cadence.record(elapsed)
             _latestFrame.value = frame
             // Recycle previous bitmap after swap (avoid MediaProjection leak).
             if (prev != null && prev.bitmap !== cropped && !prev.bitmap.isRecycled) {

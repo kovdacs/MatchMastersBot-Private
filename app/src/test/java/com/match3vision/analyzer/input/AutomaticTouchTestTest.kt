@@ -133,9 +133,13 @@ class AutomaticTouchTestTest {
     fun accessibilityGestureExecutor_notReady_whenServiceMissing() {
         val exec = AccessibilityGestureExecutor(serviceProvider = { null })
         assertThat(exec.isReady()).isFalse()
-        val result = exec.dispatch(GestureSpec.tap(100f, 200f))
-        assertThat(result).isInstanceOf(InputDispatchResult.Failed::class.java)
-        assertThat((result as InputDispatchResult.Failed).reason)
+        val refused = exec.dispatch(GestureSpec.tap(100f, 200f))
+        assertThat(refused).isInstanceOf(InputDispatchResult.Failed::class.java)
+        assertThat((refused as InputDispatchResult.Failed).reason)
+            .contains("unguarded dispatch()")
+        val manual = exec.dispatchManualTest(GestureSpec.tap(100f, 200f))
+        assertThat(manual).isInstanceOf(InputDispatchResult.Failed::class.java)
+        assertThat((manual as InputDispatchResult.Failed).reason)
             .contains("AccessibilityService not connected")
     }
 

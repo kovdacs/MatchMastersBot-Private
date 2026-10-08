@@ -86,6 +86,38 @@ jobs:
                   print(body[:4000])
           PY
 
+      - name: Prepare fixed CI debug keystore when secrets exist
+        env:
+          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          ANDROID_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          ANDROID_DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          ANDROID_DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_DEBUG_KEYSTORE_BASE64:-}" ] && \
+             [ -n "${ANDROID_DEBUG_KEYSTORE_PASSWORD:-}" ] && \
+             [ -n "${ANDROID_DEBUG_KEY_ALIAS:-}" ] && \
+             [ -n "${ANDROID_DEBUG_KEY_PASSWORD:-}" ]; then
+            KS_PATH="$RUNNER_TEMP/ci-debug.keystore"
+            printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
+            echo "ANDROID_DEBUG_KEYSTORE_PATH=$KS_PATH" >> "$GITHUB_ENV"
+            echo "ANDROID_DEBUG_KEYSTORE_PASSWORD=$ANDROID_DEBUG_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ANDROID_DEBUG_KEY_ALIAS=$ANDROID_DEBUG_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_DEBUG_KEY_PASSWORD=$ANDROID_DEBUG_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=fixed-ci-debug-keystore"
+            echo "Stable signing identity will be used. Passwords are not printed."
+          else
+            echo "SIGNING_MODE=ephemeral-agp-debug-keystore"
+            echo "SIGNING_FALLBACK=Fixed CI debug keystore secrets are absent."
+            echo "The owner must add GitHub Actions secrets:"
+            echo "  ANDROID_DEBUG_KEYSTORE_BASE64"
+            echo "  ANDROID_DEBUG_KEYSTORE_PASSWORD"
+            echo "  ANDROID_DEBUG_KEY_ALIAS"
+            echo "  ANDROID_DEBUG_KEY_PASSWORD"
+            echo "Until those secrets exist, assembleDebug uses the runner-generated debug keystore."
+            echo "A new CI APK then may not update-install over the previous CI APK."
+          fi
+
       - name: Assemble debug APK
         run: ./gradlew --no-daemon assembleDebug
 
@@ -131,15 +163,27 @@ jobs:
             exit 1
           fi
           python3 - <<'PY'
-          import os, zipfile
+          import hashlib, os, zipfile
           apk = os.environ["APK_PATH"]
+          data = open(apk, "rb").read()
           z = zipfile.ZipFile(apk)
           names = z.namelist()
           print("zip_entries", len(names))
           assert "AndroidManifest.xml" in names
           assert any(n == "classes.dex" or (n.startswith("classes") and n.endswith(".dex")) for n in names)
           print("apk_structure_ok", os.path.basename(apk))
+          print("APK_SHA256", hashlib.sha256(data).hexdigest())
+          print("APK_SIZE", len(data))
           PY
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          APKSIGNER="$SDK/build-tools/35.0.0/apksigner"
+          if [ -x "$APKSIGNER" ]; then
+            echo "=== signing identity (apksigner verify --print-certs) ==="
+            "$APKSIGNER" verify --print-certs "$APK"
+          else
+            echo "apksigner missing at $APKSIGNER"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

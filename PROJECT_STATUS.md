@@ -1,10 +1,10 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-10-08  
-**Version:** `0.24.3-production-path-audit`  
-**Previous tip:** `22eca0a` / 0.24.2-runtime-diagnostics  
-**This pack:** production path integration audit. Live phone still **NOT TESTED**. See `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
-**CI:** push run 37773265584 SUCCESS (`eadf97c`, 388 tests). PR run 37773270896 SUCCESS (merge `01a59ea`). See `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
+**Version:** `0.24.4-production-safety-integration`  
+**Previous tip:** `c609479` / 0.24.3-production-path-audit  
+**This pack:** production safety, independent screen measurement, honest verification. Live phone still **NOT TESTED**. Evidence: `docs/FINAL_REPORT_0.24.4_PRODUCTION_SAFETY.md`.  
+**CI:** push run 37781640302 SUCCESS on candidate `fb4e74eb0b7faf03c8709ff55fa624895d454c7e`. Prior 0.24.3 evidence remains in `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  
 **Root:** `/workspace/MatchMastersBot-Private`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private` (private)

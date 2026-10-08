@@ -17,15 +17,20 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.match3vision.analyzer.capture.AndroidScreenMetrics
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
+import com.match3vision.analyzer.capture.ScreenMetricsSource
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
 import com.match3vision.analyzer.input.GestureFailSafe
 import com.match3vision.analyzer.input.InputThresholds
 import com.match3vision.analyzer.input.MatchMastersAccessibilityService
+import com.match3vision.analyzer.input.DiagnosticBundle
+import com.match3vision.analyzer.input.DiagnosticExport
 import com.match3vision.analyzer.input.ProductionCycleContext
+import com.match3vision.analyzer.input.ProductionLiveReaders
 import com.match3vision.analyzer.input.RuntimeLabels
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.input.VerificationPolicy
@@ -70,6 +75,7 @@ class FloatingBubbleService : Service() {
         super.onCreate()
         instance = this
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        installLiveReaders()
         showBubble()
         AutoPlaySession.beginNewSession()
         AutoPlaySession.publish(bubbleVisible = true)
@@ -98,6 +104,7 @@ class FloatingBubbleService : Service() {
         loopJob = null
         removeBubble()
         if (instance === this) instance = null
+        ProductionLiveReaders.reset()
         scope.cancel()
         Timber.i("FloatingBubbleService destroyed")
         super.onDestroy()
@@ -389,6 +396,21 @@ class FloatingBubbleService : Service() {
     }
 
     /** Physical screen pixels for fixed-coordinate touch test (not Vision). */
+    private fun installLiveReaders() {
+        val metrics = AndroidScreenMetrics(this)
+        ProductionLiveReaders.screenSource = ScreenMetricsSource { metrics.measure() }
+        ProductionLiveReaders.readCaptureReady = {
+            val manager = CaptureService.managerOrNull()
+            manager != null && manager.isCapturing.value
+        }
+        ProductionLiveReaders.readStopped = {
+            val mode = AutoPlaySession.controller.mode
+            mode == AutoPlayController.Mode.STOPPED ||
+                mode == AutoPlayController.Mode.PAUSED ||
+                !AutoPlaySession.controller.isLoopActive()
+        }
+    }
+
     private fun screenSizePx(): Pair<Int, Int> {
         val wm = windowManager ?: getSystemService(WINDOW_SERVICE) as WindowManager
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -557,9 +579,11 @@ class FloatingBubbleService : Service() {
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
                         "${vision.grid.boardRoi.right},${vision.grid.boardRoi.bottom})"
                     val boardDet = vision.method.name + "/" + boardRoiStr
+                    val screen = ProductionLiveReaders.screenSource.measure()
                     val cycleContext = ProductionCycleContext.fromLoopObservation(
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
-                        captureManagerPresent = CaptureService.managerOrNull() != null,
+                        captureManagerPresent = CaptureService.managerOrNull() != null &&
+                            manager.isCapturing.value,
                         hasFrame = true,
                         frameAgeMs = useFrame.ageMs(),
                         frameSequenceDecision = seqDecision,
@@ -567,6 +591,8 @@ class FloatingBubbleService : Service() {
                         frameWidth = useFrame.width,
                         frameHeight = useFrame.height,
                         capturedElapsedMs = useFrame.elapsedRealtimeMs,
+                        screen = screen,
+                        frameSequence = useFrame.sequence,
                     )
                     // Overlay must not cancel the injected gesture (same fix as TESZT ÉRINTÉS).
                     setBubbleTouchable(false)
@@ -634,6 +660,17 @@ class FloatingBubbleService : Service() {
                         hasFrameFlag = true,
                         simulated = false,
                     )
+                    publishSafetyDiagnostics(
+                        vision = vision,
+                        screen = screen,
+                        frame = useFrame,
+                        moveText = cycle.moveLabel,
+                        coordinateRefused = cycle.coordinateBlocked,
+                        coordinateReason = if (cycle.coordinateBlocked) cycle.reason else "",
+                        dispatchStatus = cycle.lastDispatch.name,
+                        verificationStatus = cycle.verifyStatus,
+                        verificationReason = cycle.reason,
+                    )
                     AutoPlaySession.refreshFromController()
                     refreshBubbleUi()
                     when (cycle.outcome) {
@@ -641,7 +678,6 @@ class FloatingBubbleService : Service() {
                             val executed = cycle.executed
                             if (executed is AutomaticInputEngine.ExecuteResult.Executed) {
                                 seqGate.markGestureDispatched(frameId)
-                                val dispatchCompletedAtMs = System.currentTimeMillis()
                                 val dispatchCompletedElapsedMs =
                                     com.match3vision.analyzer.input.FrameClock.tryElapsed()
                                 statusView?.text = "GESZTUS #${ctrl.moveCount}"
@@ -701,18 +737,23 @@ class FloatingBubbleService : Service() {
                                     gestureStatus = "CREATED",
                                     lastDispatch = StartupReadinessGate.LastDispatch.SUCCESS,
                                 )
+                                val nowElapsed =
+                                    com.match3vision.analyzer.input.FrameClock.tryElapsed()
+                                val observation = VerifyObservation.derive(
+                                    preDispatchSequence = useFrame.sequence,
+                                    afterSequence = afterFrame.sequence,
+                                    afterElapsedMs = afterFrame.elapsedRealtimeMs,
+                                    dispatchCompletedElapsedMs = dispatchCompletedElapsedMs,
+                                    nowElapsedMs = nowElapsed,
+                                    gestureEligible = executed.verificationEligible,
+                                )
                                 val fb = withContext(Dispatchers.Default) {
                                     ctrl.completeFeedback(
-                                        executed.beforeBoardHash,
-                                        afterVision,
-                                        VerifyObservation(
-                                            newFrameAccepted = true,
-                                            frameFresh = true,
-                                            frameTimestampMs = afterFrame.timestampMs,
-                                            dispatchCompletedAtMs = dispatchCompletedAtMs,
-                                            frameElapsedMs = afterFrame.elapsedRealtimeMs,
-                                            dispatchCompletedElapsedMs = dispatchCompletedElapsedMs,
-                                        ),
+                                        beforeBoardHash = executed.beforeBoardHash,
+                                        afterVision = afterVision,
+                                        verify = observation,
+                                        beforeVision = vision,
+                                        attemptedMove = executed.move.move,
                                     )
                                 }
                                 // Policy label only — CONTINUE is not itself VERIFY SUCCESS.
@@ -741,16 +782,27 @@ class FloatingBubbleService : Service() {
                                     frameWidth = afterFrame.width,
                                     frameHeight = afterFrame.height,
                                     frameAgeMs = afterAge,
-                                    frameFreshness = "FRESH",
+                                    frameFreshness = RuntimeLabels.freshness(true, afterAge),
                                     hasFrameFlag = true,
                                     visionPassFlag = afterVision.validation.isPass,
+                                )
+                                publishSafetyDiagnostics(
+                                    vision = afterVision,
+                                    screen = ProductionLiveReaders.screenSource.measure(),
+                                    frame = afterFrame,
+                                    moveText = executed.move.move.toString(),
+                                    coordinateRefused = false,
+                                    coordinateReason = "",
+                                    dispatchStatus = StartupReadinessGate.LastDispatch.SUCCESS.name,
+                                    verificationStatus = verifyLabel,
+                                    verificationReason = fb?.reason ?: "",
                                 )
                                 AutoPlaySession.refreshFromController()
                                 refreshBubbleUi()
                                 if (fb?.outcome == BotLoopOutcome.STOP) {
                                     delay(300L)
                                 } else {
-                                    // SUCCESS → next iteration waits for NEW frame via seqGate.
+                                    // Next iteration waits for a NEW frame via seqGate.
                                     delay(80L)
                                 }
                             } else {
@@ -775,6 +827,55 @@ class FloatingBubbleService : Service() {
                     delay(500L)
                 }
             }
+        }
+    }
+
+    private fun publishSafetyDiagnostics(
+        vision: com.match3vision.analyzer.vision.VisionResult,
+        screen: com.match3vision.analyzer.capture.ScreenMeasurement,
+        frame: CaptureFrame,
+        moveText: String,
+        coordinateRefused: Boolean,
+        coordinateReason: String,
+        dispatchStatus: String,
+        verificationStatus: String,
+        verificationReason: String,
+    ) {
+        val bundle = DiagnosticBundle.fromObservation(
+            appVersion = com.match3vision.analyzer.BuildConfig.VERSION_NAME,
+            versionCode = com.match3vision.analyzer.BuildConfig.VERSION_CODE,
+            sourceCommit = com.match3vision.analyzer.BuildConfig.GIT_COMMIT,
+            diagnosticTimestampMs = System.currentTimeMillis(),
+            vision = vision,
+            screen = screen,
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+            frameSequence = frame.sequence,
+            captureTimestampMs = frame.timestampMs,
+            frameAgeMs = frame.ageMs(),
+            frameElapsedMs = frame.elapsedRealtimeMs,
+            cadence = CaptureService.managerOrNull()?.cadence,
+            accessibilityConnected = MatchMastersAccessibilityService.isConnected(),
+            gestureCapability = MatchMastersAccessibilityService.diagnoseConnected(),
+            captureOn = CaptureService.managerOrNull()?.isCapturing?.value == true,
+            hasFrame = true,
+            moveAnalysis = moveText,
+            selectedMove = moveText,
+            coordinateReason = coordinateReason.ifBlank {
+                "coordinate origin alignment UNPROVEN"
+            },
+            coordinateRefused = coordinateRefused,
+            dispatchStatus = dispatchStatus,
+            callbackOutcome = dispatchStatus,
+            verificationStatus = verificationStatus,
+            verificationReason = verificationReason,
+            simulated = false,
+        )
+        DiagnosticExport.publish(bundle)
+        try {
+            DiagnosticBundle.write(java.io.File(cacheDir, "diagnostic-bundle.json"), bundle)
+        } catch (t: Throwable) {
+            Timber.w(t, "diagnostic bundle write failed")
         }
     }
 
