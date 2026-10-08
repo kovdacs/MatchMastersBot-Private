@@ -1,7 +1,7 @@
 # PROJECT STATUS — Match3 Vision Analyzer
 
 **Date:** 2026-10-08  
-**Version:** `0.24.7.3` (versionCode 24). Phone Test 0 of 0.24.6.1 (`c7d3cf4`) and the 0.24.7 build are separate and must not be used for the 5-move test. Reports: `docs/FINAL_REPORT_0.24.6.1_VERIFICATION.md`, `docs/FINAL_REPORT_0.24.7_PRE_TOUCH_SAFETY.md`.  
+**Version:** `0.24.7.4` (versionCode 25). Phone Test 0 of 0.24.6.1 (`c7d3cf4`) and the 0.24.7 build are separate and must not be used for the 5-move test. Reports: `docs/FINAL_REPORT_0.24.6.1_VERIFICATION.md`, `docs/FINAL_REPORT_0.24.7_PRE_TOUCH_SAFETY.md`.  
 **Previous tip:** `c609479` / 0.24.3-production-path-audit  
 **This pack:** production safety, independent screen measurement, honest verification. Live phone still **NOT TESTED**. Evidence: `docs/FINAL_REPORT_0.24.4_PRODUCTION_SAFETY.md`.  
 **CI:** push run 37781640302 SUCCESS on candidate `fb4e74eb0b7faf03c8709ff55fa624895d454c7e`. Prior 0.24.3 evidence remains in `docs/FINAL_REPORT_0.24.3_PRODUCTION_PATH_AUDIT.md`.  

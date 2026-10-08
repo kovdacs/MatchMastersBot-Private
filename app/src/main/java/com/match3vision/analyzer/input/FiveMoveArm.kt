@@ -11,6 +11,6 @@ object FiveMoveArm {
     const val NEED_START = "Először INDÍTÁS, várd meg a stabil táblát."
     const val ALREADY = "5 LÉPÉS TESZT már fut"
     const val CONTINUOUS = "Folyamatos játék fut — előbb STOP."
-    const val STOPPED = "leállítva — új Indítás kell az alkalmazásban"
+    const val STOPPED = "Nyomd meg az INDÍTÁS-t"
     const val CAP = "5 LÉPÉS refused — MOVE UNCONFIRMED cap is latched"
 }

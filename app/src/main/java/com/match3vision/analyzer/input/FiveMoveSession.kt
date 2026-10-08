@@ -10,6 +10,9 @@ package com.match3vision.analyzer.input
  * The clock starts at [arm] (the 5 LÉPÉS TESZT press, after the self-check).
  * All five verified moves must finish inside [SESSION_LIMIT_MS].
  * Each gesture has [PER_MOVE_BUDGET_MS] for the swipe and the settle.
+ * After a gesture, HOLD, implausible-ROI, and unstable frames are ignored
+ * until a stable PASS frame shows a real board change, or the 12 s budget ends.
+ * A stable PASS board that still matches the pre-move board for 1.5 s stops.
  * Settle is a frame-diff, not a fixed sleep.
  *
  * This type does not run vision and does not dispatch a gesture.
@@ -28,6 +31,8 @@ class FiveMoveSession {
         val ownUi: Boolean,
         val msSinceCollapse: Long,
         val roiPlausible: Boolean,
+        /** 0 means the caller did not supply a sequence. */
+        val frameSequence: Long = 0L,
     )
 
     data class Permit(val token: Long, val moveNumber: Int)
@@ -56,6 +61,9 @@ class FiveMoveSession {
         val unknownCount: Int,
         val ownUi: Boolean,
         val a11yConnected: Boolean,
+        val overlayOutside: Boolean = true,
+        val capturedAfterGesture: Boolean = true,
+        val frameSequence: Long = 0L,
     )
 
     data class MoveRecord(
@@ -72,6 +80,10 @@ class FiveMoveSession {
         val startedAtMs: Long,
         val finishedAtMs: Long,
         val durationMs: Long,
+        val ignoredTransient: Int = 0,
+        val ignoredReasons: String = "",
+        val userInterference: Boolean = false,
+        val outsideTouches: Int = 0,
     )
 
     sealed class Decision {
@@ -106,6 +118,15 @@ class FiveMoveSession {
     /** Preconditions of the frame that started the session. Empty until then. */
     private var startExport: String = ""
 
+    /** Touches outside the bubble during this session. Our own swipe is suppressed. */
+    var outsideTouches: Int = 0
+        private set
+
+    private var suppressOutsideUntilMs: Long = 0L
+
+    /** Sequence of the frame that verified the previous move. 0 until then. */
+    private var lastSettledFrameSequence: Long = 0L
+
     private data class OpenMove(
         val number: Int,
         val startedAtMs: Long,
@@ -117,6 +138,9 @@ class FiveMoveSession {
         val beforeHash: Long,
         val beforeUnknown: Int,
         val callback: String,
+        var ignoredCount: Int = 0,
+        val ignoredReasons: ArrayList<String> = ArrayList(),
+        var outsideTouches: Int = 0,
     )
 
     val isActive: Boolean
@@ -146,6 +170,9 @@ class FiveMoveSession {
         openMove = null
         nextToken = 1L
         startExport = ""
+        outsideTouches = 0
+        suppressOutsideUntilMs = 0L
+        lastSettledFrameSequence = 0L
         return true
     }
 
@@ -164,6 +191,27 @@ class FiveMoveSession {
         outstanding = null
         openMove = null
         startExport = ""
+        outsideTouches = 0
+        suppressOutsideUntilMs = 0L
+        lastSettledFrameSequence = 0L
+    }
+
+    /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
+    fun suppressOutsideTouchUntil(untilMs: Long) {
+        if (untilMs > suppressOutsideUntilMs) suppressOutsideUntilMs = untilMs
+    }
+
+    /**
+     * A finger landed outside the bubble while this session was running.
+     * Board-diff verification cannot tell that finger from our gesture, so the
+     * open move is not counted.
+     */
+    fun noteOutsideTouch(nowMs: Long): Decision? {
+        if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (nowMs < suppressOutsideUntilMs) return null
+        outsideTouches += 1
+        openMove?.let { it.outsideTouches += 1 }
+        return abort("STOP — user interference", nowMs)
     }
 
     /**
@@ -174,6 +222,7 @@ class FiveMoveSession {
         if (!isActive) return null
         if (ownUi) return abort("STOP — our app is in the foreground", nowMs)
         if (!a11yConnected) return abort("STOP — accessibility lost", nowMs)
+        if (outsideTouches > 0) return abort("STOP — user interference", nowMs)
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
             return abort("STOP — 60s session limit", nowMs)
         }
@@ -185,7 +234,8 @@ class FiveMoveSession {
         if (phase == Phase.IDLE) return Decision.Stop("5 LÉPÉS not armed")
         if (phase == Phase.SETTLING) return Decision.Hold("settle in progress")
         sessionLimit(gates.nowMs)?.let { return it }
-        immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected, gates.roiPlausible)?.let { return it }
+        if (outsideTouches > 0) return stop(gates.nowMs, "STOP — user interference")
+        immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, "STOP — 5 moves complete")
         }
@@ -259,14 +309,13 @@ class FiveMoveSession {
         if (phase != Phase.SETTLING || open == null) {
             return Decision.Stop(stopReason.ifBlank { "not settling" })
         }
-        immediateAbort(
-            sample.nowMs,
-            sample.ownUi,
-            sample.a11yConnected,
-            sample.roiPlausible,
-        )?.let { decision ->
+        immediateAbort(sample.nowMs, sample.ownUi, sample.a11yConnected)?.let { decision ->
             closeOpen(open, sample, "FAILED — ${decision.reason}")
             return decision
+        }
+        if (outsideTouches > 0) {
+            closeOpen(open, sample, "FAILED — user interference")
+            return stop(sample.nowMs, "STOP — user interference")
         }
         if (sample.nowMs - startedAtMs >= SESSION_LIMIT_MS) {
             closeOpen(open, sample, "FAILED — 60s session limit")
@@ -276,8 +325,14 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — per-move budget ${PER_MOVE_BUDGET_MS}ms")
             return stop(sample.nowMs, "STOP — per-move budget ${PER_MOVE_BUDGET_MS}ms")
         }
+        if (!qualifiesAsPass(sample)) {
+            return ignore(open, transientReason(sample))
+        }
         val stable = sample.diffFraction != null && sample.diffFraction <= STABLE_FRACTION
-        if (!stable) return Decision.Hold("board still moving")
+        if (!stable) {
+            val detail = if (sample.diffFraction == null) "no pair yet" else "diff=${sample.diffFraction}"
+            return ignore(open, "unstable ($detail)")
+        }
         val changed = sample.boardHash != open.beforeHash
         if (!changed) {
             if (sample.nowMs - open.startedAtMs < UNCHANGED_MIN_MS) {
@@ -286,10 +341,14 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — board unchanged")
             return stop(sample.nowMs, "STOP — board unchanged after move ${open.number}")
         }
-        if (!sample.frameFresh || !sample.visionPass) {
-            return Decision.Hold("board changed; waiting for a fresh vision PASS")
+        if (sample.frameSequence > lastSettledFrameSequence) {
+            lastSettledFrameSequence = sample.frameSequence
         }
-        closeOpen(open, sample, "PASS — callback completed, board changed, fresh, ROI plausible, vision PASS")
+        closeOpen(
+            open,
+            sample,
+            "PASS — callback completed, board changed, stable, fresh, ROI plausible, vision PASS",
+        )
         verifiedCount += 1
         openMove = null
         if (verifiedCount >= MAX_MOVES) {
@@ -317,6 +376,10 @@ class FiveMoveSession {
                 afterUnknown = -1,
                 startedAtMs = open.startedAtMs,
                 finishedAtMs = nowMs,
+                ignoredTransient = open.ignoredCount,
+                ignoredReasons = open.ignoredReasons.joinToString("; "),
+                userInterference = open.outsideTouches > 0 || reason.contains("user interference"),
+                outsideTouches = open.outsideTouches,
             )
             openMove = null
         }
@@ -351,6 +414,12 @@ class FiveMoveSession {
         appendLine("measuredSessionMs=$measured")
         appendLine("verified=$verifiedCount/$MAX_MOVES gestures=$gesturesDispatched")
         appendLine("stop=${stopReason.ifBlank { "none" }}")
+        appendLine("outsideTouches=$outsideTouches")
+        appendLine(
+            "board-change verification cannot tell our gesture from a finger on the glass. " +
+                "A detected touch outside the bubble is user interference and that move is not counted. " +
+                "No detected touch does not prove the glass was untouched.",
+        )
         if (moves.isEmpty()) {
             appendLine("moves: none")
         }
@@ -364,6 +433,11 @@ class FiveMoveSession {
             )
             appendLine("frameBefore=five-move/move-%02d-before.png".format(move.number))
             appendLine("frameAfter=five-move/move-%02d-after.png".format(move.number))
+            appendLine(
+                "ignoredTransient=${move.ignoredTransient} " +
+                    "ignoredReasons=${move.ignoredReasons.ifBlank { "none" }} " +
+                    "userInterference=${move.userInterference} outsideTouches=${move.outsideTouches}",
+            )
         }
     }
 
@@ -376,6 +450,9 @@ class FiveMoveSession {
             "HOLD — waiting ${MIN_POST_COLLAPSE_MS}ms after collapse"
         !gates.frameFresh -> "HOLD — frame is not fresh"
         !gates.visionPass -> "HOLD — vision gates are not PASS"
+        !gates.roiPlausible -> "HOLD — ROI implausible — waiting for a PASS frame"
+        gates.frameSequence > 0L && gates.frameSequence <= lastSettledFrameSequence ->
+            "HOLD — frame was captured before the previous move settled"
         else -> null
     }
 
@@ -391,12 +468,34 @@ class FiveMoveSession {
         nowMs: Long,
         ownUi: Boolean,
         a11yConnected: Boolean,
-        roiPlausible: Boolean,
     ): Decision.Stop? = when {
         ownUi -> stop(nowMs, "STOP — our app is in the foreground")
         !a11yConnected -> stop(nowMs, "STOP — accessibility lost")
-        !roiPlausible -> stop(nowMs, "STOP — ROI implausible")
         else -> null
+    }
+
+    private fun qualifiesAsPass(sample: SettleSample): Boolean =
+        sample.capturedAfterGesture &&
+            sample.frameFresh &&
+            sample.overlayOutside &&
+            sample.roiPlausible &&
+            sample.visionPass &&
+            sample.unknownCount <= MAX_UNKNOWN
+
+    private fun transientReason(sample: SettleSample): String = when {
+        !sample.capturedAfterGesture -> "frame is from before the gesture"
+        !sample.frameFresh -> "frame not fresh"
+        !sample.overlayOutside -> "overlay on the board"
+        !sample.roiPlausible -> "implausible ROI"
+        !sample.visionPass -> "vision HOLD unk=${sample.unknownCount}"
+        sample.unknownCount > MAX_UNKNOWN -> "unk=${sample.unknownCount}"
+        else -> "not a PASS frame"
+    }
+
+    private fun ignore(open: OpenMove, reason: String): Decision.Hold {
+        open.ignoredCount += 1
+        if (open.ignoredReasons.size < MAX_IGNORED_LINES) open.ignoredReasons.add(reason)
+        return Decision.Hold("settling — $reason")
     }
 
     private fun closeOpen(open: OpenMove, sample: SettleSample, verification: String) {
@@ -413,6 +512,10 @@ class FiveMoveSession {
             afterUnknown = sample.unknownCount,
             startedAtMs = open.startedAtMs,
             finishedAtMs = sample.nowMs,
+            ignoredTransient = open.ignoredCount,
+            ignoredReasons = open.ignoredReasons.joinToString("; "),
+            userInterference = open.outsideTouches > 0 || verification.contains("user interference"),
+            outsideTouches = open.outsideTouches,
         )
         openMove = null
     }
@@ -430,6 +533,10 @@ class FiveMoveSession {
         afterUnknown: Int,
         startedAtMs: Long,
         finishedAtMs: Long,
+        ignoredTransient: Int = 0,
+        ignoredReasons: String = "",
+        userInterference: Boolean = false,
+        outsideTouches: Int = 0,
     ) {
         moves += MoveRecord(
             number = number,
@@ -445,6 +552,10 @@ class FiveMoveSession {
             startedAtMs = startedAtMs,
             finishedAtMs = finishedAtMs,
             durationMs = (finishedAtMs - startedAtMs).coerceAtLeast(0L),
+            ignoredTransient = ignoredTransient,
+            ignoredReasons = ignoredReasons,
+            userInterference = userInterference,
+            outsideTouches = outsideTouches,
         )
     }
 
@@ -466,6 +577,8 @@ class FiveMoveSession {
         const val UNCHANGED_MIN_MS = 1_500L
         const val STABLE_FRACTION = 0.02f
         const val MIN_POST_COLLAPSE_MS = 2_000L
+        const val MAX_UNKNOWN = 1
+        private const val MAX_IGNORED_LINES = 200
 
         const val NEED_SELF_CHECK_HU =
             "TESZT ÉRINTÉS: érintsd a fehér kalibrációs pontot. " +

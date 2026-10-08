@@ -80,7 +80,8 @@ class FiveMoveSessionTest {
                     nowMs = start + 800L,
                     boardHash = 100L + index,
                     diffFraction = 0f,
-                    unknownCount = index,
+                    unknownCount = 0,
+                    frameSequence = (index + 1).toLong(),
                 ),
             )
             if (index < FiveMoveSession.MAX_MOVES - 1) {
@@ -149,7 +150,11 @@ class FiveMoveSessionTest {
 
         val roi = FiveMoveSession().also { it.arm(0L) }
         assertThat(roi.requestDispatch(gates(nowMs = 10L, roiPlausible = false)))
-            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(roi.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(roi.gesturesDispatched).isEqualTo(0)
+        assertThat(roi.requestDispatch(gates(nowMs = 20L)))
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
 
         val settling = FiveMoveSession().also { it.arm(0L) }
         val permit = (settling.requestDispatch(gates(nowMs = 10L)) as FiveMoveSession.Decision.Go).permit
@@ -157,7 +162,8 @@ class FiveMoveSessionTest {
         settling.noteGesture(gesture(startedAtMs = 10L, nowMs = 20L, beforeHash = 1L))
         assertThat(
             settling.onSettle(sample(nowMs = 100L, boardHash = 2L, diffFraction = 0f, roiPlausible = false)),
-        ).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(settling.phase).isEqualTo(FiveMoveSession.Phase.SETTLING)
         assertThat(settling.verifiedCount).isEqualTo(0)
 
         val stopped = FiveMoveSession().also { it.arm(0L) }
@@ -194,6 +200,116 @@ class FiveMoveSessionTest {
         assertThat(move.toX).isEqualTo(40f)
     }
 
+    @Test
+    fun animationFrames_thenStableChangedPass_verifiesAndAllowsTheNextMove() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val first = (session.requestDispatch(gates(nowMs = 1_000L, frameSequence = 10L))
+            as FiveMoveSession.Decision.Go).permit
+        session.consumePermit(first)
+        session.noteGesture(gesture(startedAtMs = 1_000L, nowMs = 1_200L, beforeHash = 11L))
+        assertThat(
+            session.onSettle(
+                sample(
+                    nowMs = 2_065L,
+                    boardHash = 11L,
+                    diffFraction = 0.4f,
+                    unknownCount = 31,
+                    roiPlausible = false,
+                    visionPass = false,
+                    frameSequence = 11L,
+                ),
+            ),
+        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(
+            session.onSettle(
+                sample(
+                    nowMs = 2_400L,
+                    boardHash = 11L,
+                    diffFraction = null,
+                    unknownCount = 8,
+                    visionPass = false,
+                    frameSequence = 12L,
+                ),
+            ),
+        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        val verified = session.onSettle(
+            sample(
+                nowMs = 3_200L,
+                boardHash = 99L,
+                diffFraction = 0.01f,
+                unknownCount = 0,
+                frameSequence = 13L,
+            ),
+        )
+        assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.verifiedCount).isEqualTo(1)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        val move = session.movesSnapshot().single()
+        assertThat(move.ignoredTransient).isEqualTo(2)
+        assertThat(move.ignoredReasons).contains("implausible ROI")
+        assertThat(move.ignoredReasons).contains("vision HOLD unk=8")
+        assertThat(session.requestDispatch(gates(nowMs = 3_300L, frameSequence = 13L)))
+            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        val second = session.requestDispatch(gates(nowMs = 3_400L, frameSequence = 14L))
+        assertThat(second).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        assertThat((second as FiveMoveSession.Decision.Go).permit.moveNumber).isEqualTo(2)
+    }
+
+    @Test
+    fun flaggedUserTouch_boardChangeIsNotAutomaticSuccess() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val permit = (session.requestDispatch(gates(nowMs = 1_000L)) as FiveMoveSession.Decision.Go).permit
+        session.consumePermit(permit)
+        session.noteGesture(gesture(startedAtMs = 1_000L, nowMs = 1_200L, beforeHash = 11L))
+        session.onSettle(
+            sample(
+                nowMs = 2_065L,
+                boardHash = 11L,
+                diffFraction = 0.8f,
+                unknownCount = 31,
+                roiPlausible = false,
+                visionPass = false,
+            ),
+        )
+        val flagged = session.noteOutsideTouch(2_200L)
+        assertThat(flagged).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        val manual = session.onSettle(
+            sample(
+                nowMs = 3_000L,
+                boardHash = 77L,
+                diffFraction = 0.01f,
+                unknownCount = 0,
+            ),
+        )
+        assertThat(manual).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(session.verifiedCount).isEqualTo(0)
+        assertThat(session.gesturesDispatched).isEqualTo(1)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
+        val report = session.report()
+        assertThat(report).contains("user interference")
+        assertThat(report).contains("cannot tell our gesture from a finger on the glass")
+        assertThat(report).doesNotContain("PASS — callback completed")
+        assertThat(session.movesSnapshot().single().userInterference).isTrue()
+        assertThat(session.requestDispatch(gates(nowMs = 3_100L)))
+            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(session.gesturesDispatched).isEqualTo(1)
+    }
+
+    @Test
+    fun ownSwipeWindow_doesNotFlagUserInterference() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val permit = (session.requestDispatch(gates(nowMs = 100L)) as FiveMoveSession.Decision.Go).permit
+        session.consumePermit(permit)
+        session.noteGesture(gesture(startedAtMs = 100L, nowMs = 200L, beforeHash = 1L))
+        session.suppressOutsideTouchUntil(1_000L)
+        assertThat(session.noteOutsideTouch(500L)).isNull()
+        assertThat(session.outsideTouches).isEqualTo(0)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.SETTLING)
+    }
+
     private fun gates(
         nowMs: Long,
         selfCheckMeasured: Boolean = true,
@@ -205,6 +321,7 @@ class FiveMoveSessionTest {
         overlayCollapsed: Boolean = true,
         overlayOutsideRoi: Boolean = true,
         msSinceCollapse: Long = FiveMoveSession.MIN_POST_COLLAPSE_MS,
+        frameSequence: Long = 0L,
     ) = FiveMoveSession.Gates(
         nowMs = nowMs,
         a11yConnected = a11yConnected,
@@ -216,6 +333,7 @@ class FiveMoveSessionTest {
         ownUi = ownUi,
         msSinceCollapse = msSinceCollapse,
         roiPlausible = roiPlausible,
+        frameSequence = frameSequence,
     )
 
     private fun gesture(
@@ -246,6 +364,7 @@ class FiveMoveSessionTest {
         roiPlausible: Boolean = true,
         visionPass: Boolean = true,
         frameFresh: Boolean = true,
+        frameSequence: Long = 0L,
     ) = FiveMoveSession.SettleSample(
         nowMs = nowMs,
         boardHash = boardHash,
@@ -256,5 +375,6 @@ class FiveMoveSessionTest {
         unknownCount = unknownCount,
         ownUi = false,
         a11yConnected = true,
+        frameSequence = frameSequence,
     )
 }
