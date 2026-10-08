@@ -676,6 +676,7 @@ class BoardFinder(
         val xLocal = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac, peakX) ?: return null
         val yLocal = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac, peakY) ?: return null
 
+        // ROI origin is added here. xLocal/yLocal are ROI-relative; the grid is full-frame pixels.
         val xBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
             boardRoi.left + xLocal[i]
         }

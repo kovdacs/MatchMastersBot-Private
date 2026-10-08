@@ -221,9 +221,13 @@ class InputLoopController(
                 val notCreated = exec.reason.contains("NOT CREATED", ignoreCase = true)
                 val dispatchFailed = exec.reason.contains("dispatch failed", ignoreCase = true)
                 val coordBlocked = exec.reason.contains("off-screen", ignoreCase = true) ||
+                    exec.reason.contains("outside frame", ignoreCase = true) ||
                     exec.reason.contains("bounds unknown", ignoreCase = true) ||
                     exec.reason.contains("non-finite", ignoreCase = true) ||
-                    exec.reason.contains("frame/screen", ignoreCase = true)
+                    exec.reason.contains("frame/screen", ignoreCase = true) ||
+                    exec.reason.contains("refusing to shift", ignoreCase = true) ||
+                    exec.reason.contains("silent shift", ignoreCase = true) ||
+                    exec.reason.contains("rotation", ignoreCase = true)
                 CycleResult(
                     sm.state, BotLoopOutcome.STOP, exec.reason,
                     executed = exec,

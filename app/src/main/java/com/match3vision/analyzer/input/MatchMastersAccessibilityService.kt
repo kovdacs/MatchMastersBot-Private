@@ -99,6 +99,12 @@ class MatchMastersAccessibilityService : AccessibilityService(), AccessibilityGe
     /**
      * Dispatch a swipe/tap using [GestureDescription].
      *
+     * [GestureSpec] x/y are display pixels in the same full-frame space
+     * [com.match3vision.analyzer.input.TouchCoordinateMapper] produced.
+     * The [android.graphics.Path] is not shifted by status bar, navigation bar,
+     * cutout, or rotation. This method does not read [android.view.WindowInsets].
+     * Whether those pixels match the physical panel is not proven here.
+     *
      * When called **off the main thread**, waits for [GestureResultCallback] (completed /
      * cancelled / timeout) so callers learn the real outcome — not just "scheduled".
      * When called **on the main thread**, returns after schedule only (avoids deadlock

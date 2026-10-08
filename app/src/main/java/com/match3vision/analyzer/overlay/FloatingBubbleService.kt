@@ -18,10 +18,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.match3vision.analyzer.capture.AndroidScreenMetrics
+import com.match3vision.analyzer.capture.CaptureBufferGate
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ScreenMetricsSource
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.CoordinateSelfCheck
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
 import com.match3vision.analyzer.input.GestureFailSafe
@@ -455,6 +457,8 @@ class FloatingBubbleService : Service() {
                 withContext(Dispatchers.Main) {
                     setBubbleTouchable(true)
                     if (result == null) {
+                        CoordinateSelfCheck.refuse("TESZT ÉRINTÉS threw before dispatch")
+                        CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
                         val fail = "a11y=? FAIL: exception — lásd logcat TOUCH_TEST"
                         statusView?.text = fail
                         Toast.makeText(this@FloatingBubbleService, fail, Toast.LENGTH_LONG).show()
@@ -468,11 +472,13 @@ class FloatingBubbleService : Service() {
                         statusText = label,
                         a11yReady = result.a11yEnabled,
                     )
+                    recordCoordinateSelfCheck(result)
                     Timber.i(
-                        "TOUCH_TEST: result success=%s reason=%s hu=%s",
+                        "TOUCH_TEST: result success=%s reason=%s hu=%s selfCheck=%s",
                         result.success,
                         result.reason,
                         result.huStatus,
+                        CoordinateSelfCheck.statusLabel(),
                     )
                     for (line in AutoPlaySession.touchTest.logger().lines().takeLast(16)) {
                         Timber.i("TOUCH_TEST_LOG: %s", line)
@@ -480,6 +486,71 @@ class FloatingBubbleService : Service() {
                 }
             }
         }, TOUCH_TEST_CLICK_DELAY_MS)
+    }
+
+    /**
+     * Records the TESZT ÉRINTÉS point. A dispatched test with matching sizes and
+     * no rotation/origin offset becomes RECORDED_UNPROVEN. That unlocks EGY LÉPÉS.
+     * alignmentProven stays false. Insets are written into the record and not added
+     * to the expected point.
+     */
+    private fun recordCoordinateSelfCheck(result: com.match3vision.analyzer.input.AutomaticTouchTest.Result) {
+        if (!result.dispatchAttempted) {
+            CoordinateSelfCheck.refuse("TESZT ÉRINTÉS did not dispatch: ${result.reason}")
+            CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
+            return
+        }
+        val screen = ProductionLiveReaders.screenSource.measure()
+        val frame = CaptureService.managerOrNull()?.latestFrame?.value
+        var luma: Float? = null
+        var frameW = 0
+        var frameH = 0
+        if (frame != null && frame.width > 0 && frame.height > 0 && !frame.bitmap.isRecycled) {
+            frameW = frame.width
+            frameH = frame.height
+            val x = result.startX.toInt()
+            val y = result.startY.toInt()
+            if (x in 0 until frameW && y in 0 until frameH) {
+                try {
+                    val px = IntArray(1)
+                    frame.bitmap.getPixels(px, 0, 1, x, y, 1, 1)
+                    val p = px[0]
+                    val r = (p shr 16) and 0xFF
+                    val g = (p shr 8) and 0xFF
+                    val b = p and 0xFF
+                    luma = 0.2126f * r + 0.7152f * g + 0.0722f * b
+                } catch (t: Throwable) {
+                    Timber.w(t, "self-check pixel read failed")
+                    luma = null
+                }
+            }
+        }
+        var statusBar = 0
+        var navBar = 0
+        var cutoutTop = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val wm = windowManager ?: getSystemService(WINDOW_SERVICE) as? WindowManager
+            val insets = wm?.currentWindowMetrics?.windowInsets
+            if (insets != null) {
+                statusBar = insets.getInsets(android.view.WindowInsets.Type.statusBars()).top
+                navBar = insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
+                cutoutTop = insets.displayCutout?.safeInsetTop ?: 0
+            }
+        }
+        CoordinateSelfCheck.record(
+            expectedX = result.startX,
+            expectedY = result.startY,
+            screenWidth = result.screenWidthPx,
+            screenHeight = result.screenHeightPx,
+            frameWidth = frameW,
+            frameHeight = frameH,
+            rotation = screen.rotation,
+            statusBarInsetPx = statusBar,
+            navigationBarInsetPx = navBar,
+            cutoutInsetPx = cutoutTop,
+            observedLuma = luma,
+        )
+        CoordinateSelfCheck.write(java.io.File(filesDir, "diagnostics"))
     }
 
     /** Physical screen pixels for fixed-coordinate touch test (not Vision). */
@@ -662,6 +733,31 @@ class FloatingBubbleService : Service() {
                     val analyzed = withContext(Dispatchers.Default) {
                         analyzeFrame(useFrame)
                     }
+                    if (!analyzed.admitted || analyzed.vision == null) {
+                        publishCaptureInvalid(useFrame, analyzed.pixelNote)
+                        AutoPlaySession.updateDiagnostics(
+                            frameReceived = true,
+                            hasFrameFlag = false,
+                            visionText = "HOLD — ${CaptureBufferGate.FAILURE_CLASS}",
+                            visionPassFlag = false,
+                            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                            phase = "TARTÁS",
+                            frameSequence = "seq=${useFrame.sequence}",
+                            frameAgeMs = useFrame.ageMs(),
+                            frameTimestampMs = useFrame.timestampMs,
+                            frameWidth = useFrame.width,
+                            frameHeight = useFrame.height,
+                            captureStatus = "ON",
+                            heartbeatMs = System.currentTimeMillis(),
+                            cycleReason = analyzed.pixelNote,
+                            gestureStatus = "NOT CREATED",
+                            verifyStatus = VerificationPolicy.PENDING,
+                        )
+                        AutoPlaySession.refreshFromController(analyzed.pixelNote)
+                        refreshBubbleUi()
+                        delay(280L)
+                        continue
+                    }
                     val vision = analyzed.vision
                     val boardRoiStr = vision.diagnostics["boardRoi"]
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
@@ -839,6 +935,19 @@ class FloatingBubbleService : Service() {
                                 }
                                 val afterAnalyzed = withContext(Dispatchers.Default) {
                                     analyzeFrame(afterFrame)
+                                }
+                                if (!afterAnalyzed.admitted || afterAnalyzed.vision == null) {
+                                    val reason = afterAnalyzed.pixelNote.ifBlank {
+                                        "CAPTURE_INVALID — post-dispatch frame was not analyzed"
+                                    }
+                                    ctrl.onFailsafePause(reason)
+                                    publishCaptureInvalid(afterFrame, reason)
+                                    if (ctrl.runStyle == AutoPlayController.RunStyle.SINGLE_MOVE) {
+                                        ctrl.finishSingleMoveAfterExport()
+                                    }
+                                    AutoPlaySession.refreshFromController()
+                                    refreshBubbleUi()
+                                    continue
                                 }
                                 val afterVision = afterAnalyzed.vision
                                 AutoPlaySession.updateDiagnostics(
@@ -1021,44 +1130,125 @@ class FloatingBubbleService : Service() {
     }
 
     private class AnalyzedFrame(
-        val vision: com.match3vision.analyzer.vision.VisionResult,
+        val vision: com.match3vision.analyzer.vision.VisionResult?,
         val pixels: IntArray?,
         val pixelNote: String,
+        val admitted: Boolean,
     )
 
     /**
      * Copy pixels off the live capture bitmap before analysis so a concurrent
      * recycle in ScreenCaptureManager cannot ANR / crash mid-getPixels.
+     *
+     * A failed copy is not replaced with zeros. [CaptureBufferGate] does not
+     * call VisionPipeline, and the loop does not call runCycleIfActive.
      */
     private fun analyzeFrame(frame: CaptureFrame): AnalyzedFrame {
         val w = frame.width
         val h = frame.height
-        val buf = IntArray(w * h)
         val bmp: Bitmap = frame.bitmap
-        var copied = false
-        var failure = "NOT EXPORTED — frame pixels were not available"
-        if (bmp.isRecycled) {
-            failure = "NOT EXPORTED — bitmap recycled before copy"
+        var copied: IntArray? = null
+        var failure = "CAPTURE_INVALID — frame pixels were not available"
+        if (w <= 0 || h <= 0) {
+            failure = "CAPTURE_INVALID — missing or invalid frame size ${w}x$h"
+        } else if (bmp.isRecycled) {
+            failure = "CAPTURE_INVALID — bitmap recycled before copy"
         } else {
+            val buf = IntArray(w * h)
             try {
                 bmp.getPixels(buf, 0, w, 0, 0, w, h)
-                copied = true
+                copied = buf
             } catch (t: Throwable) {
-                failure = "NOT EXPORTED — getPixels failed: ${t.message}"
+                failure = "CAPTURE_INVALID — getPixels failed: ${t.message}"
                 Timber.w(t, "analyzeFrame: getPixels failed (recycled?)")
+                copied = null
             }
         }
-        val vision = AutoPlaySession.frameAnalyzer.analyzePixels(
-            pixels = buf,
+        val pixels = copied
+        val admission = CaptureBufferGate.analyzeIfAdmitted(
+            copySucceeded = pixels != null,
             width = w,
             height = h,
-            contentRoi = frame.contentRoi,
-        ).result
-        return AnalyzedFrame(
-            vision = vision,
-            pixels = if (copied) buf else null,
-            pixelNote = if (copied) "" else failure,
+            bufferLength = pixels?.size ?: 0,
+        ) {
+            AutoPlaySession.frameAnalyzer.analyzePixels(
+                pixels = pixels!!,
+                width = w,
+                height = h,
+                contentRoi = frame.contentRoi,
+            ).result
+        }
+        return if (!admission.admitted || admission.value == null) {
+            AnalyzedFrame(
+                vision = null,
+                pixels = null,
+                pixelNote = admission.reason.ifBlank { failure },
+                admitted = false,
+            )
+        } else {
+            AnalyzedFrame(
+                vision = admission.value,
+                pixels = pixels,
+                pixelNote = "",
+                admitted = true,
+            )
+        }
+    }
+
+    private fun publishCaptureInvalid(frame: CaptureFrame, reason: String) {
+        val screen = ProductionLiveReaders.screenSource.measure()
+        val note = reason.ifBlank { "CAPTURE_INVALID — pixel copy failed" }
+        val frameExport = DiagnosticFrame.render(
+            pixels = null,
+            width = frame.width,
+            height = frame.height,
+            roiLeft = 0,
+            roiTop = 0,
+            roiRight = 0,
+            roiBottom = 0,
+            xBoundaries = null,
+            yBoundaries = null,
+            refusal = note,
         )
+        val bundle = DiagnosticBundle.fromObservation(
+            appVersion = com.match3vision.analyzer.BuildConfig.VERSION_NAME,
+            versionCode = com.match3vision.analyzer.BuildConfig.VERSION_CODE,
+            sourceCommit = com.match3vision.analyzer.BuildConfig.GIT_COMMIT,
+            diagnosticTimestampMs = System.currentTimeMillis(),
+            vision = null,
+            screen = screen,
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+            frameSequence = frame.sequence,
+            captureTimestampMs = frame.timestampMs,
+            frameAgeMs = frame.ageMs(),
+            frameElapsedMs = frame.elapsedRealtimeMs,
+            cadence = CaptureService.managerOrNull()?.cadence,
+            accessibilityConnected = MatchMastersAccessibilityService.isConnected(),
+            gestureCapability = MatchMastersAccessibilityService.diagnoseConnected(),
+            captureOn = true,
+            hasFrame = false,
+            moveAnalysis = "not run — CAPTURE_INVALID",
+            selectedMove = "none",
+            coordinateReason = "coordinate origin alignment UNPROVEN",
+            coordinateRefused = false,
+            dispatchStatus = "NOT STARTED",
+            callbackOutcome = "not dispatched",
+            verificationStatus = VerificationPolicy.PENDING,
+            verificationReason = note,
+            simulated = false,
+            meanLuminance = "not measured",
+            blackFrame = "not measured — CAPTURE_INVALID (failed copy is not a black frame)",
+            frameExportStatus = frameExport.status,
+            frameExportReason = frameExport.reason,
+            captureInvalidReason = note,
+        )
+        DiagnosticExport.publish(bundle)
+        try {
+            DiagnosticHistoryStore.record(bundle, frameExport)
+        } catch (t: Throwable) {
+            Timber.w(t, "diagnostic history write failed")
+        }
     }
 
     private fun refreshBubbleUi() {

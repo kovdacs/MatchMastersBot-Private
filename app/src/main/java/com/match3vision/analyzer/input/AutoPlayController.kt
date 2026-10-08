@@ -59,6 +59,19 @@ class AutoPlayController(
     var consecutiveUnconfirmed: Int = 0
         private set
 
+    /**
+     * Set when continuous mode reaches [MAX_CONSECUTIVE_UNCONFIRMED].
+     * INDÍTÁS, EGY LÉPÉS, and [resetForNewSession] do not clear it.
+     * A new process starts unlatched. Process death is the only clear.
+     */
+    @Volatile
+    var unconfirmedCapLatched: Boolean = false
+        private set
+
+    /** A continuous dispatch is waiting for [completeFeedback]. Another cycle cannot dispatch. */
+    @Volatile
+    private var awaitingFeedback: Boolean = false
+
     fun inputLoop(): InputLoopController = inputLoop
     fun enableSwitch(): InputEnableSwitch = enableSwitch
     fun isLoopActive(): Boolean = mode == Mode.RUNNING
@@ -81,6 +94,11 @@ class AutoPlayController(
     ): Boolean {
         if (mode == Mode.STOPPED) {
             lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            return false
+        }
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            lastReason = "HOLD — MOVE UNCONFIRMED cap latched; start cannot bypass it"
             return false
         }
         val gate = StartupReadinessGate.evaluate(
@@ -115,7 +133,6 @@ class AutoPlayController(
         }
         runStyle = RunStyle.CONTINUOUS
         singleMove.resetIdle()
-        consecutiveUnconfirmed = 0
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
         lastReason = "fut — felismerés→lépés→húzás"
@@ -156,6 +173,16 @@ class AutoPlayController(
             lastReason = "continuous loop is running — pause before arming one move"
             return false
         }
+        if (unconfirmedCapLatched) {
+            lastReason = "EGY LÉPÉS refused — MOVE UNCONFIRMED cap is latched"
+            return false
+        }
+        if (!CoordinateSelfCheck.allowsSingleMoveArm()) {
+            lastReason = "EGY LÉPÉS refused — coordinate self-check is " +
+                "${CoordinateSelfCheck.statusLabel()} (alignment NOT proven). " +
+                "Run TESZT ÉRINTÉS and record it."
+            return false
+        }
         val gate = StartupReadinessGate.evaluate(
             runtimeConnected = a11yConnected,
             settingsEnabled = settingsEnabled,
@@ -178,7 +205,6 @@ class AutoPlayController(
             sm.reset()
         }
         runStyle = RunStyle.SINGLE_MOVE
-        consecutiveUnconfirmed = 0
         enableSwitch.setEnabled(true)
         mode = Mode.RUNNING
         lastReason = "ARMED — exactly one production move"
@@ -246,6 +272,16 @@ class AutoPlayController(
         context: RuntimeCycleContext? = null,
     ): InputLoopController.CycleResult? {
         if (mode != Mode.RUNNING) return null
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            mode = Mode.PAUSED
+            lastReason = "HOLD — MOVE UNCONFIRMED cap latched; no further dispatch"
+            return null
+        }
+        if (awaitingFeedback) {
+            lastReason = "HOLD — awaiting verification of the previous dispatch; no second dispatch"
+            return null
+        }
         if (context != null && !context.a11yConnected) {
             onFailsafePause("ACCESSIBILITY: DISCONNECTED (mid-run)")
             return InputLoopController.CycleResult(
@@ -320,6 +356,11 @@ class AutoPlayController(
             }
             BotLoopOutcome.STOP -> onFailsafePause(cycle.reason)
         }
+        if (runStyle == RunStyle.CONTINUOUS &&
+            cycle.executed is AutomaticInputEngine.ExecuteResult.Executed
+        ) {
+            awaitingFeedback = true
+        }
         return cycle
     }
 
@@ -332,6 +373,7 @@ class AutoPlayController(
         attemptedMove: Move? = null,
     ): InputLoopController.CycleResult? {
         if (mode == Mode.STOPPED) return null
+        awaitingFeedback = false
         val verifyingSingle = runStyle == RunStyle.SINGLE_MOVE &&
             singleMove.phase == SingleMoveMachine.Phase.ONE_MOVE
         if (verifyingSingle) singleMove.beginVerify()
@@ -349,6 +391,7 @@ class AutoPlayController(
         ) {
             consecutiveUnconfirmed += 1
             if (consecutiveUnconfirmed >= MAX_CONSECUTIVE_UNCONFIRMED) {
+                unconfirmedCapLatched = true
                 onFailsafePause(
                     "HOLD — consecutive MOVE UNCONFIRMED capped at $MAX_CONSECUTIVE_UNCONFIRMED",
                 )
@@ -380,14 +423,20 @@ class AutoPlayController(
     fun resetForNewSession() {
         enableSwitch.setEnabled(false)
         inputLoop.inputEngine().stateMachine().reset()
+        val keepLatch = unconfirmedCapLatched
         mode = Mode.IDLE
-        lastReason = "tétlen"
         moveCount = 0
         holdCount = 0
         runStyle = RunStyle.CONTINUOUS
-        consecutiveUnconfirmed = 0
         singleMove.resetIdle()
+        awaitingFeedback = false
         AutoPlayTrace.clear()
+        if (keepLatch) {
+            lastReason = "tétlen — MOVE UNCONFIRMED cap still latched (reset does not clear it)"
+            return
+        }
+        consecutiveUnconfirmed = 0
+        lastReason = "tétlen"
     }
 
     companion object {

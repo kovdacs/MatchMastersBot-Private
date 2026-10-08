@@ -11,7 +11,7 @@ No vision threshold was edited. MoveAnalysis was not retuned. No new automatic g
 ## REQUIRED FINAL REPORT
 
 VERSION:
-0.24.5-diagnostics-single-move (versionCode 17, `app/build.gradle.kts:14-15`)
+0.24.5-diagnostics-single-move (versionCode 18, `app/build.gradle.kts:14-15`). versionCode 17 (`21001ba`) is superseded by the corrections section below.
 
 COMMIT:
 The git revision that adds this file. That revision is the candidate. The earlier implementation commit `9e4704f236f196279e60cb9cf0a1d63f3833f0e8` is not the candidate once this file exists.
@@ -520,11 +520,133 @@ Unchanged: `VisionThresholds.MIN_GRID_CONFIDENCE = 0.98f`, `MIN_BOARD_CONFIDENCE
 ## REMAINING BLOCKERS
 
 - No device was used. Share-sheet delivery, MediaProjection consent, and accessibility enablement were not exercised on a phone.
-- Coordinate origin alignment is still unproven. Equal frame and window sizes do not show that `dispatchGesture` uses the same origin as the capture (`ScreenMeasurement.kt:108-109`).
-- Row 6 of the oracle is a pitch extrapolation, not a blob centroid. Row 2’s detected centre is 27.5 px from the hand centroid, inside the 28 px tolerance and short of a one-tile miss (~75 px).
-- A failed `getPixels` still analyzes a zero buffer. The diagnostic says NOT EXPORTED and does not call it a captured black frame. That is not a phone measurement.
+- Coordinate origin alignment is still unproven. The self-check records a TESZT ÉRINTÉS point and does not set `alignmentProven`. Equal sizes are not proof (`ScreenMeasurement.kt:108-109`, `CoordinateSpace.kt:42`).
+- Whether MediaProjection on API 29–35 includes the status bar, navigation bar, and cutout is not proven. The code requests the full display size and does not add insets (`ScreenCaptureManager.kt:102-107`).
+- The MOVE UNCONFIRMED latch is in memory. Process death clears it. A new process can start continuous mode again until two new unconfirmed results latch it.
 - The pull-request APK is a merge-commit build. Same certificate, different bytes. It is not the candidate.
-- This round does not make the app ready for a phone test. A later grid of 0.97 must stay HOLD. The gate was not lowered.
+- This round does not make the app ready for a phone test. A later grid of 0.97 must stay HOLD. The gate was not lowered. The zero-buffer analysis and the row-6 extrapolation described in the versionCode 17 text above are corrected below; they are not the current code.
+
+LIVE PHONE: NOT TESTED
+
+FIRST REAL AUTOMATIC TOUCH: NOT PROVEN
+
+## CORRECTIONS (versionCode 18)
+
+versionName stays `0.24.5-diagnostics-single-move`. versionCode is 18 (`app/build.gradle.kts:14-15`). No vision threshold was changed. MoveAnalysis was not retuned. No new automatic gameplay. Local `testDebugUnitTest` on this tree: 439 passed, 0 failed (was 424 before 0.24.5, 424 after the versionCode 17 commit). The push-artifact identity of this commit is written into the PR body after `analyzer-ci` finishes. It is not filled here, because that would be another commit and another APK.
+
+### 1. Capture failure is fail-closed
+
+A failed `getPixels`, a recycled bitmap, a missing size, or a length mismatch returns `CAPTURE_INVALID` and does not call the analyze lambda (`CaptureBufferGate.kt:25-59`). The bubble discards the buffer on throw (`FloatingBubbleService.kt:1156-1164`) and `continue`s before `runCycleIfActive` (`FloatingBubbleService.kt:736-759`). `ProductionFrameRouter.route` (`ProductionFrameRouter.kt:23-48`) does not call MoveAnalysis or `runCycleIfActive` on that refusal. The diagnostic is HOLD, failure class `CAPTURE_INVALID`, dispatch `NOT STARTED` (`DiagnosticBundle.kt:150`, `DiagnosticBundle.kt:203-233`). A genuinely copied black frame is still admitted. It is not labeled `CAPTURE_INVALID`.
+
+```48:59:app/src/main/java/com/match3vision/analyzer/capture/CaptureBufferGate.kt
+fun <T> analyzeIfAdmitted(
+    copySucceeded: Boolean,
+    width: Int,
+    height: Int,
+    bufferLength: Int,
+    analyze: () -> T,
+): Admission<T> {
+    val refusal = refusalReason(copySucceeded, width, height, bufferLength)
+    if (refusal != null) {
+        return Admission(admitted = false, value = null, reason = refusal)
+    }
+    return Admission(admitted = true, value = analyze(), reason = "copied ${width}x$height")
+}
+```
+
+```33:48:app/src/main/java/com/match3vision/analyzer/input/ProductionFrameRouter.kt
+val admission = CaptureBufferGate.analyzeIfAdmitted(
+    copySucceeded = copySucceeded,
+    width = width,
+    height = height,
+    bufferLength = bufferLength,
+    analyze = analyze,
+)
+val vision = admission.value
+if (!admission.admitted || vision == null) {
+    return Routed(
+        admitted = false,
+        failureClass = CaptureBufferGate.FAILURE_CLASS,
+        reason = admission.reason,
+        vision = null,
+        cycle = null,
+    )
+}
+```
+
+Tests: `CaptureInvalidBlocksDispatchTest.failedCopy_zeroSubstitute_continuous_doesNotReachVisionMoveOrDispatch`, `failedCopy_zeroSubstitute_egyLepes_doesNotReachVisionMoveOrDispatch`, `missingAndRecycledBuffers_areCaptureInvalid`, `copiedBlackFrame_isAdmitted_andIsNotCaptureInvalid`. CountingChannel stays 0. The VisionPipeline lambda and the MoveAnalysis lambda stay at 0 in both modes.
+
+### 2. Coordinate origin / space
+
+Vision output is full-frame pixels (`CoordinateSpace.kt:8`, `CoordinateSpace.kt:45`). ROI origin is added in `BoardFinder.kt:679-684` (`boardRoi.left + xLocal[i]`) and `VisionModels.kt:157-162` (`boardRoi.left + i * width / 7`). `TouchCoordinateMapper.kt:13-23` copies `cellBox` centres and adds nothing. `dispatchGesture` builds a `Path` from those display pixels and does not read `WindowInsets` (`MatchMastersAccessibilityService.kt:102-106`, path at `142-150`).
+
+MediaProjection uses `CaptureDisplaySize.choose` (`CaptureDisplaySize.kt:22-46`): maximum window bounds on API 30+, real metrics on API 29. The virtual display is `FLAG_AUTO_MIRROR` (`ScreenCaptureManager.kt:102-107`). That is a request for the full display when the system grants entire-display capture. API 34+ consent can still be a single app. Inclusion of status bar, navigation bar, and cutout on API 29–35 is not proven.
+
+Rotation is `defaultDisplay.rotation` (`ScreenMeasurement.kt:138`). `ROTATION_UNKNOWN` is -1. Rotation other than 0 and -1 is refused and not applied (`CoordinateSpace.kt:53-64`). A non-zero `originOffsetX/Y` is refused inside `tryExecute` before dispatch, and the unshifted start is kept in the reason (`AutomaticInputEngine.kt:140-150`). A status-bar inset that is only recorded is not added (`CoordinateSelfCheck.kt:136-144`). That is not proof of one origin.
+
+`GridOriginPolicy` (`CoordinateSpace.kt:75-90`) refuses a grid whose first boundary is not the ROI origin (tolerance 1.5 px) and an ROI outside the frame. Nothing is shifted.
+
+TESZT ÉRINTÉS writes `coordinate-self-check.json` (`FloatingBubbleService.kt:497`). Status `RECORDED_UNPROVEN` means the check was recorded. `alignmentProven` stays false. EGY LÉPÉS returns false until that status (`AutoPlayController.kt:180-184`). Process death clears the in-memory record. `resetForNewSession` does not.
+
+```157:164:app/src/main/java/com/match3vision/analyzer/vision/VisionModels.kt
+fun evenSplit(boardRoi: ContentRoi, confidence: Float = 0.70f): GridGeometry {
+    val x = FloatArray(BOUNDARY_COUNT) { i ->
+        boardRoi.left + i * boardRoi.width().toFloat() / GRID_SIZE
+    }
+    val y = FloatArray(BOUNDARY_COUNT) { i ->
+        boardRoi.top + i * boardRoi.height().toFloat() / GRID_SIZE
+    }
+```
+
+```679:684:app/src/main/java/com/match3vision/analyzer/vision/BoardFinder.kt
+// ROI origin is added here. xLocal/yLocal are ROI-relative; the grid is full-frame pixels.
+val xBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
+    boardRoi.left + xLocal[i]
+}
+val yBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
+    boardRoi.top + yLocal[i]
+}
+```
+
+```140:150:app/src/main/java/com/match3vision/analyzer/input/AutomaticInputEngine.kt
+val inset = DisplayInsetPolicy.refusal(
+    rotation = context.screenRotation,
+    originOffsetX = context.originOffsetX,
+    originOffsetY = context.originOffsetY,
+)
+if (inset != null) {
+    val reason = "STOP — gesture NOT CREATED: $inset " +
+        "(unshifted start=(${gesture.startX},${gesture.startY}) offset not applied)"
+    stateMachine.stop(reason)
+    AutoPlayTrace.log("GESTURE", reason)
+    return ExecuteResult.Stopped(reason)
+}
+```
+
+```180:184:app/src/main/java/com/match3vision/analyzer/input/AutoPlayController.kt
+if (!CoordinateSelfCheck.allowsSingleMoveArm()) {
+    lastReason = "EGY LÉPÉS refused — coordinate self-check is " +
+        "${CoordinateSelfCheck.statusLabel()} (alignment NOT proven). " +
+        "Run TESZT ÉRINTÉS and record it."
+    return false
+}
+```
+
+Transform test `CoordinateSpaceTest.evenSplitCentres_useFullFramePixels_whenRoiIsNotAtOrigin` uses `ContentRoi(20, 1206, 1060, 2246)`. Expected centre is `left + (col + 0.5) * width/7` and `top + (row + 0.5) * height/7`, computed from those integers, not from `cellBox`. The gesture matched. `originOffset_isRefused_andNotAddedToTheGesture` keeps CountingChannel at 0 and the reason contains the unshifted Y, not Y+80. Also: `rotation90_isRefused`, `gridOriginMismatch_isRefused`, `roiOutsideFrame_isRefused`, `egyLepes_withoutSelfCheck_doesNotDispatch`, `recordedSelfCheck_isUnproven_andUnlocksEgyLepes`, `selfCheck_refusesRotationSizeAndOriginOffset`.
+
+Alignment is not proven.
+
+### 3. Oracle
+
+Tolerance is `149/5 = 29.8` (`HandMeasuredPvpCenters.kt:28-30`). Column pitches are 150, 150, 150, 151, 149, 150. The minimum is 149. Half of that is 74.5, so a neighbouring tile still fails. 29.8 is not the observed error. Row 6 is 2157, the rounded median of seven measured bottom-band centroids (2157.4, 2161.2, 2155.5, 2159.6, 2155.7, 2158.1, 2153.6). It replaces the extrapolation 2165. It is not the detector centre 2171.
+
+Fixture print: row 2 hand 1563, detected 1590.5, absErr 27.5, tolerance 29.8, maxAbsDx 5.5, maxAbsDy 27.5. 27.5 is inside 29.8 by 2.3 px. The tolerance was not widened to hide it. Test `HandMeasuredOracleTest.tolerance_isMinColumnPitchOverFive_row6IsMeasured`. The fixture test `pvpBoardPixels_visionPass_move_productionDispatch_projectionCenters` still passes at this tolerance.
+
+### 4. Bounded MOVE UNCONFIRMED
+
+`MAX_CONSECUTIVE_UNCONFIRMED` stays 2. The first unconfirmed result continues. The second sets `unconfirmedCapLatched` and pauses (`AutoPlayController.kt:389-397`). A continuous dispatch sets `awaitingFeedback` (`AutoPlayController.kt:359-362`) so another `runCycleIfActive` returns null before `completeFeedback` (`AutoPlayController.kt:281-283`). `onStartRequested` does not clear the counter and returns false while latched (`AutoPlayController.kt:99-102`). `resetForNewSession` keeps the latch (`AutoPlayController.kt:423-434`). `armSingleMove` cannot bypass it (`AutoPlayController.kt:176-178`). A new `AutoPlayController` is unlatched. Process death clears the latch.
+
+Tests: `ContinuousCycleHarnessTest.unconfirmed_firstContinues_secondStops_thirdCannotDispatch`, `repeatedStart_reset_andDelayedFeedback_cannotBypassCap`. The older `continuous_unconfirmedCap_allowsTwoThenPauses_noThirdDispatch` still passes. `resetForNewSession_allowsStartAgain` still passes when the cap was not latched.
 
 LIVE PHONE: NOT TESTED
 

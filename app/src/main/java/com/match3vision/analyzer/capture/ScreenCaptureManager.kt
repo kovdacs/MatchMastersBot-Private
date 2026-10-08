@@ -23,6 +23,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Owns [ImageReader] + [VirtualDisplay] for MediaProjection screen capture.
  *
  * Emits the latest [CaptureFrame] on [latestFrame]. Analyzer-only: no input injection.
+ *
+ * The virtual display uses [CaptureDisplaySize] (maximum window bounds on API 30+,
+ * real metrics on API 29) and [DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR].
+ * That is a request for the full display pixel grid, including the area of the
+ * status bar, navigation bar, and cutout, when the system grants entire-display
+ * capture. API 34+ consent can still be a single app. Inclusion of those bars
+ * on API 29–35 is not proven without a device.
  */
 class ScreenCaptureManager(
     private val context: Context,

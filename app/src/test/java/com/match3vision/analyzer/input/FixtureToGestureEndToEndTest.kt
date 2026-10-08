@@ -155,6 +155,13 @@ class FixtureToGestureEndToEndTest {
         assertThat(gesture.durationMs).isEqualTo(InputThresholds.SWIPE_DURATION_MS)
         assertThat(cycle.verifyStatus).isEqualTo(VerificationPolicy.PENDING)
         assertThat(cycle.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+        val row2Detected = grid.cellBox(2, 0).centerY()
+        val row2Err = kotlin.math.abs(row2Detected - HandMeasuredPvpCenters.rowCenterY[2])
+        println(
+            "ORACLE row2 hand=${HandMeasuredPvpCenters.rowCenterY[2]} detected=$row2Detected " +
+                "absErr=$row2Err tolerance=${HandMeasuredPvpCenters.TOLERANCE_PX} " +
+                "(min column pitch / 5, not this error) row6Hand=${HandMeasuredPvpCenters.rowCenterY[6]}",
+        )
         println(
             "E2E_FIXTURE SIMULATION move=${move.r1},${move.c1}->${move.r2},${move.c2} " +
                 "hand=(${handStartX},${handStartY})->(${handEndX},${handEndY}) " +

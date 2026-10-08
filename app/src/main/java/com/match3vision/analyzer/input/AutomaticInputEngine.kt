@@ -137,6 +137,29 @@ class AutomaticInputEngine(
             return ExecuteResult.Stopped(reason)
         }
         if (context != null) {
+            val inset = DisplayInsetPolicy.refusal(
+                rotation = context.screenRotation,
+                originOffsetX = context.originOffsetX,
+                originOffsetY = context.originOffsetY,
+            )
+            if (inset != null) {
+                val reason = "STOP — gesture NOT CREATED: $inset " +
+                    "(unshifted start=(${gesture.startX},${gesture.startY}) offset not applied)"
+                stateMachine.stop(reason)
+                AutoPlayTrace.log("GESTURE", reason)
+                return ExecuteResult.Stopped(reason)
+            }
+            val origin = GridOriginPolicy.refusal(
+                grid = vision.grid,
+                frameWidth = context.frameWidth,
+                frameHeight = context.frameHeight,
+            )
+            if (origin != null) {
+                val reason = "STOP — gesture NOT CREATED: $origin"
+                stateMachine.stop(reason)
+                AutoPlayTrace.log("GESTURE", reason)
+                return ExecuteResult.Stopped(reason)
+            }
             val space = FrameScreenCoordinatePolicy.assess(
                 frameWidth = context.frameWidth,
                 frameHeight = context.frameHeight,

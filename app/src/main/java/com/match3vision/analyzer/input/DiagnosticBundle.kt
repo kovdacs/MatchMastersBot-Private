@@ -62,6 +62,8 @@ data class DiagnosticBundle(
     val frameTimestampMeaning: String = VerifyTiming.FRAME_TIMESTAMP_MEANING,
     /** Always false. Exporting this bundle does not grant a vision or verify PASS. */
     val diagnosticInfluencesGate: Boolean = false,
+    /** Latest TESZT ÉRINTÉS self-check. Recording it does not prove alignment. */
+    val coordinateSelfCheck: String = "not recorded",
     val simulated: Boolean,
 ) {
     fun toJson(): String = buildString {
@@ -115,6 +117,7 @@ data class DiagnosticBundle(
         field("gridBoundaries", gridBoundaries)
         field("frameTimestampMeaning", frameTimestampMeaning)
         field("diagnosticInfluencesGate", diagnosticInfluencesGate.toString(), raw = true)
+        field("coordinateSelfCheck", coordinateSelfCheck)
         field("callbackOutcomeIsDispatchCopy", (callbackOutcome == dispatchStatus).toString(), raw = true)
         field("simulated", simulated.toString(), raw = true, last = true)
         append("}\n")
@@ -144,6 +147,7 @@ data class DiagnosticBundle(
         const val CLASS_DISPATCH = "DISPATCH"
         const val CLASS_VERIFICATION = "VERIFICATION"
         const val CLASS_NONE = "NONE"
+        const val CLASS_CAPTURE_INVALID = "CAPTURE_INVALID"
 
         fun classify(
             captureOn: Boolean,
@@ -194,15 +198,22 @@ data class DiagnosticBundle(
             blackFrame: String = "not measured — frame pixels were not supplied",
             frameExportStatus: String = DiagnosticFrame.STATUS_NOT_EXPORTED,
             frameExportReason: String = "frame pixels were not supplied",
+            captureInvalidReason: String? = null,
         ): DiagnosticBundle {
+            val captureInvalid = !captureInvalidReason.isNullOrBlank()
             val gate = when {
+                captureInvalid -> "HOLD"
                 vision == null -> "NONE"
                 vision.validation.isPass -> "PASS"
                 else -> "HOLD"
             }
-            val reason = vision?.validation?.let { v ->
-                if (v.isPass) "PASS" else (v as? com.match3vision.analyzer.vision.ValidationResult.Hold)?.reason ?: "HOLD"
-            } ?: "no vision result"
+            val reason = when {
+                captureInvalid -> captureInvalidReason!!
+                vision != null -> vision.validation.let { v ->
+                    if (v.isPass) "PASS" else (v as? com.match3vision.analyzer.vision.ValidationResult.Hold)?.reason ?: "HOLD"
+                }
+                else -> "no vision result"
+            }
             val labels = if (vision == null) {
                 emptyList()
             } else {
@@ -218,8 +229,10 @@ data class DiagnosticBundle(
             val roi = vision?.grid?.boardRoi?.let {
                 "LTRB(${it.left},${it.top},${it.right},${it.bottom})"
             } ?: "—"
-            val visionPass = vision?.validation?.isPass == true
-            val failure = classify(
+            val visionPass = !captureInvalid && vision?.validation?.isPass == true
+            val failure = if (captureInvalid) {
+                CLASS_CAPTURE_INVALID
+            } else classify(
                 captureOn = captureOn,
                 hasFrame = hasFrame,
                 accessibilityConnected = accessibilityConnected,
@@ -239,7 +252,9 @@ data class DiagnosticBundle(
                 "x=" + grid.xBoundaries.joinToString(",") { "%.1f".format(it) } +
                     ";y=" + grid.yBoundaries.joinToString(",") { "%.1f".format(it) }
             } ?: "not measured"
-            val decisions = listOf(
+            val decisions = if (captureInvalid) {
+                "not run — CAPTURE_INVALID (VisionPipeline was not called)"
+            } else listOf(
                 "method=$gridMethod",
                 "validation=$reason",
                 "gridRecover=${diag["gridRecover"] ?: "not measured"}",
@@ -290,7 +305,11 @@ data class DiagnosticBundle(
                 accessibilityConnected = accessibilityConnected,
                 gestureCapability = gestureCapability,
                 captureState = if (captureOn && hasFrame) "ON" else if (captureOn) "ON (no frame)" else "OFF",
-                moveAnalysis = if (visionPass) moveAnalysis else "not run — vision HOLD",
+                moveAnalysis = when {
+                    captureInvalid -> "not run — CAPTURE_INVALID"
+                    visionPass -> moveAnalysis
+                    else -> "not run — vision HOLD"
+                },
                 selectedMove = moveText,
                 dispatchStatus = if (visionPass) dispatchStatus else "NOT STARTED",
                 callbackOutcome = if (visionPass) callbackOutcome else "not dispatched",
@@ -301,8 +320,12 @@ data class DiagnosticBundle(
                 relVarY = relVarY,
                 projectionPeakCountX = peakX,
                 projectionPeakCountY = peakY,
-                meanLuminance = meanLuminance,
-                blackFrame = blackFrame,
+                meanLuminance = if (captureInvalid) "not measured" else meanLuminance,
+                blackFrame = if (captureInvalid) {
+                    "not measured — CAPTURE_INVALID (failed copy is not a black frame)"
+                } else {
+                    blackFrame
+                },
                 visionDecisions = decisions,
                 dispatchDecision = dispatchDecision,
                 finalSafetyDecision = finalSafety,
@@ -310,6 +333,7 @@ data class DiagnosticBundle(
                 frameExportReason = frameExportReason,
                 gridBoundaries = boundaries,
                 diagnosticInfluencesGate = false,
+                coordinateSelfCheck = CoordinateSelfCheck.current()?.reason ?: "not recorded",
                 simulated = simulated,
             )
         }
