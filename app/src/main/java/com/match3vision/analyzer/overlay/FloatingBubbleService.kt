@@ -75,6 +75,15 @@ class FloatingBubbleService : Service() {
     private var startBtn: Button? = null
     private var pauseBtn: Button? = null
     private var touchTestBtn: Button? = null
+    private var diagHintView: TextView? = null
+    private val hiddenWhileCapturing = ArrayList<View>()
+    private var collapsedForCapture = false
+    private var collapseWallMs = 0L
+    private var savedGravity = Gravity.TOP or Gravity.END
+    private var savedX = 0
+    private var savedY = 0
+    private var savedWidth = WindowManager.LayoutParams.WRAP_CONTENT
+    private var savedHeight = WindowManager.LayoutParams.WRAP_CONTENT
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -136,6 +145,11 @@ class FloatingBubbleService : Service() {
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 11f
         }
+        diagHintView = TextView(this).apply {
+            text = "Diagnosztika: kisegítő maradhat KI"
+            setTextColor(0xFFB0BEC5.toInt())
+            textSize = 8f
+        }
         statusView = TextView(this).apply {
             text = "várakozik"
             setTextColor(0xFFB0BEC5.toInt())
@@ -192,6 +206,7 @@ class FloatingBubbleService : Service() {
             setOnClickListener { stopAllAndSelf() }
         }
         root.addView(title)
+        root.addView(diagHintView)
         root.addView(statusView)
         root.addView(startBtn)
         root.addView(pauseBtn)
@@ -201,6 +216,14 @@ class FloatingBubbleService : Service() {
         root.addView(copyBtn)
         root.addView(clearDiagBtn)
         root.addView(stopBtn)
+        hiddenWhileCapturing.clear()
+        hiddenWhileCapturing.add(startBtn!!)
+        hiddenWhileCapturing.add(pauseBtn!!)
+        hiddenWhileCapturing.add(touchTestBtn!!)
+        hiddenWhileCapturing.add(oneMoveBtn)
+        hiddenWhileCapturing.add(shareBtn)
+        hiddenWhileCapturing.add(copyBtn)
+        hiddenWhileCapturing.add(clearDiagBtn)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -273,6 +296,10 @@ class FloatingBubbleService : Service() {
         startBtn = null
         pauseBtn = null
         touchTestBtn = null
+        diagHintView = null
+        hiddenWhileCapturing.clear()
+        collapsedForCapture = false
+        collapseWallMs = 0L
     }
 
     private var startGen: Int = 0
@@ -332,6 +359,7 @@ class FloatingBubbleService : Service() {
         AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("fut")
         AutoPlaySession.updateDiagnostics(a11yConnected = a11y, clearStopReason = true)
+        collapseBubbleForCapture()
         refreshBubbleUi()
         // Prefer Match Masters visible: ask analyzer Activity to background itself.
         sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
@@ -356,6 +384,7 @@ class FloatingBubbleService : Service() {
         }
         AutoPlaySession.syncFrameGateFromMode()
         AutoPlaySession.refreshFromController("EGY LÉPÉS ARMED")
+        collapseBubbleForCapture()
         refreshBubbleUi()
         sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
         ensureLoopRunning()
@@ -392,6 +421,7 @@ class FloatingBubbleService : Service() {
         startGen++
         AutoPlaySession.controller.onBubblePause()
         AutoPlaySession.syncFrameGateFromMode()
+        restoreExpandedBubble()
         AutoPlaySession.refreshFromController("szünet")
         refreshBubbleUi()
     }
@@ -599,6 +629,155 @@ class FloatingBubbleService : Service() {
         }
     }
 
+    /**
+     * Capture records the composed screen. Shrink to a top-end chip before
+     * analysis so the panel is not a board column. [collapseWallMs] is set
+     * only on the transition; frames already in hand stay ineligible until
+     * [OverlayPlacement.MIN_POST_COLLAPSE_MS] has passed.
+     */
+    private fun collapseBubbleForCapture() {
+        val v = bubbleView ?: return
+        val p = layoutParams ?: return
+        if (!collapsedForCapture) {
+            savedGravity = p.gravity
+            savedX = p.x
+            savedY = p.y
+            savedWidth = p.width
+            savedHeight = p.height
+            collapsedForCapture = true
+            collapseWallMs = System.currentTimeMillis()
+        }
+        val density = resources.displayMetrics.density
+        val d = if (density > 0f) density else 1f
+        p.gravity = Gravity.TOP or Gravity.END
+        p.x = (OverlayPlacement.COLLAPSED_END_MARGIN_DP * d).toInt()
+        p.y = (OverlayPlacement.COLLAPSED_TOP_DP * d).toInt()
+        p.width = (OverlayPlacement.COLLAPSED_WIDTH_DP * d).toInt().coerceAtLeast(1)
+        p.height = (OverlayPlacement.COLLAPSED_HEIGHT_DP * d).toInt().coerceAtLeast(1)
+        for (child in hiddenWhileCapturing) {
+            child.visibility = View.GONE
+        }
+        diagHintView?.visibility = View.GONE
+        try {
+            windowManager?.updateViewLayout(v, p)
+        } catch (t: Throwable) {
+            Timber.w(t, "collapse overlay failed")
+        }
+    }
+
+    private fun restoreExpandedBubble() {
+        if (!collapsedForCapture) return
+        val v = bubbleView ?: return
+        val p = layoutParams ?: return
+        p.gravity = savedGravity
+        p.x = savedX
+        p.y = savedY
+        p.width = savedWidth
+        p.height = savedHeight
+        for (child in hiddenWhileCapturing) {
+            child.visibility = View.VISIBLE
+        }
+        diagHintView?.visibility = View.VISIBLE
+        collapsedForCapture = false
+        collapseWallMs = 0L
+        try {
+            windowManager?.updateViewLayout(v, p)
+        } catch (t: Throwable) {
+            Timber.w(t, "restore overlay failed")
+        }
+    }
+
+    private fun overlayRectOnScreen(): OverlayPlacement.Rect? {
+        val v = bubbleView ?: return null
+        if (v.width <= 0 || v.height <= 0) return null
+        val loc = IntArray(2)
+        return try {
+            v.getLocationOnScreen(loc)
+            OverlayPlacement.Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height)
+        } catch (t: Throwable) {
+            Timber.w(t, "overlay location unknown")
+            null
+        }
+    }
+
+    /**
+     * A vision PASS is still published as HOLD when the overlay covers the
+     * board. Thresholds are not changed. The caller must not dispatch.
+     */
+    private fun holdIfOverlayBlocks(
+        vision: com.match3vision.analyzer.vision.VisionResult,
+        gate: OverlayBoardGate.Decision,
+    ): com.match3vision.analyzer.vision.VisionResult {
+        if (gate.allowAnalysis) return vision
+        val prior = vision.validation
+        val reason = if (prior is com.match3vision.analyzer.vision.ValidationResult.Hold) {
+            "${prior.reason}; ${gate.reason}"
+        } else {
+            gate.reason
+        }
+        val diag = vision.diagnostics.toMutableMap()
+        diag["overlayGate"] = gate.reason
+        diag["validation"] = "HOLD"
+        return vision.copy(
+            validation = com.match3vision.analyzer.vision.ValidationResult.Hold(reason),
+            diagnostics = diag,
+        )
+    }
+
+    private fun publishOverlayBlocked(
+        vision: com.match3vision.analyzer.vision.VisionResult,
+        screen: com.match3vision.analyzer.capture.ScreenMeasurement,
+        frame: CaptureFrame,
+        pixels: IntArray?,
+        pixelNote: String,
+        reason: String,
+        boardDet: String,
+        boardRoiStr: String,
+    ) {
+        AutoPlaySession.updateDiagnostics(
+            frameReceived = true,
+            hasFrameFlag = true,
+            visionText = reason,
+            visionPassFlag = false,
+            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+            phase = "TARTÁS",
+            unknownCount = vision.unknownCount,
+            gridConfidence = vision.gridConfidence,
+            boardConfidence = vision.boardConfidence,
+            boardDetection = boardDet,
+            boardRoi = boardRoiStr,
+            frameSequence = "seq=${frame.sequence}",
+            frameAgeMs = frame.ageMs(),
+            frameTimestampMs = frame.timestampMs,
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+            frameFreshness = RuntimeLabels.freshness(true, frame.ageMs()),
+            captureStatus = "ON",
+            heartbeatMs = System.currentTimeMillis(),
+            cycleReason = reason,
+            gestureStatus = "NOT CREATED",
+            verifyStatus = VerificationPolicy.PENDING,
+            moveText = "none",
+            lastDispatch = StartupReadinessGate.LastDispatch.NONE,
+        )
+        publishSafetyDiagnostics(
+            vision = vision,
+            screen = screen,
+            frame = frame,
+            pixels = pixels,
+            pixelNote = pixelNote,
+            moveText = "none",
+            coordinateRefused = false,
+            coordinateReason = "",
+            dispatchStatus = "NOT STARTED",
+            callbackOutcome = "not dispatched",
+            verificationStatus = VerificationPolicy.PENDING,
+            verificationReason = reason,
+        )
+        AutoPlaySession.refreshFromController(reason)
+        refreshBubbleUi()
+    }
+
     private fun ensureLoopRunning() {
         if (loopJob?.isActive == true) return
         // Recover from cancelled/completed job so RUNNING never silent-freezes.
@@ -611,10 +790,12 @@ class FloatingBubbleService : Service() {
                 val ctrl = AutoPlaySession.controller
                 if (ctrl.mode == AutoPlayController.Mode.STOPPED) break
                 if (!ctrl.isLoopActive()) {
+                    restoreExpandedBubble()
                     refreshBubbleUi()
                     delay(200L)
                     continue
                 }
+                collapseBubbleForCapture()
                 // P1: a11y connected-only INPUT READY — mid-run disconnect → PAUSE (clear).
                 val a11yLive = MatchMastersAccessibilityService.isConnected()
                 if (!a11yLive) {
@@ -730,6 +911,34 @@ class FloatingBubbleService : Service() {
                 }
                 val useFrame = frame
                 try {
+                    if (!OverlayPlacement.frameShowsCollapsedOverlay(
+                            useFrame.timestampMs,
+                            collapseWallMs,
+                        )
+                    ) {
+                        AutoPlaySession.updateDiagnostics(
+                            frameReceived = true,
+                            hasFrameFlag = true,
+                            visionText = "HOLD — overlay collapse not yet on screen",
+                            visionPassFlag = false,
+                            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                            phase = "TARTÁS",
+                            frameSequence = "seq=${useFrame.sequence}",
+                            frameAgeMs = useFrame.ageMs(),
+                            frameTimestampMs = useFrame.timestampMs,
+                            frameWidth = useFrame.width,
+                            frameHeight = useFrame.height,
+                            captureStatus = "ON",
+                            heartbeatMs = System.currentTimeMillis(),
+                            cycleReason = "HOLD: waiting for collapsed overlay — no touch",
+                            gestureStatus = "NOT CREATED",
+                            verifyStatus = VerificationPolicy.PENDING,
+                        )
+                        AutoPlaySession.refreshFromController("overlay záródik")
+                        refreshBubbleUi()
+                        delay(150L)
+                        continue
+                    }
                     val analyzed = withContext(Dispatchers.Default) {
                         analyzeFrame(useFrame)
                     }
@@ -758,12 +967,41 @@ class FloatingBubbleService : Service() {
                         delay(280L)
                         continue
                     }
-                    val vision = analyzed.vision
+                    val visionRaw = analyzed.vision
+                    val screen = ProductionLiveReaders.screenSource.measure()
+                    val (screenW, screenH) = screenSizePx()
+                    val roi = visionRaw.grid.boardRoi
+                    val overlayGate = OverlayBoardGate.evaluate(
+                        overlay = overlayRectOnScreen(),
+                        boardLeft = roi.left,
+                        boardTop = roi.top,
+                        boardRight = roi.right,
+                        boardBottom = roi.bottom,
+                        frameWidth = useFrame.width,
+                        frameHeight = useFrame.height,
+                        screenWidth = screenW,
+                        screenHeight = screenH,
+                        rotation = screen.rotation,
+                    )
+                    val vision = holdIfOverlayBlocks(visionRaw, overlayGate)
                     val boardRoiStr = vision.diagnostics["boardRoi"]
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
                         "${vision.grid.boardRoi.right},${vision.grid.boardRoi.bottom})"
                     val boardDet = vision.method.name + "/" + boardRoiStr
-                    val screen = ProductionLiveReaders.screenSource.measure()
+                    if (!overlayGate.allowAnalysis) {
+                        publishOverlayBlocked(
+                            vision = vision,
+                            screen = screen,
+                            frame = useFrame,
+                            pixels = analyzed.pixels,
+                            pixelNote = analyzed.pixelNote,
+                            reason = overlayGate.reason,
+                            boardDet = boardDet,
+                            boardRoiStr = boardRoiStr,
+                        )
+                        delay(280L)
+                        continue
+                    }
                     val cycleContext = ProductionCycleContext.fromLoopObservation(
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
                         captureManagerPresent = CaptureService.managerOrNull() != null &&
@@ -1045,10 +1283,23 @@ class FloatingBubbleService : Service() {
                     }
                 } catch (t: Throwable) {
                     Timber.e(t, "auto-play loop error")
-                    ctrl.onFailsafePause("HIBA: ${t.message}")
-                    AutoPlaySession.updateDiagnostics(phase = "HIBA")
-                    AutoPlaySession.refreshFromController()
-                    refreshBubbleUi()
+                    val reason = try {
+                        "HIBA: ${t.message}"
+                    } catch (_: Throwable) {
+                        "HIBA"
+                    }
+                    try {
+                        ctrl.onFailsafePause(reason)
+                    } catch (pauseError: Throwable) {
+                        Timber.e(pauseError, "fail-safe pause itself failed")
+                    }
+                    try {
+                        AutoPlaySession.updateDiagnostics(phase = "HIBA", stopReason = reason)
+                        AutoPlaySession.refreshFromController()
+                        refreshBubbleUi()
+                    } catch (uiError: Throwable) {
+                        Timber.e(uiError, "fail-safe UI update failed")
+                    }
                     delay(500L)
                 }
             }

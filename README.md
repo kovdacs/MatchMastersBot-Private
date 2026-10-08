@@ -1,6 +1,6 @@
 # Match Masters Bot — Match3 Vision Analyzer
 
-**Version:** `0.24.5-diagnostics-single-move`  
+**Version:** `0.24.6-real-device-roi-overlay`  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private`
 

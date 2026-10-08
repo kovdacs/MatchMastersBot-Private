@@ -87,8 +87,9 @@ fun AnalyzerScreen(
                 "1. INDÍTÁS → engedélyek\n" +
                     "2. Buborék megjelenik\n" +
                     "3. Nyisd meg a Match Masters-t\n" +
-                    "4. Buborék: INDÍTÁS → auto húzás\n" +
-                    "5. SZÜNET vagy STOP",
+                    "4. Diagnosztika: a kisegítő szolgáltatás maradhat KI\n" +
+                    "5. Buborék: INDÍTÁS → auto húzás (ehhez a kisegítő kell)\n" +
+                    "6. SZÜNET vagy STOP",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
             )

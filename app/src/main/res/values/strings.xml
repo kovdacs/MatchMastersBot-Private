@@ -12,5 +12,5 @@
     <string name="overlay_permission_rationale">Lebegő buborék kell a Start/Szünet/Stop gombokhoz a játék fölött.</string>
     <string name="a11y_permission_rationale">Kapcsold be a Match3 Vision Elemző kisegítő szolgáltatását a húzáshoz.</string>
     <string name="autoplay_big_start">INDÍTÁS</string>
-    <string name="autoplay_steps">1. INDÍTÁS → engedélyek + rögzítés + buborék + auto kör\n2. Nyisd meg a Match Masters-t\n3. Buborék: diagnosztika / SZÜNET / STOP\n4. Kisegítő legyen CONNECTED</string>
+    <string name="autoplay_steps">1. INDÍTÁS → engedélyek + rögzítés + buborék + auto kör\n2. Nyisd meg a Match Masters-t\n3. Buborék: diagnosztika / SZÜNET / STOP\n4. Diagnosztika: a kisegítő szolgáltatás maradhat KI\n5. Autohúzáshoz a kisegítő legyen CONNECTED</string>
 </resources>
