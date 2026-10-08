@@ -55,6 +55,9 @@ class AutoPlayController(
 
     val singleMove: SingleMoveMachine = SingleMoveMachine()
 
+    /** Bounded phone test. Independent of continuous INDÍTÁS. */
+    val fiveMove: FiveMoveSession = FiveMoveSession()
+
     @Volatile
     var consecutiveUnconfirmed: Int = 0
         private set
@@ -303,6 +306,9 @@ class AutoPlayController(
 
     /** Bubble STOP — disable input; terminal. Caller stops capture + removes bubble. */
     fun onBubbleStop(reason: String = "felhasználó STOP") {
+        if (fiveMove.isActive) {
+            fiveMove.abort("STOP pressed", System.currentTimeMillis())
+        }
         enableSwitch.setEnabled(false)
         val sm = inputLoop.inputEngine().stateMachine()
         if (sm.state != BotLoopState.STOP) {
@@ -505,6 +511,100 @@ class AutoPlayController(
         return result
     }
 
+    /**
+     * Arm the 5-move test from an analysis-only loop.
+     * Does not enable continuous play and does not enable the input switch.
+     */
+    fun armFiveMoveTest(nowMs: Long, selfCheckThisSession: Boolean): Boolean {
+        if (mode == Mode.STOPPED) {
+            lastReason = "leállítva — új Indítás kell az alkalmazásban"
+            return false
+        }
+        if (mode != Mode.RUNNING || !analysisOnly) {
+            enableSwitch.setEnabled(false)
+            lastReason = if (mode == Mode.RUNNING) {
+                "Az 5 lépés az elemző INDÍTÁS után indul. A folyamatos játék külön kapu."
+            } else {
+                "Először INDÍTÁS, várd meg a stabil PLAUSIBLE ROI-t, majd TESZT ÉRINTÉS."
+            }
+            return false
+        }
+        if (!selfCheckThisSession) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveSession.NEED_SELF_CHECK_HU
+            return false
+        }
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            lastReason = "5 LÉPÉS refused — MOVE UNCONFIRMED cap is latched"
+            return false
+        }
+        if (!fiveMove.arm(nowMs)) {
+            lastReason = "5 LÉPÉS already running"
+            return false
+        }
+        enableSwitch.setEnabled(false)
+        lastReason = fiveMove.label()
+        return true
+    }
+
+    /**
+     * One authorized gesture for the 5-move test.
+     * Refuses a missing permit. Leaves the switch disabled.
+     * [analysisOnly] stays true, so [runCycleIfActive] still does not dispatch.
+     */
+    fun dispatchFiveMoveOnce(
+        vision: VisionResult,
+        context: RuntimeCycleContext?,
+        permit: FiveMoveSession.Permit,
+    ): InputLoopController.CycleResult? {
+        if (mode != Mode.RUNNING || !analysisOnly) {
+            enableSwitch.setEnabled(false)
+            lastReason = "5 LÉPÉS refused — analysis-only session is required"
+            return null
+        }
+        if (!fiveMove.consumePermit(permit)) {
+            enableSwitch.setEnabled(false)
+            lastReason = "5 LÉPÉS refused — dispatch permit was not issued"
+            return null
+        }
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            fiveMove.abort("STOP — MOVE UNCONFIRMED cap latched", System.currentTimeMillis())
+            lastReason = fiveMove.stopReason
+            return null
+        }
+        inputLoop.inputEngine().stateMachine().reset()
+        enableSwitch.setEnabled(true)
+        return try {
+            val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context)
+            lastReason = cycle.reason
+            cycle
+        } catch (t: Throwable) {
+            fiveMove.abort("STOP — exception: ${t.message}", System.currentTimeMillis())
+            lastReason = fiveMove.stopReason
+            null
+        } finally {
+            enableSwitch.setEnabled(false)
+        }
+    }
+
+    /**
+     * The 5-move test finished or aborted. Input is off and the loop mode is
+     * STOPPED. Capture is left running so the caller can still share frames.
+     */
+    fun finishFiveMoveKeepCapture(reason: String) {
+        enableSwitch.setEnabled(false)
+        if (fiveMove.isActive) {
+            fiveMove.abort(reason, System.currentTimeMillis())
+        }
+        if (mode != Mode.STOPPED) {
+            mode = Mode.STOPPED
+        }
+        analysisOnly = false
+        lastReason = reason.ifBlank { fiveMove.stopReason }.ifBlank { "5 LÉPÉS TESZT finished" }
+    }
+
     /** After the single-move verify bundle is exported. Does not dispatch. */
     fun finishSingleMoveAfterExport() {
         if (runStyle != RunStyle.SINGLE_MOVE) return
@@ -524,6 +624,7 @@ class AutoPlayController(
         runStyle = RunStyle.CONTINUOUS
         analysisOnly = false
         singleMove.resetIdle()
+        fiveMove.clear()
         awaitingFeedback = false
         AutoPlayTrace.clear()
         if (keepLatch) {

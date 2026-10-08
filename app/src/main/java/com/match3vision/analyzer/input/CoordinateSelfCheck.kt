@@ -59,6 +59,7 @@ object CoordinateSelfCheck {
         val reason: String,
         val observedX: Float? = null,
         val observedY: Float? = null,
+        val recordedAtMs: Long = 0L,
     ) {
         init {
             require(!alignmentProven) { "coordinate self-check cannot set alignmentProven" }
@@ -81,6 +82,7 @@ object CoordinateSelfCheck {
             line("originOffsetY", originOffsetY.toString(), numeric = true)
             line("observedNote", observedNote)
             line("alignmentProven", "false", raw = true)
+            line("recordedAtMs", recordedAtMs.toString(), numeric = true)
             line("reason", reason, last = true)
             append("}\n")
         }
@@ -232,6 +234,7 @@ object CoordinateSelfCheck {
             reason = reason,
             observedX = observedX,
             observedY = observedY,
+            recordedAtMs = System.currentTimeMillis(),
         )
         current = rec
         return rec

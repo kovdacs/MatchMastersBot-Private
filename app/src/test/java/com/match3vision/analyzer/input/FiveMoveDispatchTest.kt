@@ -1,0 +1,256 @@
+package com.match3vision.analyzer.input
+
+import com.google.common.truth.Truth.assertThat
+import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.capture.ScreenMeasurement
+import com.match3vision.analyzer.vision.CellVision
+import com.match3vision.analyzer.vision.GridGeometry
+import com.match3vision.analyzer.vision.GridMethod
+import com.match3vision.analyzer.vision.SpecialType
+import com.match3vision.analyzer.vision.TileColor
+import com.match3vision.analyzer.vision.TileShape
+import com.match3vision.analyzer.vision.ValidationResult
+import com.match3vision.analyzer.vision.VisionBoard
+import com.match3vision.analyzer.vision.VisionResult
+import com.match3vision.analyzer.vision.VisionThresholds
+import org.junit.Test
+
+/**
+ * The analysis-only loop still never dispatches. A 5-move gesture requires an
+ * issued permit, and a failed move-1 callback does not unlock another one.
+ */
+class FiveMoveDispatchTest {
+
+    @Test
+    fun analysisOnly_withA11yOff_neverDispatches_evenAfterArm() {
+        val (ctrl, exec) = diagnosticController()
+        assertThat(ctrl.armFiveMoveTest(nowMs = 0L, selfCheckThisSession = true)).isTrue()
+        assertThat(ctrl.analysisOnly).isTrue()
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        val cycle = ctrl.runCycleIfActive(passVision(), context(a11yConnected = false))
+        assertThat(cycle).isNotNull()
+        assertThat(cycle!!.gestureStatus).isEqualTo("NOT CREATED")
+        assertThat(cycle.executed).isNull()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.analysisOnly).isTrue()
+        val forged = FiveMoveSession.Permit(token = 99L, moveNumber = 1)
+        assertThat(ctrl.dispatchFiveMoveOnce(passVision(), context(a11yConnected = true), forged)).isNull()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+    }
+
+    @Test
+    fun noPermitWithoutSelfCheck_andContinuousStartStaysSeparate() {
+        val (ctrl, exec) = diagnosticController()
+        assertThat(ctrl.armFiveMoveTest(nowMs = 0L, selfCheckThisSession = false)).isFalse()
+        assertThat(ctrl.lastReason).contains("TESZT ÉRINTÉS")
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.IDLE)
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.fiveMove.arm(0L)).isTrue()
+        val blocked = ctrl.fiveMove.requestDispatch(
+            FiveMoveSession.Gates(
+                nowMs = 1_000L,
+                a11yConnected = true,
+                selfCheckMeasured = false,
+                overlayCollapsed = true,
+                overlayOutsideRoi = true,
+                visionPass = true,
+                frameFresh = true,
+                ownUi = false,
+                msSinceCollapse = 2_000L,
+                roiPlausible = true,
+            ),
+        )
+        assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(exec.dispatched).isEmpty()
+    }
+
+    @Test
+    fun failedCallback_blocksMoves2To5_andRunCycleStillDoesNotDispatch() {
+        val (ctrl, exec) = controllerWith(CompletingExecutor(complete = false))
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val go = ctrl.fiveMove.requestDispatch(readyGates(1_000L))
+        assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        val permit = (go as FiveMoveSession.Decision.Go).permit
+        val cycle = ctrl.dispatchFiveMoveOnce(passVision(), context(a11yConnected = true), permit)
+        assertThat(cycle).isNotNull()
+        val executed = cycle!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+        assertThat(executed.verificationEligible).isFalse()
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.analysisOnly).isTrue()
+        val noted = ctrl.fiveMove.noteGesture(
+            FiveMoveSession.GestureFact(
+                startedAtMs = 1_000L,
+                nowMs = 1_100L,
+                callbackCompleted = executed.verificationEligible,
+                cancelled = true,
+                cells = executed.move.move.toString(),
+                fromX = executed.gesture.startX,
+                fromY = executed.gesture.startY,
+                toX = executed.gesture.endX,
+                toY = executed.gesture.endY,
+                beforeHash = executed.beforeBoardHash,
+                beforeUnknown = 0,
+            ),
+        )
+        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(ctrl.fiveMove.requestDispatch(readyGates(2_000L)))
+            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(0)
+        assertThat(ctrl.fiveMove.gesturesDispatched).isEqualTo(1)
+    }
+
+    @Test
+    fun fivePermittedGestures_thenTheSessionStops() {
+        val (ctrl, exec) = controllerWith(CompletingExecutor(complete = true))
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        repeat(5) { index ->
+            val start = 1_000L + index * 1_000L
+            val go = ctrl.fiveMove.requestDispatch(readyGates(start))
+            assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+            val permit = (go as FiveMoveSession.Decision.Go).permit
+            val cycle = ctrl.dispatchFiveMoveOnce(passVision(), context(true), permit)
+            val executed = cycle!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+            assertThat(executed.verificationEligible).isTrue()
+            ctrl.fiveMove.noteGesture(
+                FiveMoveSession.GestureFact(
+                    startedAtMs = start,
+                    nowMs = start + 50L,
+                    callbackCompleted = true,
+                    cancelled = false,
+                    cells = executed.move.move.toString(),
+                    fromX = executed.gesture.startX,
+                    fromY = executed.gesture.startY,
+                    toX = executed.gesture.endX,
+                    toY = executed.gesture.endY,
+                    beforeHash = index.toLong(),
+                    beforeUnknown = 0,
+                ),
+            )
+            ctrl.fiveMove.onSettle(
+                FiveMoveSession.SettleSample(
+                    nowMs = start + 400L,
+                    boardHash = 50L + index,
+                    diffFraction = 0f,
+                    frameFresh = true,
+                    roiPlausible = true,
+                    visionPass = true,
+                    unknownCount = 0,
+                    ownUi = false,
+                    a11yConnected = true,
+                ),
+            )
+        }
+        assertThat(exec.dispatched).hasSize(5)
+        assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(5)
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.analysisOnly).isTrue()
+        ctrl.runCycleIfActive(passVision(), context(true))
+        assertThat(exec.dispatched).hasSize(5)
+        val report = ctrl.fiveMove.report()
+        assertThat(report).contains("measuredSessionMs=")
+        assertThat(report).contains("durationMs=400")
+    }
+
+    private fun readyGates(nowMs: Long) = FiveMoveSession.Gates(
+        nowMs = nowMs,
+        a11yConnected = true,
+        selfCheckMeasured = true,
+        overlayCollapsed = true,
+        overlayOutsideRoi = true,
+        visionPass = true,
+        frameFresh = true,
+        ownUi = false,
+        msSinceCollapse = 2_000L,
+        roiPlausible = true,
+    )
+
+    private fun diagnosticController(): Pair<AutoPlayController, CompletingExecutor> =
+        controllerWith(CompletingExecutor(complete = false))
+
+    private fun controllerWith(
+        exec: CompletingExecutor,
+    ): Pair<AutoPlayController, CompletingExecutor> {
+        CoordinateSelfCheck.clear()
+        val sw = InputEnableSwitch.disabledByDefault()
+        val ctrl = AutoPlayController(
+            enableSwitch = sw,
+            inputLoop = InputLoopController(
+                inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
+            ),
+        )
+        assertThat(ctrl.onDiagnosticStart()).isTrue()
+        return ctrl to exec
+    }
+
+    private fun context(a11yConnected: Boolean) = ProductionCycleContext.fromLoopObservation(
+        a11yConnected = a11yConnected,
+        captureManagerPresent = true,
+        hasFrame = true,
+        frameAgeMs = 20L,
+        frameSequenceDecision = null,
+        frameTimestampMs = 5_000L,
+        frameWidth = 700,
+        frameHeight = 700,
+        capturedElapsedMs = 10_000L,
+        screen = ScreenMeasurement(
+            widthPx = 700,
+            heightPx = 700,
+            densityDpi = 420,
+            rotation = 0,
+            source = ScreenMeasurement.SOURCE_MAXIMUM_WINDOW,
+        ),
+        frameSequence = 1L,
+    )
+
+    private fun passVision(): VisionResult {
+        val palette = listOf(
+            TileColor.B, TileColor.Y, TileColor.G, TileColor.P, TileColor.O, TileColor.R,
+        )
+        val colors = Array(7) { r -> Array(7) { c -> palette[(r * 3 + c * 2 + 1) % 6] } }
+        colors[0][0] = TileColor.R
+        colors[0][1] = TileColor.R
+        colors[0][2] = TileColor.B
+        colors[0][3] = TileColor.Y
+        colors[1][2] = TileColor.R
+        val cells = Array(7) { r ->
+            Array(7) { c ->
+                CellVision(
+                    color = colors[r][c],
+                    shape = TileShape.CIRCLE,
+                    special = SpecialType.NONE,
+                    occluded = false,
+                    confidence = 1f,
+                    isUnknown = false,
+                )
+            }
+        }
+        return VisionResult(
+            board = VisionBoard(cells),
+            grid = GridGeometry.evenSplit(ContentRoi(0, 0, 700, 700), 0.99f),
+            unknownCount = 0,
+            confidence = 1f,
+            boardConfidence = VisionThresholds.MIN_BOARD_CONFIDENCE,
+            gridConfidence = VisionThresholds.MIN_GRID_CONFIDENCE,
+            validation = ValidationResult.Pass,
+            method = GridMethod.EVEN_SPLIT,
+        )
+    }
+
+    private class CompletingExecutor(
+        private val complete: Boolean,
+    ) : InputGestureExecutor {
+        val dispatched: MutableList<GestureSpec> = mutableListOf()
+
+        override fun isReady(): Boolean = true
+
+        override fun dispatch(gesture: GestureSpec): InputDispatchResult {
+            dispatched += gesture
+            return InputDispatchResult.Dispatched(gesture, callbackCompleted = complete)
+        }
+    }
+}

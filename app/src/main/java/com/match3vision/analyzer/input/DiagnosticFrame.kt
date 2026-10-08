@@ -37,6 +37,7 @@ object DiagnosticFrame {
         xBoundaries: FloatArray?,
         yBoundaries: FloatArray?,
         refusal: String? = null,
+        maxEdge: Int = MAX_EDGE,
     ): Export {
         if (!refusal.isNullOrBlank()) {
             return missing(refusal)
@@ -51,7 +52,8 @@ object DiagnosticFrame {
             )
         }
         val longest = maxOf(width, height)
-        val scale = minOf(1f, MAX_EDGE.toFloat() / longest.toFloat())
+        val edge = if (maxEdge > 0) maxEdge else MAX_EDGE
+        val scale = minOf(1f, edge.toFloat() / longest.toFloat())
         val dw = maxOf(1, (width * scale).toInt())
         val dh = maxOf(1, (height * scale).toInt())
         val out = IntArray(dw * dh)

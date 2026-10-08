@@ -96,6 +96,8 @@ data class DiagnosticBundle(
     /** max(row pitch) / min(row pitch). */
     val rowPitchMaxMinRatio: String = "not measured",
     val simulated: Boolean,
+    /** `in_game` or `own_ui`. Own-app frames stay out of the ring. */
+    val frameSource: String = SOURCE_IN_GAME,
 ) {
     /** One ring row. This is the checkable per-cycle record. */
     fun cycleLine(): String = listOf(
@@ -190,9 +192,22 @@ data class DiagnosticBundle(
         field("columnPitchMaxMinRatio", columnPitchMaxMinRatio)
         field("rowPitchMaxMinRatio", rowPitchMaxMinRatio)
         field("callbackOutcomeIsDispatchCopy", (callbackOutcome == dispatchStatus).toString(), raw = true)
-        field("simulated", simulated.toString(), raw = true, last = true)
+        field("simulated", simulated.toString(), raw = true)
+        field("frameSource", frameSource, last = true)
         append("}\n")
     }
+
+    fun bestLine(): String = listOf(
+        "seq=$frameSequence",
+        "ts=$captureTimestampMs",
+        "roi=$boardRoi",
+        "latticeScore=$latticeScore",
+        "latticeRoiUsed=$latticeRoiUsed",
+        "playfieldSnap=$playfieldSnap",
+        "unk=$unknownCount",
+        "frame=${frameWidth}x$frameHeight",
+        "frameSource=$frameSource",
+    ).joinToString(" ")
 
     private fun StringBuilder.field(
         name: String,
@@ -219,6 +234,8 @@ data class DiagnosticBundle(
         const val CLASS_VERIFICATION = "VERIFICATION"
         const val CLASS_NONE = "NONE"
         const val CLASS_CAPTURE_INVALID = "CAPTURE_INVALID"
+        const val SOURCE_IN_GAME = "in_game"
+        const val SOURCE_OWN_UI = "own_ui"
 
         fun classify(
             captureOn: Boolean,
