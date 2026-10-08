@@ -215,6 +215,14 @@ object CoordinateSelfCheck {
                 "RECORDED_UNPROVEN does not unlock INDÍTÁS or EGY LÉPÉS. " +
                 "alignmentProven=false. Physical alignment is NOT proven."
         }
+        val prior = current
+        if (prior != null &&
+            prior.status == STATUS_MEASURED_WITHIN_TOLERANCE &&
+            status != STATUS_MEASURED_WITHIN_TOLERANCE
+        ) {
+            // A measured hit stays until a newer hit or STOP. A miss does not revoke it.
+            return prior
+        }
         val rec = Record(
             status = status,
             expectedX = expectedX,

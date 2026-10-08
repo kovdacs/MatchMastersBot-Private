@@ -546,46 +546,37 @@ class AutoPlayController(
      * Arm the 5-move test from an analysis-only loop.
      * Does not enable continuous play and does not enable the input switch.
      */
+    /**
+     * Reasons that do not depend on one camera frame.
+     * A missing board is not one of them: the bubble waits for a passing frame.
+     */
+    fun fiveMoveRefusal(
+        selfCheckThisSession: Boolean,
+        a11yConnected: Boolean,
+    ): String? {
+        if (mode == Mode.STOPPED) return FiveMoveArm.STOPPED
+        if (!a11yConnected) return FiveMoveArm.NEED_A11Y
+        if (!selfCheckThisSession) return FiveMoveArm.NEED_CALIBRATION
+        if (mode != Mode.RUNNING) return FiveMoveArm.NEED_START
+        if (enableSwitch.isEnabled()) return FiveMoveArm.CONTINUOUS
+        if (unconfirmedCapLatched) return FiveMoveArm.CAP
+        if (fiveMove.isActive) return FiveMoveArm.ALREADY
+        return null
+    }
+
     fun armFiveMoveTest(
         nowMs: Long,
         selfCheckThisSession: Boolean,
         a11yConnected: Boolean = true,
-        boardVisible: Boolean = true,
+        clockStartMs: Long = nowMs,
     ): Boolean {
-        if (mode == Mode.STOPPED) {
-            lastReason = FiveMoveArm.STOPPED
-            return false
-        }
-        if (!a11yConnected) {
+        val refusal = fiveMoveRefusal(selfCheckThisSession, a11yConnected)
+        if (refusal != null) {
             enableSwitch.setEnabled(false)
-            lastReason = FiveMoveArm.NEED_A11Y
+            lastReason = refusal
             return false
         }
-        if (!selfCheckThisSession) {
-            enableSwitch.setEnabled(false)
-            lastReason = FiveMoveArm.NEED_CALIBRATION
-            return false
-        }
-        if (mode != Mode.RUNNING) {
-            enableSwitch.setEnabled(false)
-            lastReason = FiveMoveArm.NEED_START
-            return false
-        }
-        if (enableSwitch.isEnabled()) {
-            lastReason = FiveMoveArm.CONTINUOUS
-            return false
-        }
-        if (!boardVisible) {
-            enableSwitch.setEnabled(false)
-            lastReason = FiveMoveArm.NEED_BOARD
-            return false
-        }
-        if (unconfirmedCapLatched) {
-            enableSwitch.setEnabled(false)
-            lastReason = FiveMoveArm.CAP
-            return false
-        }
-        if (!fiveMove.arm(nowMs)) {
+        if (!fiveMove.arm(clockStartMs)) {
             lastReason = FiveMoveArm.ALREADY
             return false
         }

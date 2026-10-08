@@ -103,6 +103,9 @@ class FiveMoveSession {
     private var outstanding: Permit? = null
     private var openMove: OpenMove? = null
 
+    /** Preconditions of the frame that started the session. Empty until then. */
+    private var startExport: String = ""
+
     private data class OpenMove(
         val number: Int,
         val startedAtMs: Long,
@@ -142,7 +145,12 @@ class FiveMoveSession {
         outstanding = null
         openMove = null
         nextToken = 1L
+        startExport = ""
         return true
+    }
+
+    fun noteStartExport(text: String) {
+        startExport = text.trim()
     }
 
     fun clear() {
@@ -155,6 +163,7 @@ class FiveMoveSession {
         moves.clear()
         outstanding = null
         openMove = null
+        startExport = ""
     }
 
     /**
@@ -315,6 +324,9 @@ class FiveMoveSession {
     }
 
     fun report(): String = buildString {
+        if (startExport.isNotBlank()) {
+            appendLine(startExport.trimEnd())
+        }
         appendLine("--- 5 LÉPÉS TESZT ---")
         appendLine("sessionLimitMs=$SESSION_LIMIT_MS")
         appendLine("perMoveBudgetMs=$PER_MOVE_BUDGET_MS")

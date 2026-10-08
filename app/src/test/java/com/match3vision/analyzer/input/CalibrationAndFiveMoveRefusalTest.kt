@@ -55,6 +55,7 @@ class CalibrationAndFiveMoveRefusalTest {
         assertThat(hit.status).isEqualTo(CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
         assertThat(hit.alignmentProven).isFalse()
 
+        CoordinateSelfCheck.clear()
         val againstNominal = CalibrationTouch.recordRawTouch(
             rawX = onScreen.first,
             rawY = onScreen.second,
@@ -105,9 +106,9 @@ class CalibrationAndFiveMoveRefusalTest {
         assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = false, a11yConnected = true))
             .isFalse()
         assertThat(ctrl.lastReason).isEqualTo(FiveMoveArm.NEED_CALIBRATION)
-        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true, a11yConnected = true, boardVisible = false))
-            .isFalse()
-        assertThat(ctrl.lastReason).isEqualTo(FiveMoveArm.NEED_BOARD)
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true, a11yConnected = true))
+            .isTrue()
+        assertThat(ctrl.lastReason).isEqualTo(ctrl.fiveMove.label())
         assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
         assertThat(exec.dispatched).isEmpty()
         assertThat(ctrl.analysisOnly).isFalse()

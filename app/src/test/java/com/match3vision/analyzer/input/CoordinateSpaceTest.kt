@@ -121,6 +121,7 @@ class CoordinateSpaceTest {
 
     @Test
     fun recordedUnproven_doesNotUnlockEgyLepes() {
+        CoordinateSelfCheck.clear()
         val rec = CoordinateSelfCheck.record(
             expectedX = 350f,
             expectedY = 315f,
@@ -151,6 +152,7 @@ class CoordinateSpaceTest {
 
     @Test
     fun measuredWithinTolerance_unlocksEgyLepes_withoutProvingAlignment() {
+        CoordinateSelfCheck.clear()
         val rec = CoordinateSelfCheck.record(
             expectedX = 350f,
             expectedY = 315f,
@@ -172,6 +174,7 @@ class CoordinateSpaceTest {
 
     @Test
     fun selfCheck_refusesRotationSizeAndOriginOffset() {
+        CoordinateSelfCheck.clear()
         val rotated = CoordinateSelfCheck.record(
             expectedX = 10f,
             expectedY = 10f,

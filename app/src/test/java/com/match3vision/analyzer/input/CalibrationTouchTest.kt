@@ -72,8 +72,9 @@ class CalibrationTouchTest {
             frameHeight = 2400,
             rotation = 0,
         )
-        assertThat(outside.status).isEqualTo(CoordinateSelfCheck.STATUS_OBSERVED_MISMATCH)
-        assertThat(CoordinateSelfCheck.allowsContinuousStart()).isFalse()
+        assertThat(outside.status).isEqualTo(CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
+        assertThat(outside.observedX).isEqualTo(boundary.observedX)
+        assertThat(CoordinateSelfCheck.allowsContinuousStart()).isTrue()
         assertThat(CoordinateSelfCheck.MEASURED_TOLERANCE_PX).isEqualTo(48f)
         assertThat(CoordinateSelfCheck.MEASURED_TOLERANCE_PX)
             .isNotEqualTo(HandMeasuredPvpCenters.TOLERANCE_PX)
@@ -96,5 +97,44 @@ class CalibrationTouchTest {
         assertThat(rec.alignmentProven).isFalse()
         assertThat(CoordinateSelfCheck.allowsContinuousStart()).isFalse()
         assertThat(CoordinateSelfCheck.allowsSingleMoveArm()).isFalse()
+    }
+
+    @Test
+    fun measuredHit_survivesTheLiveMisses_untilClear() {
+        CoordinateSelfCheck.clear()
+        val (expectedX, expectedY) = CalibrationTouch.expectedPoint(1080, 2400)
+        val hit = CalibrationTouch.recordRawTouch(
+            rawX = expectedX + 9.2f,
+            rawY = expectedY,
+            screenWidth = 1080,
+            screenHeight = 2400,
+            frameWidth = 1080,
+            frameHeight = 2400,
+            rotation = 0,
+        )
+        assertThat(hit.status).isEqualTo(CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
+        val far = listOf(646f to 0f, 316f to 0f)
+        for ((dx, dy) in far) {
+            assertThat(
+                CalibrationTarget.scoresTap(expectedX + dx, expectedY + dy, expectedX, expectedY),
+            ).isFalse()
+            val kept = CalibrationTouch.recordRawTouch(
+                rawX = expectedX + dx,
+                rawY = expectedY + dy,
+                screenWidth = 1080,
+                screenHeight = 2400,
+                frameWidth = 1080,
+                frameHeight = 2400,
+                rotation = 0,
+            )
+            assertThat(kept.status).isEqualTo(CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE)
+            assertThat(kept.observedX).isEqualTo(hit.observedX)
+        }
+        assertThat(CalibrationTarget.scoresTap(expectedX + 80f, expectedY, expectedX, expectedY)).isTrue()
+        assertThat(CalibrationTarget.SCORE_RADIUS_PX).isEqualTo(150f)
+        assertThat(CalibrationTarget.AUTO_DISMISS_MS).isEqualTo(1_000L)
+        CoordinateSelfCheck.clear()
+        assertThat(CoordinateSelfCheck.allowsSingleMoveArm()).isFalse()
+        assertThat(CoordinateSelfCheck.current()).isNull()
     }
 }

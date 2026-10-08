@@ -30,6 +30,8 @@ import com.match3vision.analyzer.input.CalibrationTarget
 import com.match3vision.analyzer.input.CalibrationTouch
 import com.match3vision.analyzer.input.CalibrationWindowPlan
 import com.match3vision.analyzer.input.FiveMoveArm
+import com.match3vision.analyzer.input.FiveMoveSeek
+import com.match3vision.analyzer.input.FiveMoveStart
 import com.match3vision.analyzer.input.LiveFrameFilter
 import com.match3vision.analyzer.input.CaptureOverlayTrace
 import com.match3vision.analyzer.input.DiagnosticAnalysisGate
@@ -91,7 +93,7 @@ class FloatingBubbleService : Service() {
     private var calibrationOverlayVisible: Boolean = false
     private var calibrationDismissWallMs: Long = 0L
     private var chipNotice: String = ""
-    private var lastBoardVisible: Boolean = false
+    private var fiveSeek: FiveMoveSeek? = null
     private var startBtn: Button? = null
     private var fiveMoveBtn: Button? = null
     private var serviceWallMs: Long = 0L
@@ -462,7 +464,18 @@ class FloatingBubbleService : Service() {
         if (session.isActive) {
             session.abort("STOP pressed", System.currentTimeMillis())
         }
+        fiveSeek?.let { seek ->
+            val expired = seek.expireOverdue(Long.MAX_VALUE)
+            if (expired != null) {
+                try {
+                    DiagnosticHistoryStore.setFiveMoveReport(expired.report.export)
+                } catch (_: Throwable) {
+                }
+            }
+            fiveSeek = null
+        }
         flushFiveMoveReport(session)
+        CoordinateSelfCheck.clear()
         AutoPlaySession.controller.onBubbleStop("bubble STOP")
         AutoPlaySession.syncFrameGateFromMode()
         job?.cancel()
@@ -650,7 +663,12 @@ class FloatingBubbleService : Service() {
             else -> rec.reason
         }
         view?.showResult(toast)
-        showChipNotice(toast)
+        if (rec.status == CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE) {
+            view?.scheduleAutoDismiss { dismissCalibrationOverlay() }
+            showChipNotice("KALIBRÁCIÓ OK")
+        } else {
+            showChipNotice(toast)
+        }
         Timber.i(
             "TOUCH_TEST: raw=(%s,%s) nominal=(%s,%s) onScreen=(%s,%s) distance=%s status=%s alignmentProven=%s",
             rawX,
@@ -891,6 +909,9 @@ class FloatingBubbleService : Service() {
                 if (captureStartWallMs == 0L && CaptureService.managerOrNull()?.isCapturing?.value == true) {
                     captureStartWallMs = System.currentTimeMillis()
                 }
+                fiveSeek?.expireOverdue(System.currentTimeMillis())?.let { expired ->
+                    finishFiveSeek(expired, armed = false)
+                }
                 if (ctrl.fiveMove.isActive) {
                     val safety = ctrl.fiveMove.pollSafety(
                         nowMs = System.currentTimeMillis(),
@@ -1111,10 +1132,7 @@ class FloatingBubbleService : Service() {
                     CaptureOverlayTrace.overlayRect = overlayRectText()
                     CaptureOverlayTrace.gateResult = overlayGate.reason
                     CaptureOverlayTrace.analyzedFrameTimestampMs = useFrame.timestampMs
-                    if (!calibrationOverlayVisible) {
-                        lastBoardVisible = roiLooksPlausible(visionRaw) &&
-                            visionRaw.validation.isPass
-                    }
+                    offerFiveSeek(useFrame, visionRaw, overlayGate)
                     val vision = holdIfOverlayBlocks(visionRaw, overlayGate)
                     val boardRoiStr = vision.diagnostics["boardRoi"]
                         ?: "LTRB(${vision.grid.boardRoi.left},${vision.grid.boardRoi.top}," +
@@ -1517,18 +1535,124 @@ class FloatingBubbleService : Service() {
 
     private fun startFiveMoveFromBubble() {
         val ctrl = AutoPlaySession.controller
-        val armed = ctrl.armFiveMoveTest(
-            nowMs = System.currentTimeMillis(),
+        val now = System.currentTimeMillis()
+        val refusal = ctrl.fiveMoveRefusal(
             selfCheckThisSession = selfCheckThisSession(),
             a11yConnected = MatchMastersAccessibilityService.isConnected(),
-            boardVisible = lastBoardVisible && !calibrationOverlayVisible,
         )
-        if (!armed) {
-            showChipNotice(ctrl.lastReason)
+        if (refusal != null) {
+            showChipNotice(refusal)
+            try {
+                DiagnosticHistoryStore.setFiveMoveReport(FiveMoveStart.immediate(now, refusal))
+            } catch (t: Throwable) {
+                Timber.w(t, "five-move refusal export failed")
+            }
             refreshBubbleUi()
             return
         }
-        chipNotice = ""
+        if (fiveSeek?.isActive == true) {
+            showChipNotice(FiveMoveArm.ALREADY)
+            return
+        }
+        fiveSeek = FiveMoveSeek().also { it.begin(now) }
+        chipNotice = "5 LÉPÉS: várok egy PASS képkockát"
+        refreshBubbleUi()
+    }
+
+    /**
+     * One frame of the 5 s start wait. A failing frame does not arm and does not
+     * abort. The first frame that passes the existing preconditions arms the
+     * session with the button-press clock, so the wait is inside the 60 s budget.
+     */
+    private fun offerFiveSeek(
+        frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult,
+        overlayGate: OverlayBoardGate.Decision,
+    ) {
+        val seek = fiveSeek ?: return
+        if (!seek.isActive) return
+        val held = vision.validation as? com.match3vision.analyzer.vision.ValidationResult.Hold
+        val roiDetail = when {
+            held?.reason?.contains("ROI IMPLAUSIBLE") == true -> "ROI IMPLAUSIBLE"
+            vision.diagnostics["roiPlausible"] == "no" -> "ROI IMPLAUSIBLE"
+            roiLooksPlausible(vision) -> "yes"
+            else -> "ROI IMPLAUSIBLE"
+        }
+        val calibration = calibrationOverlayVisible ||
+            (calibrationDismissWallMs > 0L &&
+                frame.timestampMs < calibrationDismissWallMs + DiagnosticHistory.TRANSITION_SKIP_MS)
+        val median = CaptureService.managerOrNull()?.cadence?.medianIntervalMs() ?: 0L
+        val sample = FiveMoveStart.Sample(
+            nowMs = System.currentTimeMillis(),
+            frameSequence = frame.sequence,
+            frameAgeMs = frame.ageMs(),
+            cadenceMedianMs = median,
+            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+            selfCheckMeasured = selfCheckThisSession(),
+            overlayCollapsed = collapsedForCapture,
+            overlayOutsideRoi = overlayGate.allowAnalysis,
+            visionPass = vision.validation.isPass,
+            unknownCount = vision.unknownCount,
+            roiPlausible = roiLooksPlausible(vision),
+            roiDetail = roiDetail,
+            ownUi = AutoPlaySession.frameGate.analyzerUiForeground,
+            calibration = calibration,
+            msSinceCollapse = if (collapseWallMs > 0L) {
+                frame.timestampMs - collapseWallMs
+            } else {
+                -1L
+            },
+        )
+        when (val offer = seek.offer(System.currentTimeMillis(), sample)) {
+            is FiveMoveStart.Offer.Waiting -> {
+                chipNotice = offer.report.chip
+                try {
+                    DiagnosticHistoryStore.setFiveMoveReport(offer.report.export)
+                } catch (t: Throwable) {
+                    Timber.w(t, "five-move seek export failed")
+                }
+                refreshBubbleUi()
+            }
+            is FiveMoveStart.Offer.Ready -> {
+                val ctrl = AutoPlaySession.controller
+                val armed = ctrl.armFiveMoveTest(
+                    nowMs = System.currentTimeMillis(),
+                    selfCheckThisSession = selfCheckThisSession(),
+                    a11yConnected = MatchMastersAccessibilityService.isConnected(),
+                    clockStartMs = seek.startedAtMs,
+                )
+                if (!armed) {
+                    fiveSeek = null
+                    showChipNotice(ctrl.lastReason)
+                    try {
+                        DiagnosticHistoryStore.setFiveMoveReport(
+                            FiveMoveStart.immediate(seek.startedAtMs, ctrl.lastReason),
+                        )
+                    } catch (t: Throwable) {
+                        Timber.w(t, "five-move arm export failed")
+                    }
+                    return
+                }
+                ctrl.fiveMove.noteStartExport(offer.report.export)
+                fiveSeek = null
+                chipNotice = ""
+                refreshBubbleUi()
+            }
+            is FiveMoveStart.Offer.Expired -> finishFiveSeek(offer, armed = false)
+        }
+    }
+
+    private fun finishFiveSeek(expired: FiveMoveStart.Offer.Expired, armed: Boolean) {
+        fiveSeek = null
+        if (armed) return
+        chipNotice = expired.report.chip
+        try {
+            DiagnosticHistoryStore.setFiveMoveReport(expired.report.export)
+        } catch (t: Throwable) {
+            Timber.w(t, "five-move seek export failed")
+        }
+        Toast.makeText(this, expired.report.chip, Toast.LENGTH_LONG).show()
+        AutoPlaySession.publish(statusText = expired.report.chip)
         refreshBubbleUi()
     }
 
@@ -2079,15 +2203,19 @@ class FloatingBubbleService : Service() {
         } else {
             "5 LÉPÉS TESZT"
         }
-        val modeTitle = BubbleModeCaption.title(
-            fiveActive = five.isActive,
-            fiveLabel = BubbleModeCaption.fiveLabel(five.verifiedCount, FiveMoveSession.MAX_MOVES),
-            selfCheckOk = selfCheckThisSession(),
-        )
+        val modeTitle = if (fiveSeek?.isActive == true) {
+            "5 LÉPÉS …"
+        } else {
+            BubbleModeCaption.title(
+                fiveActive = five.isActive,
+                fiveLabel = BubbleModeCaption.fiveLabel(five.verifiedCount, FiveMoveSession.MAX_MOVES),
+                selfCheckOk = selfCheckThisSession(),
+            )
+        }
         if (collapsedForCapture) {
             titleView?.text = modeTitle
             titleView?.textSize = 13f
-            statusView?.maxLines = 1
+            statusView?.maxLines = 2
             statusView?.textSize = 11f
             statusView?.text = chipNotice.ifBlank { modeTitle }
         } else {

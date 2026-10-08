@@ -14,6 +14,15 @@ object CalibrationTarget {
     /** Outer high-contrast ring. Larger than the 48 px valid zone on purpose. */
     const val RING_RADIUS_PX = 120f
 
+    /**
+     * Taps farther than this from the ring centre are not a calibration sample.
+     * They are ignored. They are not stored as OBSERVED_MISMATCH.
+     */
+    const val SCORE_RADIUS_PX = 150f
+
+    /** Overlay closes itself after a measured hit so the next tap reaches the game. */
+    const val AUTO_DISMISS_MS = 1_000L
+
     const val LABEL = "IDE ÉRINTS"
     const val INSTRUCTION = "Érintsd a fehér-piros kör közepét. Nincs játékérintés."
     const val CLOSE_LABEL = "KÉSZ"
@@ -27,6 +36,10 @@ object CalibrationTarget {
 
     fun distance(rawX: Float, rawY: Float, targetX: Float, targetY: Float): Float =
         hypot(rawX - targetX, rawY - targetY)
+
+    /** True when the finger is inside or near the ring. Far taps are not scored. */
+    fun scoresTap(tapX: Float, tapY: Float, targetX: Float, targetY: Float): Boolean =
+        distance(tapX, tapY, targetX, targetY) <= SCORE_RADIUS_PX
 
     fun resultLine(within: Boolean, distancePx: Float): String =
         if (within) {

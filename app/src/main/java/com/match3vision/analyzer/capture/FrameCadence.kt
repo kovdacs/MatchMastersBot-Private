@@ -29,6 +29,14 @@ class FrameCadence(
         return out
     }
 
+    /** Median gap between frames. 0 when fewer than two samples exist. */
+    fun medianIntervalMs(): Long {
+        val intervals = intervalsMs()
+        if (intervals.isEmpty()) return 0L
+        val sorted = intervals.sorted()
+        return sorted[sorted.size / 2]
+    }
+
     fun summary(): String {
         val intervals = intervalsMs()
         if (intervals.isEmpty()) return "no interval yet (samples=${elapsedMs.size})"

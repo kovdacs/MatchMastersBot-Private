@@ -375,6 +375,21 @@ open class BoardFinder(
         internal const val LATTICE_CLIP_MARGIN = 8
 
         /**
+         * Projection pitches wider than this are not a grid. Phone 0.24.7.2
+         * measured 126 vs 174 (spread 48) on one board. Replace them with one
+         * period. The PvP golden's row spread is 38 px and must stay on the
+         * peaks that produce grid confidence 0.9872.
+         */
+        internal const val UNIFORM_PITCH_SPREAD_PX = 42f
+
+        /**
+         * A uniform period may move the outer edge this far to sit on the
+         * gutter. A larger jump keeps the lattice rectangle and only evens
+         * the cuts inside it.
+         */
+        internal const val UNIFORM_ORIGIN_SHIFT_PX = 16f
+
+        /**
          * 7-cell boundary picker (local ROI coords).
          *
          * Pass 1: absolute-max energy in the period search window (true gutters).
@@ -516,7 +531,105 @@ open class BoardFinder(
             if (!GridGeometry.isStrictlyIncreasing(bounds)) return null
             return bounds
         }
+
+        /**
+         * When picked pitches disagree by more than [UNIFORM_PITCH_SPREAD_PX],
+         * place 8 lines on one period. The period and the origin are the pair
+         * whose lines sit on the strongest edge band. The origin may sit inside
+         * the ROI, so a header sliver above the first gutter is not row 0.
+         * Recognisers and [VisionThresholds] are not involved.
+         */
+        internal fun uniformPitchFromEnergy(picked: FloatArray, energy: FloatArray): UniformPitch {
+            val n = energy.size
+            if (picked.size != GridGeometry.BOUNDARY_COUNT || n < GridGeometry.GRID_SIZE * 3) {
+                return UniformPitch(picked, applied = false, period = -1, origin = -1, spreadPx = 0f)
+            }
+            var minP = Float.MAX_VALUE
+            var maxP = 0f
+            for (i in 0 until GridGeometry.GRID_SIZE) {
+                val pitch = picked[i + 1] - picked[i]
+                if (pitch < minP) minP = pitch
+                if (pitch > maxP) maxP = pitch
+            }
+            val spread = maxP - minP
+            if (spread <= UNIFORM_PITCH_SPREAD_PX) {
+                return UniformPitch(picked, applied = false, period = -1, origin = -1, spreadPx = spread)
+            }
+            val nominal = n.toFloat() / GridGeometry.GRID_SIZE
+            val pMin = (nominal * 0.90f).toInt().coerceAtLeast(4)
+            val pMax = (nominal * 1.08f).toInt().coerceAtLeast(pMin)
+            var bestScore = Float.NEGATIVE_INFINITY
+            var bestPeriod = -1
+            var bestOrigin = -1
+            for (period in pMin..pMax) {
+                val slack = n - GridGeometry.GRID_SIZE * period
+                val slackCap = (period * 0.40f).toInt()
+                if (slack < 0 || slack > slackCap) continue
+                for (origin in 0..slack) {
+                    var score = 0f
+                    for (i in 0..GridGeometry.GRID_SIZE) {
+                        val y = origin + i * period
+                        if (y !in 0 until n) continue
+                        var band = energy[y]
+                        if (y - 1 >= 0) band = maxOf(band, energy[y - 1])
+                        if (y + 1 < n) band = maxOf(band, energy[y + 1])
+                        score += band
+                    }
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestPeriod = period
+                        bestOrigin = origin
+                    }
+                }
+            }
+            if (bestPeriod < 0) {
+                return UniformPitch(picked, applied = false, period = -1, origin = -1, spreadPx = spread)
+            }
+            val bounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
+                (bestOrigin + i * bestPeriod).toFloat()
+            }
+            if (!GridGeometry.isStrictlyIncreasing(bounds) || bounds[GridGeometry.GRID_SIZE] > n + 1f) {
+                return UniformPitch(picked, applied = false, period = -1, origin = -1, spreadPx = spread)
+            }
+            val shiftStart = kotlin.math.abs(bounds[0] - picked[0])
+            val shiftEnd = kotlin.math.abs(bounds[GridGeometry.GRID_SIZE] - picked[GridGeometry.GRID_SIZE])
+            if (shiftStart > UNIFORM_ORIGIN_SHIFT_PX || shiftEnd > UNIFORM_ORIGIN_SHIFT_PX) {
+                return evenOuterSplit(picked, spread)
+            }
+            return UniformPitch(
+                bounds = bounds,
+                applied = true,
+                period = bestPeriod,
+                origin = bestOrigin,
+                spreadPx = spread,
+            )
+        }
+
+        /** Equal pitches between the outer edges projection already accepted. */
+        internal fun evenOuterSplit(picked: FloatArray, spreadPx: Float): UniformPitch {
+            val start = picked[0]
+            val end = picked[GridGeometry.GRID_SIZE]
+            val step = (end - start) / GridGeometry.GRID_SIZE
+            val bounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
+                if (i == GridGeometry.GRID_SIZE) end else start + i * step
+            }
+            return UniformPitch(
+                bounds = bounds,
+                applied = true,
+                period = step.toInt(),
+                origin = start.toInt(),
+                spreadPx = spreadPx,
+            )
+        }
     }
+
+    internal data class UniformPitch(
+        val bounds: FloatArray,
+        val applied: Boolean,
+        val period: Int,
+        val origin: Int,
+        val spreadPx: Float,
+    )
 
     /**
      * Phone frames whose square snap locks the header or the screen bottom.
@@ -745,8 +858,11 @@ open class BoardFinder(
         diag: MutableMap<String, String>,
     ): GridGeometry? {
         // Primary path (unchanged scoring) — keeps REAL_FRAME golden 0.9872 stable.
+        val uniformSnap = diag["playfieldSnap"] == "gutter_lattice"
         val primary = projectOnRoi(
-            pixels, width, height, boardRoi, overlayMask, softOutlierFrac = null,
+            pixels, width, height, boardRoi, overlayMask,
+            softOutlierFrac = null,
+            uniformSnap = uniformSnap,
         ) ?: return null
         writeProjectionDiag(diag, primary)
         if (primary.grid.confidence >= VisionThresholds.MIN_GRID_CONFIDENCE) {
@@ -760,6 +876,7 @@ open class BoardFinder(
         val soft = projectOnRoi(
             pixels, width, height, boardRoi, overlayMask,
             softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
+            uniformSnap = uniformSnap,
         )
         var best = primary
         if (soft != null && soft.grid.confidence > best.grid.confidence) {
@@ -791,6 +908,7 @@ open class BoardFinder(
                             val cand = projectOnRoi(
                                 pixels, width, height, candRoi, overlayMask,
                                 softOutlierFrac = GUTTER_SOFT_OUTLIER_FRAC,
+                                uniformSnap = uniformSnap,
                             )
                             if (cand != null &&
                                 (nudged == null || cand.grid.confidence > nudged.grid.confidence)
@@ -827,6 +945,9 @@ open class BoardFinder(
         val yLocal: FloatArray,
         val peakCountX: Int,
         val peakCountY: Int,
+        val uniformSnap: String,
+        val xPicked: FloatArray,
+        val yPicked: FloatArray,
     )
 
     private fun writeProjectionDiag(diag: MutableMap<String, String>, attempt: ProjAttempt) {
@@ -848,6 +969,9 @@ open class BoardFinder(
             val off = attempt.yLocal[g] - ideal
             "%d:%+.0f".format(g, off)
         }
+        diag["uniformSnap"] = attempt.uniformSnap
+        diag["projPickedX"] = attempt.xPicked.joinToString(",") { "%.0f".format(it) }
+        diag["projPickedY"] = attempt.yPicked.joinToString(",") { "%.0f".format(it) }
     }
 
     /**
@@ -861,6 +985,7 @@ open class BoardFinder(
         boardRoi: ContentRoi,
         overlayMask: OverlayColumnMask,
         softOutlierFrac: Float?,
+        uniformSnap: Boolean,
     ): ProjAttempt? {
         val bw = boardRoi.width()
         val bh = boardRoi.height()
@@ -901,8 +1026,20 @@ open class BoardFinder(
 
         val peakX = IntArray(1)
         val peakY = IntArray(1)
-        val xLocal = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac, peakX) ?: return null
-        val yLocal = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac, peakY) ?: return null
+        val xPicked = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac, peakX) ?: return null
+        val yPicked = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac, peakY) ?: return null
+        val xFit = if (uniformSnap) {
+            uniformPitchFromEnergy(xPicked, colEnergy)
+        } else {
+            UniformPitch(xPicked, applied = false, period = -1, origin = -1, spreadPx = 0f)
+        }
+        val yFit = if (uniformSnap) {
+            uniformPitchFromEnergy(yPicked, rowEnergy)
+        } else {
+            UniformPitch(yPicked, applied = false, period = -1, origin = -1, spreadPx = 0f)
+        }
+        val xLocal = xFit.bounds
+        val yLocal = yFit.bounds
 
         // ROI origin is added here. xLocal/yLocal are ROI-relative; the grid is full-frame pixels.
         val xBounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
@@ -923,9 +1060,26 @@ open class BoardFinder(
 
         // *1.5f maps typical clean gutter variance to ≥ MIN_GRID without lowering the gate.
         val conf = (1f - (relVarX + relVarY) * 1.5f).coerceIn(projectionMinConfidence, 0.99f)
-        val grid = GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, boardRoi)
-        return ProjAttempt(grid, relVarX, relVarY, xLocal, yLocal, peakX[0], peakY[0])
+        val gridLeft = (boardRoi.left + xLocal[0]).toInt().coerceIn(0, width - 1)
+        val gridTop = (boardRoi.top + yLocal[0]).toInt().coerceIn(0, height - 1)
+        val gridRight = (boardRoi.left + xLocal[GridGeometry.GRID_SIZE]).toInt()
+            .coerceIn(gridLeft + 1, width)
+        val gridBottom = (boardRoi.top + yLocal[GridGeometry.GRID_SIZE]).toInt()
+            .coerceIn(gridTop + 1, height)
+        val gridRoi = ContentRoi(gridLeft, gridTop, gridRight, gridBottom)
+        val grid = GridGeometry(xBounds, yBounds, GridMethod.PROJECTION, conf, gridRoi)
+        val uniformSnap = snapNote("x", xFit) + " " + snapNote("y", yFit)
+        return ProjAttempt(
+            grid, relVarX, relVarY, xLocal, yLocal, peakX[0], peakY[0], uniformSnap, xPicked, yPicked,
+        )
     }
+
+    private fun snapNote(axis: String, fit: UniformPitch): String =
+        if (!fit.applied) {
+            "$axis:kept"
+        } else {
+            "$axis:period=${fit.period},origin=${fit.origin},spread=${fit.spreadPx.toInt()}"
+        }
 
     /**
      * Orange/red banner text must NOT create false bright-row peaks.

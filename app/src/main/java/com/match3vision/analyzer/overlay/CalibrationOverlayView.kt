@@ -68,6 +68,7 @@ class CalibrationOverlayView(
     private val closeFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB71C1C.toInt() }
 
     private var resultText: String = ""
+    private var autoDismiss: Runnable? = null
 
     init {
         fitsSystemWindows = false
@@ -84,6 +85,19 @@ class CalibrationOverlayView(
     fun showResult(text: String) {
         resultText = text
         invalidate()
+    }
+
+    /** Closes the overlay about 1 s after a measured hit. A later hit restarts the wait. */
+    fun scheduleAutoDismiss(onDismiss: () -> Unit) {
+        cancelAutoDismiss()
+        val task = Runnable { onDismiss() }
+        autoDismiss = task
+        postDelayed(task, CalibrationTarget.AUTO_DISMISS_MS)
+    }
+
+    fun cancelAutoDismiss() {
+        autoDismiss?.let { removeCallbacks(it) }
+        autoDismiss = null
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -109,9 +123,13 @@ class CalibrationOverlayView(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_UP) {
             if (closeRect().contains(event.x, event.y)) {
+                cancelAutoDismiss()
                 onClose()
             } else {
-                onRawUp(event.rawX, event.rawY)
+                val (tx, ty) = drawPoint()
+                if (CalibrationTarget.scoresTap(event.x, event.y, tx, ty)) {
+                    onRawUp(event.rawX, event.rawY)
+                }
             }
         }
         return true
