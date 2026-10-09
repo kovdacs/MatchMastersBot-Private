@@ -114,6 +114,13 @@ class AccessibilityGestureExecutor(
      */
     fun dispatchManualTest(gesture: GestureSpec): InputDispatchResult = dispatchToChannel(gesture)
 
+    /**
+     * Solo ACTIVATE tap. The caller already required the solo layout, a visible
+     * no-target button, and the default-off control. Board swipes stay on
+     * [dispatchChecked].
+     */
+    fun dispatchRecognizedTap(gesture: GestureSpec): InputDispatchResult = dispatchToChannel(gesture)
+
     private fun dispatchToChannel(gesture: GestureSpec): InputDispatchResult {
         val svc = serviceProvider()
             ?: return InputDispatchResult.Failed("AccessibilityService not connected")

@@ -66,6 +66,41 @@ data class Board(
         return h
     }
 
+    /**
+     * Color and shape of the 49 cells. Specials are not part of the key, so a
+     * glowing arrow does not look like a new board. Move generation still uses
+     * the latest frame's specials.
+     */
+    fun labelHash(): Long {
+        var h = 1125899906842597L
+        forEachTile { t ->
+            h = h * 31 + t.color.ordinal
+            h = h * 31 + t.shape.ordinal
+            h = h * 31 + (if (t.isUnknown) 1 else 0)
+        }
+        return h
+    }
+
+    fun labelsAgree(other: Board): Boolean = labelHash() == other.labelHash()
+
+    /**
+     * One key per cell. Unknown cells are [LABEL_UNKNOWN] so they are left out
+     * of a flicker comparison. Every special shares [LABEL_SPECIAL], so a
+     * disco that changes color, shape, or special type stays the same cell.
+     */
+    fun labelKeys(): LongArray {
+        val keys = LongArray(SIZE * SIZE)
+        var i = 0
+        forEachTile { t ->
+            keys[i++] = when {
+                t.special != SpecialType.NONE -> LABEL_SPECIAL
+                t.isUnknown -> LABEL_UNKNOWN
+                else -> (t.color.ordinal.toLong() shl 16) or t.shape.ordinal.toLong()
+            }
+        }
+        return keys
+    }
+
     fun snapshot(): Board = this
 
     fun forEachTile(block: (Tile) -> Unit) {
@@ -85,6 +120,24 @@ data class Board(
 
     companion object {
         const val SIZE = GridGeometry.GRID_SIZE
+        const val LABEL_UNKNOWN = Long.MIN_VALUE
+
+        /** Every special shares one key, so a spinning disco does not look like a new board. */
+        const val LABEL_SPECIAL = Long.MIN_VALUE + 1L
+
+        /** Known cells may differ in at most one place. Unknown cells are skipped. */
+        fun labelsWithinOne(left: LongArray, right: LongArray): Boolean {
+            if (left.size != right.size) return false
+            var differ = 0
+            for (i in left.indices) {
+                if (left[i] == LABEL_UNKNOWN || right[i] == LABEL_UNKNOWN) continue
+                if (left[i] != right[i]) {
+                    differ += 1
+                    if (differ > 1) return false
+                }
+            }
+            return true
+        }
 
         fun fromGrid(tiles: Array<Array<Tile>>): Board = Board(tiles)
 

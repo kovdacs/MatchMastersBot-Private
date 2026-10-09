@@ -95,6 +95,60 @@ class DiagnosticHistoryTest {
     }
 
     @Test
+    fun restart_reloadsCaptureStateStopReasonBoosterAttemptsAndRing() {
+        val history = DiagnosticHistory()
+        val dir = File.createTempFile("diagresume", "dir")
+        dir.delete()
+        dir.mkdirs()
+        val pixels = IntArray(4) { 0xFF00FFFF.toInt() }
+        val frame = DiagnosticFrame.render(
+            pixels = pixels,
+            width = 2,
+            height = 2,
+            roiLeft = 0,
+            roiTop = 0,
+            roiRight = 2,
+            roiBottom = 2,
+            xBoundaries = floatArrayOf(0f, 2f),
+            yBoundaries = floatArrayOf(0f, 2f),
+        )
+        history.noteRuntime("ON", "STOP — freeze")
+        history.setFiveMoveReport(
+            "--- 10 LÉPÉS TESZT ---\n--- BOOSTER ---\n" +
+                "attempt=1 point=(180,940) durationMs=120 result=sent\n",
+        )
+        history.record(bundle(hold = false, stamp = 4_200L, export = frame), frame)
+        DiagnosticFiles.write(dir, history)
+        assertThat(File(dir, "session-resume.txt").readText()).contains("attempt=1 point=(180,940)")
+        val fresh = DiagnosticHistory()
+        DiagnosticFiles.loadInto(fresh, dir)
+        val text = DiagnosticExportText.render(fresh)
+        assertThat(text).contains("captureState=ON")
+        assertThat(text).contains("lastStopReason=STOP — freeze")
+        assertThat(text).contains("attempt=1 point=(180,940)")
+        assertThat(text).contains("durationMs=120")
+        assertThat(fresh.ringSnapshot()).hasSize(1)
+        assertThat(text).contains("seq=4200")
+        DiagnosticFiles.write(dir, fresh)
+        assertThat(File(dir, "ring/frame-00.png").isFile).isTrue()
+        DiagnosticHistoryStore.replaceForTest(DiagnosticHistory(), null)
+        try {
+            DiagnosticHistoryStore.install(dir, versionCode = -1)
+            val exported = DiagnosticHistoryStore.exportText()
+            assertThat(exported).contains("captureState=ON")
+            assertThat(exported).contains("lastStopReason=STOP — freeze")
+            assertThat(exported).contains("result=sent")
+            val once = DiagnosticHistoryStore.ringCount()
+            DiagnosticHistoryStore.install(dir, versionCode = -1)
+            assertThat(DiagnosticHistoryStore.ringCount()).isEqualTo(once)
+            DiagnosticHistoryStore.clearPinForNewSession()
+            assertThat(DiagnosticHistoryStore.exportText()).contains("attempt=1 point=(180,940)")
+        } finally {
+            DiagnosticHistoryStore.replaceForTest(DiagnosticHistory(), null)
+        }
+    }
+
+    @Test
     fun explicitClear_dropsPinnedFirstHold() {
         val history = DiagnosticHistory(capacity = 4)
         val dir = File.createTempFile("diagclear", "dir")

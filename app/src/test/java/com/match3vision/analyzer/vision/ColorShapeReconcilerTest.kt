@@ -159,12 +159,21 @@ class ColorShapeReconcilerTest {
     }
 
     @Test
-    fun highConfContradiction_specialCleared() {
+    fun special_staysPlayableWhenColorAndShapeDisagree() {
         val v = ColorShapeReconciler.reconcile(
             TileColor.R, 0.95f, TileShape.SQUARE, 0.95f, SpecialType.BOMB,
         )
-        assertThat(v.isUnknown).isTrue()
-        assertThat(v.special).isEqualTo(SpecialType.NONE)
+        assertThat(v.isUnknown).isFalse()
+        assertThat(v.special).isEqualTo(SpecialType.BOMB)
+    }
+
+    @Test
+    fun special_withNoColorOrShape_isStillPlayable() {
+        val v = ColorShapeReconciler.reconcile(
+            TileColor.UNKNOWN, 0f, TileShape.UNKNOWN, 0f, SpecialType.LIGHTNING,
+        )
+        assertThat(v.isUnknown).isFalse()
+        assertThat(v.special).isEqualTo(SpecialType.LIGHTNING)
     }
 
     @Test

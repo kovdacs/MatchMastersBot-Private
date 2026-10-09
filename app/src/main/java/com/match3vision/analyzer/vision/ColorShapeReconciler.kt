@@ -62,6 +62,22 @@ object ColorShapeReconciler {
         shapeConf: Float,
         special: SpecialType,
     ): CellVision {
+        val cell = reconcilePair(color, colorConf, shape, shapeConf, special)
+        if (special == SpecialType.NONE) return cell
+        return cell.copy(
+            special = special,
+            isUnknown = false,
+            confidence = maxOf(cell.confidence, VisionThresholds.SPECIAL_MIN_CONFIDENCE).coerceIn(0f, 1f),
+        )
+    }
+
+    private fun reconcilePair(
+        color: TileColor,
+        colorConf: Float,
+        shape: TileShape,
+        shapeConf: Float,
+        special: SpecialType,
+    ): CellVision {
         if (color == TileColor.UNKNOWN && shape == TileShape.UNKNOWN) {
             return CellVision.unknown(confidence = minOf(colorConf, shapeConf))
         }

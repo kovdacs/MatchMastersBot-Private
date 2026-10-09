@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.overlay.AutoPlaySession
+import com.match3vision.analyzer.overlay.OwnerStatus
 
 @Composable
 fun AnalyzerScreen(
@@ -91,6 +92,10 @@ fun AnalyzerScreen(
                     "5. Buborék: INDÍTÁS → auto húzás (ehhez a kisegítő kell)\n" +
                     "6. SZÜNET vagy STOP",
                 style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                OwnerStatus.hu(auto.statusText),
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )
 
@@ -112,6 +117,17 @@ fun AnalyzerScreen(
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                 )
+            }
+
+            Button(
+                onClick = {
+                    viewModel.onStartRequested()
+                    onStartCapture()
+                },
+                enabled = state.status != AnalyzerStatus.AwaitingPermission,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("START")
             }
 
             OutlinedButton(
@@ -428,7 +444,7 @@ private fun CompactRunningPanel(
             "Mód: ${autoModeHu(mode)} · húzások=$moveCount",
             fontWeight = FontWeight.Medium,
         )
-        Text(statusText, style = MaterialTheme.typography.bodyMedium)
+        Text(OwnerStatus.hu(statusText), style = MaterialTheme.typography.bodyMedium)
         Text(
             "Elemző képkocka: $frameGateText",
             color = Color(0xFF2E7D32),

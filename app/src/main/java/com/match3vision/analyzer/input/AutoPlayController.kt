@@ -620,10 +620,11 @@ class AutoPlayController(
     fun fiveMoveRefusal(
         selfCheckThisSession: Boolean,
         a11yConnected: Boolean,
+        autoProbe: Boolean = false,
     ): String? {
         if (mode == Mode.STOPPED) return FiveMoveArm.STOPPED
         if (!a11yConnected) return FiveMoveArm.NEED_A11Y
-        if (!selfCheckThisSession) return FiveMoveArm.NEED_CALIBRATION
+        if (!selfCheckThisSession && !autoProbe) return FiveMoveArm.NEED_CALIBRATION
         if (mode != Mode.RUNNING) return FiveMoveArm.NEED_START
         if (enableSwitch.isEnabled()) return FiveMoveArm.CONTINUOUS
         if (unconfirmedCapLatched) return FiveMoveArm.CAP
@@ -640,8 +641,9 @@ class AutoPlayController(
         selfCheckThisSession: Boolean,
         a11yConnected: Boolean = true,
         clockStartMs: Long = nowMs,
+        autoProbe: Boolean = false,
     ): Boolean {
-        val refusal = fiveMoveRefusal(selfCheckThisSession, a11yConnected)
+        val refusal = fiveMoveRefusal(selfCheckThisSession, a11yConnected, autoProbe)
         if (refusal != null) {
             enableSwitch.setEnabled(false)
             lastReason = refusal
@@ -651,6 +653,7 @@ class AutoPlayController(
             lastReason = FiveMoveArm.ALREADY
             return false
         }
+        if (autoProbe && !selfCheckThisSession) fiveMove.enableAutoProbe()
         enableSwitch.setEnabled(false)
         lastReason = fiveMove.label()
         return true
@@ -665,6 +668,8 @@ class AutoPlayController(
         vision: VisionResult,
         context: RuntimeCycleContext?,
         permit: FiveMoveSession.Permit,
+        hud: com.match3vision.analyzer.hud.HudObservation =
+            com.match3vision.analyzer.hud.HudObservation.UNKNOWN,
     ): InputLoopController.CycleResult? {
         if (mode != Mode.RUNNING || (!analysisOnly && enableSwitch.isEnabled())) {
             enableSwitch.setEnabled(false)
@@ -682,10 +687,11 @@ class AutoPlayController(
             lastReason = fiveMove.stopReason
             return null
         }
+        inputLoop.playSkip = fiveMove.playSkip
         inputLoop.inputEngine().stateMachine().reset()
         enableSwitch.setEnabled(true)
         return try {
-            val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context)
+            val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context, hud)
             lastReason = cycle.reason
             cycle
         } catch (t: Throwable) {

@@ -4,6 +4,7 @@ import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.moves.MoveAnalysisEngine
+import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.moves.PlayMoveRanker
 import com.match3vision.analyzer.vision.VisionResult
 
@@ -19,6 +20,9 @@ class InputLoopController(
     private val inputEngine: AutomaticInputEngine = AutomaticInputEngine(),
     private val animationWaitMs: Long = InputThresholds.ANIMATION_WAIT_MS,
 ) {
+    /** Ranked moves skipped after one confirmed miss. The session owns the value. */
+    var playSkip: Int = 0
+
     data class CycleResult(
         val state: BotLoopState,
         val outcome: BotLoopOutcome,
@@ -64,6 +68,7 @@ class InputLoopController(
     fun runAnalyzeAndMaybeInput(
         vision: VisionResult,
         context: RuntimeCycleContext? = null,
+        hud: HudObservation = HudObservation.UNKNOWN,
     ): CycleResult {
         val sm = inputEngine.stateMachine()
         if (sm.state == BotLoopState.STOP) {
@@ -117,7 +122,7 @@ class InputLoopController(
         AutoPlayTrace.log(AutoPlayTrace.TAG_VISION_PASS, "boardConf=${vision.boardConfidence}")
         sm.onValidationPass()
 
-        val analysis = moveAnalysis.analyze(vision)
+        val analysis = moveAnalysis.analyze(vision, hud = hud)
         lastPlayRanking = if (analysis.blocked) null else analysis.play
         val candidateCount = lastPlayRanking?.ordered?.size ?: 0
         if (analysis.blocked) {
@@ -133,7 +138,7 @@ class InputLoopController(
             )
         }
         sm.onAnalysisReady()
-        val top = lastPlayRanking?.ordered?.firstOrNull()?.toEvaluation()
+        val top = lastPlayRanking?.ordered?.drop(playSkip.coerceAtLeast(0))?.firstOrNull()?.toEvaluation()
         if (top == null) {
             AutoPlayTrace.log("MOVE none", AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
             val t = sm.onNoLegalMove(AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
@@ -271,9 +276,9 @@ class InputLoopController(
         if (!context.hasFrame) return "FRAME: no frame"
         val seq = context.frameSequenceDecision
         if (seq != null && !seq.allow) return seq.reason
-        if (context.frameAgeMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
+        if (context.frameAgeMs > context.maxFrameAgeMs) {
             return FrameSequenceGate.HOLD_STALE_FRAME +
-                " age=${context.frameAgeMs}ms > ${GestureFailSafe.MAX_FRAME_AGE_MS}ms"
+                " age=${context.frameAgeMs}ms > ${context.maxFrameAgeMs}ms"
         }
         return null
     }

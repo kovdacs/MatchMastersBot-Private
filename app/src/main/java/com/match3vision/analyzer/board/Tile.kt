@@ -18,8 +18,13 @@ data class Tile(
     val visible: Boolean = true,
     val locked: Boolean = false,
 ) {
+    /**
+     * A special (arrow, bomb, lightning, disco) is a playable cell. Its idle
+     * animation may hide the color or the shape; that does not make it unknown.
+     */
     val isUnknown: Boolean
-        get() = color == TileColor.UNKNOWN || shape == TileShape.UNKNOWN || !visible
+        get() = special == SpecialType.NONE &&
+            (color == TileColor.UNKNOWN || shape == TileShape.UNKNOWN || !visible)
 
     val tileType: TileType
         get() = when {

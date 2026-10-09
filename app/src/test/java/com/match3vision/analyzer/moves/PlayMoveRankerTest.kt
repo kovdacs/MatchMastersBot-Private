@@ -160,6 +160,31 @@ class PlayMoveRankerTest {
     }
 
     @Test
+    fun twoExtras_playsTheHigherOneFirst() {
+        val board = board {
+            this[0][0] = TileColor.R
+            this[0][1] = TileColor.R
+            this[0][2] = TileColor.R
+            this[0][3] = TileColor.G
+            this[1][3] = TileColor.R
+            this[2][3] = TileColor.Y
+            this[6][0] = TileColor.B
+            this[6][1] = TileColor.B
+            this[6][2] = TileColor.B
+            this[6][3] = TileColor.R
+            this[5][3] = TileColor.B
+            this[4][3] = TileColor.Y
+        }
+        val higher = find(board, Move(0, 3, 1, 3))
+        val lower = find(board, Move(5, 3, 6, 3))
+        assertThat(higher.extraMove).isTrue()
+        assertThat(lower.extraMove).isTrue()
+        assertThat(lower.blueCleared).isGreaterThan(higher.blueCleared)
+        val ordered = ranker.rank(board).ordered
+        assertThat(ordered.indexOf(higher)).isLessThan(ordered.indexOf(lower))
+    }
+
+    @Test
     fun sameScore_prefersTheLowerRow() {
         val board = board {
             this[1][0] = TileColor.G

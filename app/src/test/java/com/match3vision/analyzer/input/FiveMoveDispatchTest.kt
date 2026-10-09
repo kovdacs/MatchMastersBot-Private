@@ -2,6 +2,8 @@ package com.match3vision.analyzer.input
 
 import com.google.common.truth.Truth.assertThat
 import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.hud.HudObservation
+import com.match3vision.analyzer.hud.TurnGate
 import com.match3vision.analyzer.capture.ScreenMeasurement
 import com.match3vision.analyzer.vision.CellVision
 import com.match3vision.analyzer.vision.GridGeometry
@@ -66,6 +68,25 @@ class FiveMoveDispatchTest {
     }
 
     @Test
+    fun unknownHud_andVisionPass_dispatchesAMove() {
+        val (ctrl, exec) = controllerWith(CompletingExecutor(complete = true))
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val hud = HudObservation.UNKNOWN
+        assertThat(hud.hudState).isEqualTo("UNKNOWN")
+        assertThat(TurnGate.refusal(hud)).isNull()
+        ctrl.fiveMove.noteHud(hud.log())
+        val go = ctrl.fiveMove.requestDispatch(readyGates(1_000L))
+        assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        val permit = (go as FiveMoveSession.Decision.Go).permit
+        val cycle = ctrl.dispatchFiveMoveOnce(passVision(), context(a11yConnected = true), permit, hud)
+        val executed = cycle!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+        assertThat(executed.verificationEligible).isTrue()
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(ctrl.fiveMove.report()).contains("hudState=UNKNOWN")
+    }
+
+    @Test
     fun failedCallback_blocksMoves2To5_andRunCycleStillDoesNotDispatch() {
         val (ctrl, exec) = controllerWith(CompletingExecutor(complete = false))
         assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
@@ -94,9 +115,10 @@ class FiveMoveDispatchTest {
                 beforeUnknown = 0,
             ),
         )
-        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         assertThat(ctrl.fiveMove.requestDispatch(readyGates(2_000L)))
-            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))
         assertThat(exec.dispatched).hasSize(1)
         assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(0)
@@ -132,15 +154,30 @@ class FiveMoveDispatchTest {
             )
             ctrl.fiveMove.onSettle(
                 FiveMoveSession.SettleSample(
-                    nowMs = start + 400L,
+                    nowMs = start + 2_600L,
                     boardHash = 50L + index,
-                    diffFraction = 0f,
+                    diffFraction = 0.45f,
                     frameFresh = true,
                     roiPlausible = true,
                     visionPass = true,
                     unknownCount = 0,
                     ownUi = false,
                     a11yConnected = true,
+                    frameSequence = index * 2L + 2L,
+                ),
+            )
+            ctrl.fiveMove.onSettle(
+                FiveMoveSession.SettleSample(
+                    nowMs = start + 3_000L,
+                    boardHash = 50L + index,
+                    diffFraction = 0.02f,
+                    frameFresh = true,
+                    roiPlausible = true,
+                    visionPass = true,
+                    unknownCount = 0,
+                    ownUi = false,
+                    a11yConnected = true,
+                    frameSequence = index * 2L + 3L,
                 ),
             )
         }
@@ -163,7 +200,7 @@ class FiveMoveDispatchTest {
         assertThat(exec.dispatched).hasSize(FiveMoveSession.MAX_MOVES)
         val report = ctrl.fiveMove.report()
         assertThat(report).contains("measuredSessionMs=")
-        assertThat(report).contains("durationMs=400")
+        assertThat(report).contains("durationMs=3000")
     }
 
     @Test
@@ -225,7 +262,7 @@ class FiveMoveDispatchTest {
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         val failed = settleCtrl.fiveMove.onSettle(
             FiveMoveSession.SettleSample(
-                nowMs = 1_000L + FiveMoveSession.PER_MOVE_BUDGET_MS,
+                nowMs = 1_000L + FiveMoveSession.SETTLE_WAIT_MS,
                 boardHash = executed.beforeBoardHash + 1,
                 diffFraction = 0.16f,
                 frameFresh = true,
@@ -237,7 +274,7 @@ class FiveMoveDispatchTest {
             ),
         )
         assertThat(failed).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat(settleCtrl.fiveMove.movesSnapshot().single().verification).contains("CHANGED_UNSETTLED")
+        assertThat(settleCtrl.fiveMove.movesSnapshot().single().verification).contains("settle wait")
         assertThat(settleCtrl.fiveMove.verifiedCount).isEqualTo(0)
         settleCtrl.runCycleIfActive(passVision(), context(true))
         assertThat(settleCtrl.fiveMove.requestDispatch(readyGates(30_000L)))

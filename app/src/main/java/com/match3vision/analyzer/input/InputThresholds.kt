@@ -16,8 +16,8 @@ object InputThresholds {
     /** Max consecutive VERIFY_RESULT failures before FAIL-SAFE STOP. */
     const val MAX_VERIFY_FAILURES = 2
 
-    /** Default swipe duration for AccessibilityService / shell gesture. */
-    const val SWIPE_DURATION_MS = 120L
+    /** Center-to-center swipe. Long enough to land in the neighbour cell. */
+    const val SWIPE_DURATION_MS = 280L
 
     const val MIN_GRID_CONFIDENCE = VisionThresholds.MIN_GRID_CONFIDENCE
     const val MIN_BOARD_CONFIDENCE = VisionThresholds.MIN_BOARD_CONFIDENCE
