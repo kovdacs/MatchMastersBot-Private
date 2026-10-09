@@ -573,6 +573,47 @@ class AutoPlayController(
     }
 
     /**
+     * INDÍTÁS when a saved or fresh calibration is already valid.
+     * Starts the analysis loop with the input switch off, so the 10-move
+     * session can arm in the same press. Does not enable continuous play.
+     */
+    fun prepareScoredSession(
+        a11yConnected: Boolean,
+        captureReady: Boolean,
+        overlayReady: Boolean,
+    ): Boolean {
+        if (mode == Mode.STOPPED) {
+            val block = explicitFiveMoveRestart(a11yConnected, captureReady, overlayReady)
+            if (block != null) {
+                lastReason = block
+                return false
+            }
+        }
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveArm.CAP
+            return false
+        }
+        if (!a11yConnected || !captureReady || !overlayReady) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveArm.PRESS_START
+            return false
+        }
+        val sm = inputLoop.inputEngine().stateMachine()
+        if (sm.state == BotLoopState.STOP || sm.state == BotLoopState.HOLD) {
+            sm.reset()
+        }
+        enableSwitch.setEnabled(false)
+        analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
+        mode = Mode.RUNNING
+        lastReason = "játék — 10 lépés, pontozott lépésválasztás"
+        AutoPlayTrace.clearLastStop()
+        AutoPlayTrace.log("MODE SCORED", "input DISABLED until each 10-move gesture")
+        return true
+    }
+
+    /**
      * Reasons that do not depend on one camera frame.
      * A missing board is not one of them: the bubble waits for a passing frame.
      */

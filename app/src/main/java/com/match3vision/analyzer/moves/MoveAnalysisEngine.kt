@@ -29,10 +29,17 @@ class MoveAnalysisEngine(
         val blocked: Boolean,
         val holdReason: String?,
         val topMoves: List<MoveEvaluation>,
+        /**
+         * Real-play order: extra move, then blue gems, then total gems, then
+         * lower on the board. Empty when the vision gate blocks the decision.
+         * [topMoves] stays the older EV list so existing diagnostics keep it.
+         */
+        val play: PlayMoveRanker.Ranking = PlayMoveRanker.EMPTY_RANKING,
     ) {
         /** TOP-5 (or fewer) ranked by EV/score descending. */
         val top5: List<MoveEvaluation> get() = topMoves
         val hasMoves: Boolean get() = topMoves.isNotEmpty()
+        val playTop3: List<PlayMoveRanker.Candidate> get() = play.top3
     }
 
     fun analyze(vision: VisionResult, opponentScore: Float = 0f): AnalysisResult {
@@ -111,6 +118,7 @@ class MoveAnalysisEngine(
             blocked = false,
             holdReason = null,
             topMoves = ranked,
+            play = PlayMoveRanker(moveGenerator).rank(board),
         )
     }
 

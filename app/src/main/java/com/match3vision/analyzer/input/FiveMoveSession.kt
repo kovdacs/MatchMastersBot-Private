@@ -1,5 +1,7 @@
 package com.match3vision.analyzer.input
 
+import com.match3vision.analyzer.moves.PlayMoveRanker
+
 /**
  * Controlled phone test: at most ten real moves, then stop.
  *
@@ -51,6 +53,12 @@ class FiveMoveSession {
         val toY: Float,
         val beforeHash: Long,
         val beforeUnknown: Int,
+        val playExport: String = "",
+        val matchLen: Int = 0,
+        val extraMove: Boolean = false,
+        val blueCleared: Int = 0,
+        val totalCleared: Int = 0,
+        val playUncertain: Boolean = false,
     )
 
     data class SettleSample(
@@ -87,6 +95,12 @@ class FiveMoveSession {
         val userInterference: Boolean = false,
         val outsideTouches: Int = 0,
         val boardKeptChanging: Boolean = false,
+        val playExport: String = "",
+        val matchLen: Int = 0,
+        val extraMove: Boolean = false,
+        val blueCleared: Int = 0,
+        val totalCleared: Int = 0,
+        val playUncertain: Boolean = false,
     )
 
     sealed class Decision {
@@ -130,6 +144,12 @@ class FiveMoveSession {
     /** Sequence of the frame that verified the previous move. 0 until then. */
     private var lastSettledFrameSequence: Long = 0L
 
+    /** Reused calibration line, included in the export when set. */
+    private var calibrationLine: String = ""
+
+    private val gameLines = ArrayList<String>()
+    private var pendingGameLog: GameMoveLog.Pending? = null
+
     private data class OpenMove(
         val number: Int,
         val startedAtMs: Long,
@@ -141,6 +161,12 @@ class FiveMoveSession {
         val beforeHash: Long,
         val beforeUnknown: Int,
         val callback: String,
+        val playExport: String = "",
+        val matchLen: Int = 0,
+        val extraMove: Boolean = false,
+        val blueCleared: Int = 0,
+        val totalCleared: Int = 0,
+        val playUncertain: Boolean = false,
         var ignoredCount: Int = 0,
         val ignoredReasons: ArrayList<String> = ArrayList(),
         var outsideTouches: Int = 0,
@@ -177,11 +203,51 @@ class FiveMoveSession {
         outsideTouches = 0
         suppressOutsideUntilMs = 0L
         lastSettledFrameSequence = 0L
+        calibrationLine = ""
+        gameLines.clear()
+        pendingGameLog = null
         return true
     }
 
     fun noteStartExport(text: String) {
         startExport = text.trim()
+    }
+
+    fun noteCalibration(text: String) {
+        calibrationLine = text.trim()
+    }
+
+    fun beginGameLog(pending: GameMoveLog.Pending) {
+        pendingGameLog = pending
+    }
+
+    fun finishGameLog(
+        after: GameMoveLog.BoardView?,
+        verification: String,
+        settleMs: Long,
+        elapsedMs: Long,
+        stopReason: String,
+        userInterference: Boolean,
+    ) {
+        val pending = pendingGameLog ?: return
+        pendingGameLog = null
+        gameLines += GameMoveLog.finish(
+            pending = pending,
+            after = after,
+            verification = verification,
+            settleMs = settleMs,
+            elapsedMs = elapsedMs,
+            stopReason = stopReason,
+            userInterference = userInterference,
+        )
+    }
+
+    fun gameLogText(): String = buildString {
+        gameLines.forEach { appendLine(it) }
+        val pending = pendingGameLog
+        if (pending != null) {
+            appendLine(GameMoveLog.unfinished(pending, stopReason, pending.before.timestampMs))
+        }
     }
 
     fun clear() {
@@ -198,6 +264,9 @@ class FiveMoveSession {
         outsideTouches = 0
         suppressOutsideUntilMs = 0L
         lastSettledFrameSequence = 0L
+        calibrationLine = ""
+        gameLines.clear()
+        pendingGameLog = null
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -290,6 +359,12 @@ class FiveMoveSession {
                 afterUnknown = fact.beforeUnknown,
                 startedAtMs = fact.startedAtMs,
                 finishedAtMs = fact.nowMs,
+                playExport = fact.playExport,
+                matchLen = fact.matchLen,
+                extraMove = fact.extraMove,
+                blueCleared = fact.blueCleared,
+                totalCleared = fact.totalCleared,
+                playUncertain = fact.playUncertain,
             )
             return stop(fact.nowMs, "STOP — gesture callback was not completed")
         }
@@ -303,8 +378,14 @@ class FiveMoveSession {
             toY = fact.toY,
             beforeHash = fact.beforeHash,
             beforeUnknown = fact.beforeUnknown,
-            callback = callback,
-        )
+                callback = callback,
+                playExport = fact.playExport,
+                matchLen = fact.matchLen,
+                extraMove = fact.extraMove,
+                blueCleared = fact.blueCleared,
+                totalCleared = fact.totalCleared,
+                playUncertain = fact.playUncertain,
+            )
         phase = Phase.SETTLING
         return Decision.Hold("settling move $gesturesDispatched")
     }
@@ -394,6 +475,12 @@ class FiveMoveSession {
                 userInterference = open.outsideTouches > 0 || reason.contains("user interference"),
                 outsideTouches = open.outsideTouches,
                 boardKeptChanging = open.sawBoardChange,
+                playExport = open.playExport,
+                matchLen = open.matchLen,
+                extraMove = open.extraMove,
+                blueCleared = open.blueCleared,
+                totalCleared = open.totalCleared,
+                playUncertain = open.playUncertain,
             )
             openMove = null
         }
@@ -427,6 +514,11 @@ class FiveMoveSession {
         val measured = if (phase == Phase.IDLE) 0L else (end - startedAtMs).coerceAtLeast(0L)
         appendLine("measuredSessionMs=$measured")
         appendLine("verified=$verifiedCount/$MAX_MOVES gestures=$gesturesDispatched")
+        appendLine(PlayMoveRanker.EXTRA_MOVE_RULE)
+        if (calibrationLine.isNotBlank()) appendLine(calibrationLine)
+        appendLine("predictedExtraMoveMatches=${moves.count { it.extraMove }}")
+        appendLine("predictedBlueCleared=${moves.sumOf { it.blueCleared }}")
+        appendLine("uncertainDecisions=${moves.count { it.playUncertain }}")
         appendLine(
             "changedUnsettled is not a verified move. " +
                 "A move counts only after a fresh stable PASS board differs from the pre-move board.",
@@ -458,7 +550,20 @@ class FiveMoveSession {
                     "boardKeptChanging=${move.boardKeptChanging} settleMs=${move.durationMs} " +
                     "settleBudgetMs=$PER_MOVE_BUDGET_MS",
             )
+            if (move.playExport.isNotBlank()) {
+                appendLine(
+                    "play matchLen=${move.matchLen} extraMove=${if (move.extraMove) "yes" else "no"} " +
+                        "blueCleared=${move.blueCleared} totalCleared=${move.totalCleared} " +
+                        "uncertain=${if (move.playUncertain) "yes" else "no"}",
+                )
+                appendLine(move.playExport.trimEnd())
+            }
         }
+        appendLine("--- GAME LOG ---")
+        appendLine("format=jsonl")
+        appendLine("personalData=none")
+        val log = gameLogText()
+        if (log.isBlank()) appendLine("moves: none") else append(log)
     }
 
     private fun holdReason(gates: Gates): String? = when {
@@ -537,6 +642,12 @@ class FiveMoveSession {
             userInterference = open.outsideTouches > 0 || verification.contains("user interference"),
             outsideTouches = open.outsideTouches,
             boardKeptChanging = open.sawBoardChange,
+            playExport = open.playExport,
+            matchLen = open.matchLen,
+            extraMove = open.extraMove,
+            blueCleared = open.blueCleared,
+            totalCleared = open.totalCleared,
+            playUncertain = open.playUncertain,
         )
         openMove = null
     }
@@ -559,6 +670,12 @@ class FiveMoveSession {
         userInterference: Boolean = false,
         outsideTouches: Int = 0,
         boardKeptChanging: Boolean = false,
+        playExport: String = "",
+        matchLen: Int = 0,
+        extraMove: Boolean = false,
+        blueCleared: Int = 0,
+        totalCleared: Int = 0,
+        playUncertain: Boolean = false,
     ) {
         moves += MoveRecord(
             number = number,
@@ -579,6 +696,12 @@ class FiveMoveSession {
             userInterference = userInterference,
             outsideTouches = outsideTouches,
             boardKeptChanging = boardKeptChanging,
+            playExport = playExport,
+            matchLen = matchLen,
+            extraMove = extraMove,
+            blueCleared = blueCleared,
+            totalCleared = totalCleared,
+            playUncertain = playUncertain,
         )
     }
 

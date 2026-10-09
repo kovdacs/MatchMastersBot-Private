@@ -4,6 +4,7 @@ import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.moves.MoveAnalysisEngine
+import com.match3vision.analyzer.moves.PlayMoveRanker
 import com.match3vision.analyzer.vision.VisionResult
 
 /**
@@ -44,6 +45,13 @@ class InputLoopController(
         /** Gesture callback fact. Not a copy of [lastDispatch] and not VERIFY SUCCESS. */
         val callbackOutcome: String = "not dispatched",
     )
+
+    /**
+     * Ranking from the latest PASS analysis. The selected move is
+     * [PlayMoveRanker.Ranking.ordered] first, not the older EV list.
+     */
+    var lastPlayRanking: PlayMoveRanker.Ranking? = null
+        private set
 
     fun inputEngine(): AutomaticInputEngine = inputEngine
     fun isInputEnabled(): Boolean = inputEngine.isInputEnabled()
@@ -110,7 +118,8 @@ class InputLoopController(
         sm.onValidationPass()
 
         val analysis = moveAnalysis.analyze(vision)
-        val candidateCount = analysis.top5.size
+        lastPlayRanking = if (analysis.blocked) null else analysis.play
+        val candidateCount = lastPlayRanking?.ordered?.size ?: 0
         if (analysis.blocked) {
             val reason = analysis.holdReason ?: MoveAnalysisEngine.HOLD_BLOCKED
             AutoPlayTrace.log("MOVE none", reason)
@@ -124,7 +133,7 @@ class InputLoopController(
             )
         }
         sm.onAnalysisReady()
-        val top = analysis.top5.firstOrNull()
+        val top = lastPlayRanking?.ordered?.firstOrNull()?.toEvaluation()
         if (top == null) {
             AutoPlayTrace.log("MOVE none", AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
             val t = sm.onNoLegalMove(AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)

@@ -11,9 +11,11 @@ import java.io.File
  * [STATUS_RECORDED_UNPROVEN] is luma-only / not measured and does not unlock.
  * [Record.alignmentProven] is always false. Within tolerance is not proof.
  *
- * The record lives in this process. Process death clears it. A new process
- * must run TESZT ÉRINTÉS again. [com.match3vision.analyzer.input.AutoPlayController.resetForNewSession]
- * does not clear it.
+ * The in-memory record is cleared by [clear] and by process death.
+ * [CalibrationLibrary] may restore a hit whose screen size, rotation,
+ * density, and app versionCode still match. Restoring does not set
+ * [Record.alignmentProven]. [com.match3vision.analyzer.input.AutoPlayController.resetForNewSession]
+ * does not clear the in-memory record.
  */
 object CoordinateSelfCheck {
     const val STATUS_ABSENT = "ABSENT"
@@ -105,6 +107,18 @@ object CoordinateSelfCheck {
     private var current: Record? = null
 
     fun current(): Record? = current
+
+    /**
+     * Put a previously saved hit back. The timestamp is kept, so a later
+     * session can tell a fresh measurement from a reused one.
+     * [Record.alignmentProven] stays false.
+     */
+    fun restore(record: Record) {
+        require(record.status == STATUS_MEASURED_WITHIN_TOLERANCE) {
+            "only a measured hit can be restored"
+        }
+        current = record
+    }
 
     fun statusLabel(): String = current?.status ?: STATUS_ABSENT
 
