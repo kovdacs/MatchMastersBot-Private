@@ -102,8 +102,9 @@ class HudSafetyTest {
         stampLegend(pixels, 520, TileColor.P, "d4", 170, 50, 210)
         stampLegend(pixels, 640, TileColor.Y, "d5", 240, 210, 40)
         for (i in 0 until 10) {
-            val x = 390 + i * 64
-            paint(pixels, x - 6, x + 6, 924, 936, 230, 230, 80)
+            val x = HudReader.circleX(i)
+            val y = HudReader.CIRCLE_ROW_Y
+            paint(pixels, x - 8, x + 8, y - 8, y + 8, 230, 230, 80)
         }
         val hud = HudReader.read(pixels, 1080, 2400)
         assertThat(hud.soloLayout).isTrue()
@@ -117,8 +118,9 @@ class HudSafetyTest {
 
         val blank = frame()
         for (i in 0 until 10) {
-            val x = 390 + i * 64
-            paint(blank, x - 6, x + 6, 924, 936, 230, 230, 80)
+            val x = HudReader.circleX(i)
+            val y = HudReader.CIRCLE_ROW_Y
+            paint(blank, x - 8, x + 8, y - 8, y + 8, 230, 230, 80)
         }
         val unread = HudReader.read(blank, 1080, 2400)
         assertThat(unread.legendPoints).isEmpty()

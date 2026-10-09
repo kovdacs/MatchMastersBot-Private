@@ -182,6 +182,8 @@ class PlaySettle0270Test {
             playExport = "",
         )
         assertThat(result).contains("PASS")
+        assertThat(session.boosterLatched).isFalse()
+        assertThat(session.noteBoosterBoard(activateVisible = false, barFull = false)).isEqualTo("latched")
         assertThat(session.boosterLatched).isTrue()
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.swipesVerified).isEqualTo(0)

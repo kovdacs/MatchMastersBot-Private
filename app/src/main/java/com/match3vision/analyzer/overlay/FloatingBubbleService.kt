@@ -41,6 +41,7 @@ import com.match3vision.analyzer.input.BoardStability
 import com.match3vision.analyzer.input.DispatchPermit
 import com.match3vision.analyzer.input.DispatchRecheck
 import com.match3vision.analyzer.input.FiveMoveSession
+import com.match3vision.analyzer.input.SwipeGuard
 import com.match3vision.analyzer.input.FrameClock
 import com.match3vision.analyzer.input.FreshFrameDispatch
 import com.match3vision.analyzer.input.OverlayOutsideTouch
@@ -1976,7 +1977,7 @@ class FloatingBubbleService : Service() {
         val executor = AccessibilityGestureExecutor()
         if (!executor.isReady()) return false
         val started = System.currentTimeMillis()
-        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = 80L)
+        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
         val latest = CaptureService.managerOrNull()?.latestFrame?.value
         var frameNow = if (latest != null && latest.sequence >= frame.sequence) latest else frame
         var visionNow = vision
@@ -2246,17 +2247,40 @@ class FloatingBubbleService : Service() {
                         return true
                     }
                 }
-                val extraMove = PlayMoveRanker().rank(Board.fromVision(vision.board)).ordered.any { it.extraMove }
-                val boosterDecision = SoloBooster.decision(
-                    hud,
-                    BoosterControl.enabled,
-                    extraMove,
-                    session.boosterLatched,
-                    swipesVerified = session.swipesVerified,
-                    selfCheckMeasured = gates.selfCheckMeasured,
+                val boardNow = Board.fromVision(vision.board)
+                val motion = session.considerSwipeFrame(frame.ageMs(), boardNow.labelHash())
+                if (motion != null) {
+                    session.releaseUnusedPermit()
+                    AutoPlaySession.updateDiagnostics(
+                        phase = "TARTÁS",
+                        cycleReason = motion,
+                        gestureStatus = "NOT CREATED",
+                    )
+                    refreshBubbleUi()
+                    return false
+                }
+                session.noteBoosterBoard(
+                    activateVisible = hud.activateWord || hud.boosterReady,
+                    barFull = hud.barFull,
                 )
+                val extraMove = PlayMoveRanker().rank(boardNow).ordered.any { it.extraMove }
+                val boosterDecision = when {
+                    session.boosterLatched -> "latched"
+                    session.boosterGaveUp -> "missed"
+                    !session.boosterMayTap() && session.boosterAttempts > 0 -> "watching"
+                    else -> SoloBooster.decision(
+                        hud,
+                        BoosterControl.enabled,
+                        extraMove,
+                        session.boosterLatched,
+                        swipesVerified = session.swipesVerified,
+                        selfCheckMeasured = gates.selfCheckMeasured,
+                    )
+                }
                 session.noteHud(moveTrace(hud, boosterDecision, hud.log()))
-                if (trySoloBooster(session, hud, frame, vision, extraMove, boosterDecision)) {
+                if (session.boosterMayTap() &&
+                    trySoloBooster(session, hud, frame, vision, extraMove, boosterDecision)
+                ) {
                     session.releaseUnusedPermit()
                     if (session.phase == FiveMoveSession.Phase.STOPPED) {
                         flushFiveMoveReport(session)
@@ -2272,6 +2296,38 @@ class FloatingBubbleService : Service() {
                     }
                     refreshBubbleUi()
                     return false
+                }
+                val chosenMove = PlayMoveRanker().rank(boardNow).ordered
+                    .drop(session.playSkip)
+                    .firstOrNull()
+                    ?.move
+                if (chosenMove != null) {
+                    val latest = CaptureService.managerOrNull()?.latestFrame?.value
+                    if (latest != null && latest.sequence > frame.sequence) {
+                        val analyzed = withContext(Dispatchers.Default) { analyzeFrame(latest) }
+                        val newestVision = analyzed.vision
+                        if (newestVision != null && newestVision.validation.isPass) {
+                            val newest = Board.fromVision(newestVision.board)
+                            if (!SwipeGuard.cellsMatch(
+                                    boardNow.labelKeys(),
+                                    newest.labelKeys(),
+                                    chosenMove.r1,
+                                    chosenMove.c1,
+                                    chosenMove.r2,
+                                    chosenMove.c2,
+                                )
+                            ) {
+                                session.releaseUnusedPermit()
+                                AutoPlaySession.updateDiagnostics(
+                                    phase = "TARTÁS",
+                                    cycleReason = "label error",
+                                    gestureStatus = "NOT CREATED",
+                                )
+                                refreshBubbleUi()
+                                return false
+                            }
+                        }
+                    }
                 }
                 val started = System.currentTimeMillis()
                 writeMoveFrame(decision.permit.moveNumber, "before", pixels, frame, vision)
@@ -2373,6 +2429,9 @@ class FloatingBubbleService : Service() {
                         beforeLabel = swiped.labelHash(),
                         beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
                         longSettle = (chosen?.matchLen ?: 0) >= 4 || chosen?.extraMove == true || touchesSpecial,
+                        frameAgeMs = frame.ageMs(),
+                        labelsMatchedPrevious = true,
+                        onCellCenter = true,
                     ),
                 )
                 refreshBubbleUi()

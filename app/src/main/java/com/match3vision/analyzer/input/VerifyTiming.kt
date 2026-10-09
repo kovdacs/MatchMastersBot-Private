@@ -14,7 +14,7 @@ package com.match3vision.analyzer.input
  * [FrameClock] (`SystemClock.elapsedRealtime`) at that same receipt.
  * `Image.getTimestamp()` is not read. Neither value is the exposure time.
  *
- * The gesture duration is [InputThresholds.SWIPE_DURATION_MS] (120). The
+ * The gesture duration is [InputThresholds.SWIPE_DURATION_MS] (280). The
  * accessibility callback is awaited inside `dispatchGesture`. Verification
  * does not start at schedule time and does not start when the callback
  * returns. The bubble then waits [POST_DISPATCH_WAIT_MS], which is

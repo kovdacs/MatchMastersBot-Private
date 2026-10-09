@@ -107,7 +107,7 @@ class FiveMoveSessionTest {
             .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat(session.gesturesDispatched).isEqualTo(FiveMoveSession.MAX_MOVES)
         val report = session.report()
-        assertThat(report).contains("sessionLimitMs=600000")
+        assertThat(report).contains("sessionLimitMs=900000")
         assertThat(report).contains("settleWaitMs=60000")
         assertThat(report).contains("measuredSessionMs=")
         assertThat(session.movesSnapshot()).hasSize(FiveMoveSession.MAX_MOVES)
@@ -121,7 +121,7 @@ class FiveMoveSessionTest {
         session.arm(0L)
         val decision = session.requestDispatch(gates(nowMs = FiveMoveSession.SESSION_LIMIT_MS))
         assertThat(decision).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat((decision as FiveMoveSession.Decision.Stop).reason).contains("600s")
+        assertThat((decision as FiveMoveSession.Decision.Stop).reason).contains("900s")
         assertThat(session.gesturesDispatched).isEqualTo(0)
     }
 

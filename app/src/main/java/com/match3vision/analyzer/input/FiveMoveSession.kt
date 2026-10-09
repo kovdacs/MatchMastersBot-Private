@@ -16,9 +16,10 @@ import kotlin.math.hypot
  * All verified moves must finish inside [SESSION_LIMIT_MS].
  * A swipe is never abandoned at 20 s. The next swipe waits for a playable
  * board: two vision PASS frames whose known labels differ in at most one
- * cell, at least [PLAYABLE_GAP_MS] apart (or one measured frame interval,
- * when that is longer), both captured after the swipe, both at least
- * [POST_SWIPE_MS] after it ( [POST_SWIPE_BIG_MS] after a 4+ clear or a
+ * cell, at least [PLAYABLE_GAP_MS] apart. The gap does not grow with a slow
+ * camera. The post-swipe wait is skipped when the first PASS frame already
+ * differs from the pre-swipe board. Otherwise both frames are at least
+ * [POST_SWIPE_MS] after the swipe ([POST_SWIPE_BIG_MS] after a 4+ clear or a
  * special). The wait and the gap use capture time. Frame age up to
  * [SETTLE_FRAME_AGE_MS] is accepted. Those waits scale with the measured
  * capture interval, at most twice the nominal wait. The wait itself never
@@ -74,6 +75,9 @@ class FiveMoveSession {
         val beforeCircles: Int? = null,
         /** 4+ clear or a special. The post-swipe wait is longer. */
         val longSettle: Boolean = false,
+        val frameAgeMs: Long = 0L,
+        val labelsMatchedPrevious: Boolean = true,
+        val onCellCenter: Boolean = true,
     )
 
     data class SettleSample(
@@ -161,9 +165,21 @@ class FiveMoveSession {
     var playSkip: Int = 0
         private set
 
-    /** One ACTIVATE attempt per session. A miss does not stop gem play. */
+    /** The word is gone or the bar emptied. A sent tap is not itself a latch. */
     var boosterLatched: Boolean = false
         private set
+
+    /** Three sent taps still showed ACTIVATE, or the tap never got a fresh frame. */
+    var boosterGaveUp: Boolean = false
+        private set
+
+    var boosterAttempts: Int = 0
+        private set
+
+    private var boosterReadyToRetry: Boolean = false
+    private var boosterBoardsSinceTap: Int = 0
+    private val boosterAttemptLog = ArrayList<String>()
+    private var previousPassLabel: Long? = null
 
     /** Move 1 may dispatch before a saved calibration exists. */
     var autoProbe: Boolean = false
@@ -237,6 +253,9 @@ class FiveMoveSession {
         val beforeLabel: Long = beforeHash,
         val beforeCircles: Int? = null,
         val longSettle: Boolean = false,
+        val frameAgeMs: Long = 0L,
+        val labelsMatchedPrevious: Boolean = true,
+        val onCellCenter: Boolean = true,
         /** False for an ACTIVATE tap. It settles, and it is not a verified swipe. */
         val countsAsSwipe: Boolean = true,
         var anchorLabel: Long? = null,
@@ -365,7 +384,7 @@ class FiveMoveSession {
         hudTrace = ""
         gameLines.clear()
         pendingGameLog = null
-        boosterLatched = false
+        resetBooster()
         autoProbe = false
         pendingAutoSave = false
         return true
@@ -445,9 +464,19 @@ class FiveMoveSession {
         hudTrace = ""
         gameLines.clear()
         pendingGameLog = null
-        boosterLatched = false
+        resetBooster()
         autoProbe = false
         pendingAutoSave = false
+    }
+
+    private fun resetBooster() {
+        boosterLatched = false
+        boosterGaveUp = false
+        boosterAttempts = 0
+        boosterReadyToRetry = false
+        boosterBoardsSinceTap = 0
+        boosterAttemptLog.clear()
+        previousPassLabel = null
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -617,7 +646,7 @@ class FiveMoveSession {
         if (gates.nowMs < pauseUntilMs) return Decision.Hold("pause — outside touch")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
-            return stop(gates.nowMs, "STOP — 40 gesture safety cap")
+            return stop(gates.nowMs, safetyCapText())
         }
         if (outstanding != null) {
             if (gates.visionPass && idleSinceGesture(gates.nowMs) > IDLE_WITHOUT_GESTURE_MS) {
@@ -651,9 +680,69 @@ class FiveMoveSession {
         outstanding = null
     }
 
-    /** The ACTIVATE tap never got a fresh frame. Swipes continue. */
+    /** The ACTIVATE tap never got a fresh frame. Swipes continue. This is not a latch. */
     fun giveUpBooster() {
-        boosterLatched = true
+        boosterGaveUp = true
+        boosterAttemptLog += "attempt=$boosterAttempts result=not-sent"
+    }
+
+    /**
+     * Another ACTIVATE tap is allowed before the first try, and again after
+     * two playable boards still show the word. Three sent taps is the limit.
+     */
+    fun boosterMayTap(): Boolean =
+        !boosterLatched && !boosterGaveUp && boosterAttempts < BOOSTER_MAX_ATTEMPTS &&
+            (boosterAttempts == 0 || boosterReadyToRetry)
+
+    /** One sent tap. The latch waits until the word is gone or the bar empties. */
+    fun noteBoosterTap(x: Float, y: Float, durationMs: Long) {
+        boosterAttempts += 1
+        boosterReadyToRetry = false
+        boosterBoardsSinceTap = 0
+        boosterAttemptLog += "attempt=$boosterAttempts point=(${x.toInt()},${y.toInt()}) " +
+            "durationMs=$durationMs result=sent"
+    }
+
+    /**
+     * One playable board after a sent tap. Watching for two boards that still
+     * show ACTIVATE requests a retry. The latch is the word disappearing or
+     * the bar emptying.
+     */
+    fun noteBoosterBoard(activateVisible: Boolean, barFull: Boolean): String {
+        if (boosterLatched || boosterGaveUp || boosterAttempts == 0) return "idle"
+        if (!activateVisible || !barFull) {
+            boosterLatched = true
+            boosterReadyToRetry = false
+            boosterAttemptLog += "attempt=$boosterAttempts result=registered"
+            return "latched"
+        }
+        boosterBoardsSinceTap += 1
+        if (boosterBoardsSinceTap < BOOSTER_CONFIRM_BOARDS) {
+            boosterAttemptLog += "attempt=$boosterAttempts result=still-visible board=$boosterBoardsSinceTap"
+            return "watching"
+        }
+        if (boosterAttempts >= BOOSTER_MAX_ATTEMPTS) {
+            boosterGaveUp = true
+            boosterReadyToRetry = false
+            boosterAttemptLog += "attempt=$boosterAttempts result=missed"
+            return "missed"
+        }
+        boosterBoardsSinceTap = 0
+        boosterReadyToRetry = true
+        boosterAttemptLog += "attempt=$boosterAttempts result=retry"
+        return "retry"
+    }
+
+    fun boosterLog(): String = boosterAttemptLog.joinToString("\n")
+
+    /**
+     * Null when [labelHash] agrees with the previous PASS frame and the frame
+     * is at most [SwipeGuard.MAX_FRAME_AGE_MS] old.
+     */
+    fun considerSwipeFrame(ageMs: Long, labelHash: Long): String? {
+        val previous = previousPassLabel
+        previousPassLabel = labelHash
+        return SwipeGuard.motionBlock(ageMs, previous, labelHash)
     }
 
     /**
@@ -671,7 +760,7 @@ class FiveMoveSession {
         countChange: Boolean = true,
         needsTarget: Boolean = false,
     ): String {
-        boosterLatched = true
+        noteBoosterTap(x, y, BOOSTER_TAP_MS)
         if (phase != Phase.RUNNING) return "not running"
         if (gesturesDispatched >= MAX_MOVES) return "cap"
         gesturesDispatched += 1
@@ -701,7 +790,7 @@ class FiveMoveSession {
         if (countChange && changed && stable && callbackCompleted) {
             verifiedCount += 1
             if (verifiedCount >= MAX_MOVES) {
-                stop(nowMs, "STOP — 40 gesture safety cap")
+                stop(nowMs, safetyCapText())
             }
         }
         return verification
@@ -721,11 +810,11 @@ class FiveMoveSession {
         beforeLabel: Long,
         beforeCircles: Int?,
     ): Decision {
-        boosterLatched = true
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
+        noteBoosterTap(x, y, BOOSTER_TAP_MS)
         sessionLimit(nowMs)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES) {
-            return stop(nowMs, "STOP — 40 gesture safety cap")
+            return stop(nowMs, safetyCapText())
         }
         gesturesDispatched += 1
         boosterWindowOpen = true
@@ -756,7 +845,7 @@ class FiveMoveSession {
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
         sessionLimit(fact.nowMs)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES) {
-            return stop(fact.nowMs, "STOP — 40 gesture safety cap")
+            return stop(fact.nowMs, safetyCapText())
         }
         gesturesDispatched += 1
         swipesDispatched += 1
@@ -809,6 +898,9 @@ class FiveMoveSession {
                 beforeLabel = fact.beforeLabel,
                 beforeCircles = fact.beforeCircles,
                 longSettle = fact.longSettle,
+                frameAgeMs = fact.frameAgeMs,
+                labelsMatchedPrevious = fact.labelsMatchedPrevious,
+                onCellCenter = fact.onCellCenter,
             )
         phase = Phase.SETTLING
         return Decision.Hold("settling move $gesturesDispatched")
@@ -866,14 +958,21 @@ class FiveMoveSession {
             return settleHold(open, sample, "frame is from before the gesture")
         }
         val captured = sample.nowMs - age.coerceAtLeast(0L)
-        if (open.countsAsSwipe) {
+        val labels = sample.labelHash ?: sample.boardHash
+        val labelsDiffer = labels != open.beforeLabel
+        val brightNow = sample.circlesBright
+        val beforeCircles = open.beforeCircles
+        val drop = beforeCircles != null &&
+            sample.circlesClassifiable &&
+            brightNow != null &&
+            brightNow == beforeCircles - 1
+        if (open.countsAsSwipe && !labelsDiffer && !drop) {
             val post = scaled(if (open.longSettle) POST_SWIPE_BIG_MS else POST_SWIPE_MS, sample.cadenceMedianMs)
             if (captured - open.startedAtMs < post) {
                 return settleHold(open, sample, "waiting ${post}ms after the swipe")
             }
         }
-        val labels = sample.labelHash ?: sample.boardHash
-        val gap = maxOf(PLAYABLE_GAP_MS, sample.cadenceMedianMs)
+        val gap = PLAYABLE_GAP_MS
         val keys = sample.labelKeys
         val anchored = open.anchorLabel != null && when {
             keys != null && open.anchorKeys != null -> Board.labelsWithinOne(open.anchorKeys!!, keys)
@@ -897,13 +996,9 @@ class FiveMoveSession {
             frameSequence = sample.frameSequence,
         )
         if (!open.countsAsSwipe) {
+            previousPassLabel = labels
             return acceptBooster(open, sample, spent)
         }
-        val labelsDiffer = labels != open.beforeLabel
-        val drop = open.beforeCircles != null &&
-            sample.circlesClassifiable &&
-            sample.circlesBright != null &&
-            sample.circlesBright == open.beforeCircles!! - 1
         val circlesSame = open.beforeCircles != null &&
             sample.circlesClassifiable &&
             sample.circlesBright == open.beforeCircles
@@ -918,6 +1013,7 @@ class FiveMoveSession {
                 lastSettledFrameSequence = sample.frameSequence
             }
             val extraNote = if (circlesSame && labelsDiffer) " extra-move circles unchanged" else ""
+            previousPassLabel = labels
             closeOpen(
                 open,
                 sample,
@@ -935,7 +1031,7 @@ class FiveMoveSession {
             openMove = null
             if (spent != null) return decided(spent, "settle")
             if (verifiedCount >= MAX_MOVES) {
-                return decided(stop(sample.nowMs, "STOP — 40 gesture safety cap"), "settle")
+                return decided(stop(sample.nowMs, safetyCapText()), "settle")
             }
             phase = Phase.RUNNING
             return decided(Decision.Hold("move $verifiedCount verified$extraNote"), "settle")
@@ -947,7 +1043,12 @@ class FiveMoveSession {
         }
         unchangedRetries += 1
         playSkip = 1
-        closeOpen(open, sample, "RETRY — board unchanged, next move")
+        val why = SwipeGuard.unverifiedReason(
+            open.frameAgeMs,
+            open.labelsMatchedPrevious,
+            open.onCellCenter,
+        )
+        closeOpen(open, sample, "RETRY — board unchanged, $why")
         openMove = null
         phase = Phase.RUNNING
         return decided(Decision.Hold("retry next move"), "settle")
@@ -1031,6 +1132,9 @@ class FiveMoveSession {
                 "A move counts only after a fresh stable PASS board differs from the pre-move board.",
         )
         appendLine("stop=${stopReason.ifBlank { "none" }}")
+        appendLine("--- BOOSTER ---")
+        if (boosterAttemptLog.isEmpty()) appendLine("none")
+        boosterAttemptLog.forEach { appendLine(it) }
         appendLine(hudTrace.ifBlank { "hudState=UNKNOWN" })
         appendLine("outsideTouches=$outsideTouches")
         appendLine("--- OUTSIDE ---")
@@ -1108,6 +1212,8 @@ class FiveMoveSession {
 
     private fun sessionLimitText(): String = "STOP — ${SESSION_LIMIT_MS / 1_000}s session limit"
 
+    private fun safetyCapText(): String = "STOP — $MAX_MOVES gesture safety cap"
+
     private fun immediateAbort(
         nowMs: Long,
         ownUi: Boolean,
@@ -1168,7 +1274,7 @@ class FiveMoveSession {
         unchangedRetries = 0
         if (spent != null) return decided(spent, "settle")
         if (verifiedCount >= MAX_MOVES) {
-            return decided(stop(sample.nowMs, "STOP — 40 gesture safety cap"), "settle")
+            return decided(stop(sample.nowMs, safetyCapText()), "settle")
         }
         phase = Phase.RUNNING
         return decided(Decision.Hold("booster playable"), "settle")
@@ -1378,8 +1484,11 @@ class FiveMoveSession {
     }
 
     companion object {
-        const val MAX_MOVES = 40
-        const val SESSION_LIMIT_MS = 600_000L
+        const val MAX_MOVES = 60
+        const val SESSION_LIMIT_MS = 900_000L
+        const val BOOSTER_TAP_MS = 120L
+        const val BOOSTER_MAX_ATTEMPTS = 3
+        const val BOOSTER_CONFIRM_BOARDS = 2
         const val MENU_FRAMES = 3
         const val MENU_HOLD_MS = 3_000L
         const val PER_MOVE_BUDGET_MS = 20_000L

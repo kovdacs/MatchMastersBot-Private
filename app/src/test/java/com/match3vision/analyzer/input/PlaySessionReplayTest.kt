@@ -162,6 +162,84 @@ class PlaySessionReplayTest {
         assertThat(OwnerStatus.hu(play.session.stopReason)).isEqualTo("Elfogytak a lépések")
     }
 
+    @Test
+    fun oneFpsFullGame_finishesUnderSixMinutes() {
+        val play = Play()
+        play.start(circles = 10)
+        val start = play.now
+        repeat(3) { play.swipeFast(dropCircle = false) }
+        repeat(10) { play.swipeFast(dropCircle = true) }
+        val elapsed = play.now - start
+        assertThat(elapsed).isLessThan(6 * 60 * 1000L)
+        assertThat(play.session.movesSnapshot().all { it.durationMs <= 8_000L }).isTrue()
+        assertThat(play.circles).isEqualTo(0)
+        val spent = play.session.noteCircles(true, 0, true, play.now + 50L, play.seq + 1)
+        assertThat(spent).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(play.session.stopReason).contains("moves spent")
+    }
+
+    @Test
+    fun boosterMiss_retriesTwice_thenLatchesWhenTheWordGoes() {
+        val play = Play()
+        play.start()
+        play.swipe(nextHash = 80L)
+        play.session.noteBoosterTap(170f, 935f, FiveMoveSession.BOOSTER_TAP_MS)
+        assertThat(play.session.boosterMayTap()).isFalse()
+        assertThat(play.session.noteBoosterBoard(activateVisible = true, barFull = true)).isEqualTo("watching")
+        assertThat(play.session.boosterMayTap()).isFalse()
+        assertThat(play.session.noteBoosterBoard(activateVisible = true, barFull = true)).isEqualTo("retry")
+        assertThat(play.session.boosterMayTap()).isTrue()
+        play.session.noteBoosterTap(171f, 936f, FiveMoveSession.BOOSTER_TAP_MS)
+        assertThat(play.session.noteBoosterBoard(activateVisible = true, barFull = true)).isEqualTo("watching")
+        assertThat(play.session.noteBoosterBoard(activateVisible = true, barFull = true)).isEqualTo("retry")
+        play.session.noteBoosterTap(172f, 934f, FiveMoveSession.BOOSTER_TAP_MS)
+        assertThat(play.session.noteBoosterBoard(activateVisible = false, barFull = false)).isEqualTo("latched")
+        assertThat(play.session.boosterLatched).isTrue()
+        assertThat(play.session.boosterAttempts).isEqualTo(3)
+        assertThat(play.session.boosterMayTap()).isFalse()
+        val log = play.session.boosterLog()
+        assertThat(log).contains("point=(170,935)")
+        assertThat(log).contains("durationMs=120")
+        assertThat(log).contains("result=registered")
+        play.swipe(nextHash = 81L)
+        play.expectStillPlaying("booster retry")
+    }
+
+    @Test
+    fun boosterStillVisibleAfterThreeTaps_isMissed_notLatched() {
+        val play = Play()
+        play.start()
+        repeat(3) {
+            play.session.noteBoosterTap(170f, 935f, FiveMoveSession.BOOSTER_TAP_MS)
+            play.session.noteBoosterBoard(activateVisible = true, barFull = true)
+            val second = play.session.noteBoosterBoard(activateVisible = true, barFull = true)
+            if (it < 2) assertThat(second).isEqualTo("retry") else assertThat(second).isEqualTo("missed")
+        }
+        assertThat(play.session.boosterLatched).isFalse()
+        assertThat(play.session.boosterGaveUp).isTrue()
+        assertThat(play.session.boosterMayTap()).isFalse()
+        assertThat(play.session.boosterLog()).contains("result=missed")
+    }
+
+    @Test
+    fun staleOrMovingFrame_isNotSwiped_andACellMismatchIsALabelError() {
+        val play = Play()
+        play.start()
+        assertThat(play.session.considerSwipeFrame(400L, 1L)).contains("previous PASS")
+        assertThat(play.session.considerSwipeFrame(2_000L, 1L)).contains("board motion")
+        assertThat(play.session.considerSwipeFrame(400L, 2L)).contains("board motion")
+        assertThat(play.session.considerSwipeFrame(400L, 2L)).isNull()
+        val planned = LongArray(49) { 3L }
+        val newest = planned.copyOf()
+        newest[1] = 9L
+        assertThat(SwipeGuard.cellsMatch(planned, newest, 0, 0, 0, 1)).isFalse()
+        assertThat(SwipeGuard.cellsMatch(planned, planned, 0, 0, 0, 1)).isTrue()
+        assertThat(SwipeGuard.unverifiedReason(2_000L, true, true)).isEqualTo("swipe made during board motion")
+        assertThat(SwipeGuard.unverifiedReason(200L, false, true)).isEqualTo("swipe made during board motion")
+        assertThat(SwipeGuard.unverifiedReason(200L, true, false)).isEqualTo("swipe landed off-cell")
+        assertThat(SwipeGuard.unverifiedReason(200L, true, true)).isEqualTo("label error")
+    }
+
     private inner class Play {
         val session = FiveMoveSession()
         var now = 0L
@@ -235,6 +313,39 @@ class PlaySessionReplayTest {
             hash = nextHash
             circles = afterCircles
             now += 200L
+        }
+
+        /** Two PASS frames one second apart. The first already differs, so there is no post-swipe wait. */
+        fun swipeFast(dropCircle: Boolean) {
+            val beforeCircles = circles
+            val afterCircles = if (dropCircle) (circles - 1).coerceAtLeast(0) else circles
+            val plan = ++seq
+            val go = session.requestDispatch(gates(now, plan))
+            check(go is FiveMoveSession.Decision.Go) {
+                "fast swipe refused at $now: $go stop=${session.stopReason}"
+            }
+            session.consumePermit(go.permit)
+            val started = now
+            val next = hash + 1
+            session.noteGesture(
+                gesture(
+                    started = started,
+                    beforeHash = hash,
+                    circles = beforeCircles,
+                    sequence = plan,
+                ),
+            )
+            now = started + 1_000L
+            settle(next, afterCircles, 0.02f, 1_000L, 800L)
+            now = started + 2_000L
+            settle(next, afterCircles, 0.02f, 1_000L, 800L)
+            check(session.phase == FiveMoveSession.Phase.RUNNING) {
+                "fast move did not finish at $now stop=${session.stopReason} phase=${session.phase}"
+            }
+            val move = session.movesSnapshot().last()
+            check(move.durationMs <= 8_000L) { "move took ${move.durationMs}ms" }
+            hash = next
+            circles = afterCircles
         }
 
         fun booster(circles: Int, sameBoard: Boolean, during: ((Long) -> Unit)? = null) {

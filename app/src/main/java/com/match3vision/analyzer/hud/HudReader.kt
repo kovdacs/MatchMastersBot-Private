@@ -21,7 +21,21 @@ object HudReader {
     const val ACTIVATE_TOP = 900
     const val ACTIVATE_BOTTOM = 970
 
-    private val soloCircles = IntArray(10) { 390 + it * 64 }
+    /**
+     * Move pips on the owner's 1080×2400 frames. They sit on the bottom edge
+     * of the board, not in the gem row above them. Spacing is 68 px.
+     * A filled pip is the cyan cap (luma ~190). An empty slot is the purple
+     * band (luma ~86). Sampling the gems above this row stays bright forever.
+     */
+    const val CIRCLE_ROW_Y = 942
+    const val CIRCLE_ORIGIN_X = 402
+    const val CIRCLE_PITCH = 68
+    const val CIRCLE_COUNT = 10
+    private const val CIRCLE_BRIGHT_LUMA = 140
+
+    fun circleX(index: Int): Int = CIRCLE_ORIGIN_X + index * CIRCLE_PITCH
+
+    private val soloCircles = IntArray(CIRCLE_COUNT) { circleX(it) }
     private const val OPPONENT_RED_MIN = 12
 
     fun read(pixels: IntArray, width: Int, height: Int): HudObservation {
@@ -176,6 +190,18 @@ object HudReader {
         return x.toFloat() to y.toFloat()
     }
 
+    /** Center of a logged `LTRB(left,top,right,bottom)` word box. Null when it was not read. */
+    fun activateRectCenter(rect: String): Pair<Float, Float>? {
+        if (!rect.startsWith("LTRB(") || !rect.endsWith(")")) return null
+        val parts = rect.removePrefix("LTRB(").removeSuffix(")").split(',')
+        if (parts.size != 4) return null
+        val left = parts[0].toFloatOrNull() ?: return null
+        val top = parts[1].toFloatOrNull() ?: return null
+        val right = parts[2].toFloatOrNull() ?: return null
+        val bottom = parts[3].toFloatOrNull() ?: return null
+        return (left + right) / 2f to (top + bottom) / 2f
+    }
+
     private fun opponentReds(pixels: IntArray, width: Int, height: Int): Int {
         var reds = 0
         for (y in 875..947) {
@@ -219,21 +245,16 @@ object HudReader {
     private fun circleSample(pixels: IntArray, width: Int, height: Int): CircleSample {
         var bright = 0
         var dark = 0
-        var mid = 0
         var missing = false
         for (cx in soloCircles) {
-            val mean = meanLuma(pixels, width, height, scaleX(cx, width), scaleY(930, height))
+            val mean = meanLuma(pixels, width, height, scaleX(cx, width), scaleY(CIRCLE_ROW_Y, height))
             if (mean == null) {
                 missing = true
                 continue
             }
-            when {
-                mean > 90 -> bright++
-                mean < 45 -> dark++
-                else -> mid++
-            }
+            if (mean > CIRCLE_BRIGHT_LUMA) bright++ else dark++
         }
-        val classifiable = !missing && mid == 0 && bright + dark == soloCircles.size
+        val classifiable = !missing && bright + dark == soloCircles.size
         val report = if (classifiable) {
             "bright=$bright/${soloCircles.size} dark=$dark/${soloCircles.size}"
         } else {
@@ -258,7 +279,7 @@ object HudReader {
     /** True when circle centers differ from the gaps between them. */
     private fun circleRowStructured(pixels: IntArray, width: Int, height: Int): Boolean {
         var contrast = 0
-        val cy = scaleY(930, height)
+        val cy = scaleY(CIRCLE_ROW_Y, height)
         for (i in 0 until soloCircles.size - 1) {
             val center = meanLuma(pixels, width, height, scaleX(soloCircles[i], width), cy) ?: return false
             val gapX = (soloCircles[i] + soloCircles[i + 1]) / 2
@@ -356,7 +377,9 @@ object SoloBooster {
         ) {
             return null
         }
-        val (x, y) = HudReader.activateCenter(width, height)
+        val center = HudReader.activateRectCenter(hud.activateRect)
+            ?: HudReader.activateCenter(width, height)
+        val (x, y) = center
         if (x < 0f || y < 0f) return null
         return Tap(x, y)
     }

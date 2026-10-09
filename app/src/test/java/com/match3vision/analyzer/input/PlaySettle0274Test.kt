@@ -84,7 +84,7 @@ class PlaySettle0274Test {
                 longSettle = true,
             ),
         )
-        val waiting = session.onSettle(pass(nowMs = 3_000L, hash = 9L, sequence = 2L, cadenceMs = 50_000L))
+        val waiting = session.onSettle(pass(nowMs = 3_000L, hash = 1L, sequence = 2L, cadenceMs = 50_000L))
         assertThat(waiting).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat((waiting as FiveMoveSession.Decision.Hold).reason).contains("waiting 8000ms")
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.SETTLING)
