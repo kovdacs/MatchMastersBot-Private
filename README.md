@@ -1,6 +1,6 @@
 # Match Masters Bot — Match3 Vision Analyzer
 
-**Version:** `0.24.7.6` (versionCode 27)  
+**Version:** `0.24.7.7` (versionCode 28)  
 **Package:** `com.match3vision.analyzer`  
 **Repo:** `kovdacs/MatchMastersBot-Private`
 
@@ -33,8 +33,8 @@ No JDK/SDK on the agent box — use GitHub Actions `analyzer-ci`:
 ## Architecture (kept)
 
 Capture → Vision → Validation → MoveAnalysis → AutoPlayController → InputLoop → AccessibilityService  
-Input default **OFF** until INDÍTÁS. Bubble: INDÍTÁS / SZÜNET / TESZT ÉRINTÉS / 5 LÉPÉS TESZT / STOP.  
-`5 LÉPÉS TESZT` is a bounded phone session (at most 5 gestures, 60 s total) and does not loosen the continuous INDÍTÁS gate.
+Input default **OFF** until INDÍTÁS. Bubble: INDÍTÁS / SZÜNET / TESZT ÉRINTÉS / 10 LÉPÉS TESZT / STOP.  
+`10 LÉPÉS TESZT` is a bounded phone session (at most 10 gestures, 120 s total, 20 s settle per move) and does not loosen the continuous INDÍTÁS gate.
 
 ## Ethics
 

@@ -1,17 +1,19 @@
 package com.match3vision.analyzer.input
 
 /**
- * Controlled phone test: at most five real moves, then stop.
+ * Controlled phone test: at most ten real moves, then stop.
  *
- * Move 1 is a probe. Moves 2–5 are issued only after move 1 verifies.
+ * Move 1 is a probe. Later moves are issued only after the previous one verifies.
  * The same checks apply to every move. A failed check stops the session.
- * The same move is not retried. Five gestures is the maximum.
+ * The same move is not retried. Ten gestures is the maximum.
  *
- * The clock starts at [arm] (the 5 LÉPÉS TESZT press, after the self-check).
- * All five verified moves must finish inside [SESSION_LIMIT_MS].
+ * The clock starts at [arm] (the 10 LÉPÉS TESZT press, after the self-check).
+ * All verified moves must finish inside [SESSION_LIMIT_MS].
  * Each gesture has [PER_MOVE_BUDGET_MS] for the swipe and the settle.
  * After a gesture, HOLD, implausible-ROI, and unstable frames are ignored
- * until a stable PASS frame shows a real board change, or the 12 s budget ends.
+ * until a stable PASS frame shows a real board change, or the settle budget ends.
+ * A budget that expires while the board is still changing is CHANGED_UNSETTLED.
+ * That move is not verified, and no later gesture is issued.
  * A stable PASS board that still matches the pre-move board for 1.5 s stops.
  * Settle is a frame-diff, not a fixed sleep.
  *
@@ -84,6 +86,7 @@ class FiveMoveSession {
         val ignoredReasons: String = "",
         val userInterference: Boolean = false,
         val outsideTouches: Int = 0,
+        val boardKeptChanging: Boolean = false,
     )
 
     sealed class Decision {
@@ -141,12 +144,13 @@ class FiveMoveSession {
         var ignoredCount: Int = 0,
         val ignoredReasons: ArrayList<String> = ArrayList(),
         var outsideTouches: Int = 0,
+        var sawBoardChange: Boolean = false,
     )
 
     val isActive: Boolean
         get() = phase == Phase.RUNNING || phase == Phase.SETTLING
 
-    fun label(): String = "5 LÉPÉS TESZT: $verifiedCount/$MAX_MOVES"
+    fun label(): String = "10 LÉPÉS TESZT: $verifiedCount/$MAX_MOVES"
 
     fun movesSnapshot(): List<MoveRecord> = moves.toList()
 
@@ -224,20 +228,20 @@ class FiveMoveSession {
         if (!a11yConnected) return abort("STOP — accessibility lost", nowMs)
         if (outsideTouches > 0) return abort("STOP — user interference", nowMs)
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return abort("STOP — 60s session limit", nowMs)
+            return abort("STOP — 120s session limit", nowMs)
         }
         return null
     }
 
     fun requestDispatch(gates: Gates): Decision {
         if (phase == Phase.STOPPED) return Decision.Stop(stopReason.ifBlank { "stopped" })
-        if (phase == Phase.IDLE) return Decision.Stop("5 LÉPÉS not armed")
+        if (phase == Phase.IDLE) return Decision.Stop("10 LÉPÉS not armed")
         if (phase == Phase.SETTLING) return Decision.Hold("settle in progress")
         sessionLimit(gates.nowMs)?.let { return it }
         if (outsideTouches > 0) return stop(gates.nowMs, "STOP — user interference")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
-            return stop(gates.nowMs, "STOP — 5 moves complete")
+            return stop(gates.nowMs, "STOP — 10 moves complete")
         }
         if (outstanding != null) return Decision.Hold("dispatch permit already issued")
         val hold = holdReason(gates)
@@ -248,6 +252,7 @@ class FiveMoveSession {
     }
 
     fun consumePermit(permit: Permit): Boolean {
+        if (phase != Phase.RUNNING) return false
         val pending = outstanding ?: return false
         if (pending.token != permit.token || pending.moveNumber != permit.moveNumber) return false
         outstanding = null
@@ -264,7 +269,7 @@ class FiveMoveSession {
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
         sessionLimit(fact.nowMs)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES) {
-            return stop(fact.nowMs, "STOP — max 5 gestures")
+            return stop(fact.nowMs, "STOP — max 10 gestures")
         }
         gesturesDispatched += 1
         val callback = when {
@@ -318,12 +323,20 @@ class FiveMoveSession {
             return stop(sample.nowMs, "STOP — user interference")
         }
         if (sample.nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            closeOpen(open, sample, "FAILED — 60s session limit")
-            return stop(sample.nowMs, "STOP — 60s session limit")
+            closeOpen(open, sample, "FAILED — 120s session limit")
+            return stop(sample.nowMs, "STOP — 120s session limit")
+        }
+        if (sample.diffFraction != null && sample.diffFraction > STABLE_FRACTION) {
+            open.sawBoardChange = true
         }
         if (sample.nowMs - open.startedAtMs >= PER_MOVE_BUDGET_MS) {
-            closeOpen(open, sample, "FAILED — per-move budget ${PER_MOVE_BUDGET_MS}ms")
-            return stop(sample.nowMs, "STOP — per-move budget ${PER_MOVE_BUDGET_MS}ms")
+            val verification = if (open.sawBoardChange) {
+                "CHANGED_UNSETTLED — gesture sent, board kept changing, not a stable PASS"
+            } else {
+                "FAILED — per-move budget ${PER_MOVE_BUDGET_MS}ms"
+            }
+            closeOpen(open, sample, verification)
+            return stop(sample.nowMs, "STOP — per-move settle budget ${PER_MOVE_BUDGET_MS}ms")
         }
         if (!qualifiesAsPass(sample)) {
             return ignore(open, transientReason(sample))
@@ -352,7 +365,7 @@ class FiveMoveSession {
         verifiedCount += 1
         openMove = null
         if (verifiedCount >= MAX_MOVES) {
-            return stop(sample.nowMs, "STOP — 5 moves verified")
+            return stop(sample.nowMs, "STOP — 10 moves verified")
         }
         phase = Phase.RUNNING
         return Decision.Hold("move $verifiedCount verified")
@@ -380,6 +393,7 @@ class FiveMoveSession {
                 ignoredReasons = open.ignoredReasons.joinToString("; "),
                 userInterference = open.outsideTouches > 0 || reason.contains("user interference"),
                 outsideTouches = open.outsideTouches,
+                boardKeptChanging = open.sawBoardChange,
             )
             openMove = null
         }
@@ -390,7 +404,7 @@ class FiveMoveSession {
         if (startExport.isNotBlank()) {
             appendLine(startExport.trimEnd())
         }
-        appendLine("--- 5 LÉPÉS TESZT ---")
+        appendLine("--- 10 LÉPÉS TESZT ---")
         appendLine("sessionLimitMs=$SESSION_LIMIT_MS")
         appendLine("perMoveBudgetMs=$PER_MOVE_BUDGET_MS")
         appendLine("pollStepMs=$POLL_STEP_MS")
@@ -413,6 +427,10 @@ class FiveMoveSession {
         val measured = if (phase == Phase.IDLE) 0L else (end - startedAtMs).coerceAtLeast(0L)
         appendLine("measuredSessionMs=$measured")
         appendLine("verified=$verifiedCount/$MAX_MOVES gestures=$gesturesDispatched")
+        appendLine(
+            "changedUnsettled is not a verified move. " +
+                "A move counts only after a fresh stable PASS board differs from the pre-move board.",
+        )
         appendLine("stop=${stopReason.ifBlank { "none" }}")
         appendLine("outsideTouches=$outsideTouches")
         appendLine(
@@ -436,7 +454,9 @@ class FiveMoveSession {
             appendLine(
                 "ignoredTransient=${move.ignoredTransient} " +
                     "ignoredReasons=${move.ignoredReasons.ifBlank { "none" }} " +
-                    "userInterference=${move.userInterference} outsideTouches=${move.outsideTouches}",
+                    "userInterference=${move.userInterference} outsideTouches=${move.outsideTouches} " +
+                    "boardKeptChanging=${move.boardKeptChanging} settleMs=${move.durationMs} " +
+                    "settleBudgetMs=$PER_MOVE_BUDGET_MS",
             )
         }
     }
@@ -459,7 +479,7 @@ class FiveMoveSession {
     private fun sessionLimit(nowMs: Long): Decision.Stop? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return stop(nowMs, "STOP — 60s session limit")
+            return stop(nowMs, "STOP — 120s session limit")
         }
         return null
     }
@@ -516,6 +536,7 @@ class FiveMoveSession {
             ignoredReasons = open.ignoredReasons.joinToString("; "),
             userInterference = open.outsideTouches > 0 || verification.contains("user interference"),
             outsideTouches = open.outsideTouches,
+            boardKeptChanging = open.sawBoardChange,
         )
         openMove = null
     }
@@ -537,6 +558,7 @@ class FiveMoveSession {
         ignoredReasons: String = "",
         userInterference: Boolean = false,
         outsideTouches: Int = 0,
+        boardKeptChanging: Boolean = false,
     ) {
         moves += MoveRecord(
             number = number,
@@ -556,6 +578,7 @@ class FiveMoveSession {
             ignoredReasons = ignoredReasons,
             userInterference = userInterference,
             outsideTouches = outsideTouches,
+            boardKeptChanging = boardKeptChanging,
         )
     }
 
@@ -570,9 +593,9 @@ class FiveMoveSession {
     }
 
     companion object {
-        const val MAX_MOVES = 5
-        const val SESSION_LIMIT_MS = 60_000L
-        const val PER_MOVE_BUDGET_MS = 12_000L
+        const val MAX_MOVES = 10
+        const val SESSION_LIMIT_MS = 120_000L
+        const val PER_MOVE_BUDGET_MS = 20_000L
         const val POLL_STEP_MS = 80L
         const val UNCHANGED_MIN_MS = 1_500L
         const val STABLE_FRACTION = 0.02f
@@ -582,7 +605,7 @@ class FiveMoveSession {
 
         const val NEED_SELF_CHECK_HU =
             "TESZT ÉRINTÉS: érintsd a fehér kalibrációs pontot. " +
-                "Csak MEASURED_WITHIN_TOLERANCE után nyomd meg az 5 LÉPÉS TESZT-et. " +
+                "Csak MEASURED_WITHIN_TOLERANCE után nyomd meg a 10 LÉPÉS TESZT-et. " +
                 "Nincs játékérintés."
     }
 }

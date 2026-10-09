@@ -568,7 +568,7 @@ class AutoPlayController(
         enableSwitch.setEnabled(false)
         analysisOnly = false
         analysisOnlyBecauseA11yOff = false
-        lastReason = "5 LÉPÉS — újraindítás a gombnyomásra"
+        lastReason = "10 LÉPÉS — újraindítás a gombnyomásra"
         return null
     }
 
@@ -630,9 +630,9 @@ class AutoPlayController(
             lastReason = FiveMoveArm.CONTINUOUS
             return null
         }
-        if (!fiveMove.consumePermit(permit)) {
+        if (fiveMove.phase != FiveMoveSession.Phase.RUNNING || !fiveMove.consumePermit(permit)) {
             enableSwitch.setEnabled(false)
-            lastReason = "5 LÉPÉS refused — dispatch permit was not issued"
+            lastReason = "10 LÉPÉS refused — dispatch permit was not issued"
             return null
         }
         if (unconfirmedCapLatched) {
@@ -670,7 +670,7 @@ class AutoPlayController(
         }
         analysisOnly = false
         analysisOnlyBecauseA11yOff = false
-        lastReason = reason.ifBlank { fiveMove.stopReason }.ifBlank { "5 LÉPÉS TESZT finished" }
+        lastReason = reason.ifBlank { fiveMove.stopReason }.ifBlank { "10 LÉPÉS TESZT finished" }
     }
 
     /** After the single-move verify bundle is exported. Does not dispatch. */

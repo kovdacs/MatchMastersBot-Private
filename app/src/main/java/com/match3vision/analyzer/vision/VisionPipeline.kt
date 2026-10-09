@@ -36,8 +36,49 @@ class VisionPipeline(
         height: Int,
         contentRoi: ContentRoi? = null,
     ): VisionResult {
+        val first = analyzeOnce(pixels, width, height, contentRoi, pinnedBoard = null)
+        if (first.validation.isPass) return first
+        val pinned = nominalRetryRoi(pixels, width, height, first) ?: return first
+        val second = analyzeOnce(pixels, width, height, contentRoi, pinnedBoard = pinned)
+        return if (second.validation.isPass &&
+            second.gridConfidence >= VisionThresholds.MIN_GRID_CONFIDENCE &&
+            second.boardConfidence >= VisionThresholds.MIN_BOARD_CONFIDENCE &&
+            second.unknownCount <= VisionThresholds.MAX_UNKNOWN_COUNT
+        ) {
+            second.copy(diagnostics = second.diagnostics + ("latticeNominal150" to "pass"))
+        } else {
+            first.copy(diagnostics = first.diagnostics + ("latticeNominal150" to "tried-hold"))
+        }
+    }
+
+    private fun nominalRetryRoi(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        result: VisionResult,
+    ): ContentRoi? {
+        if (result.diagnostics["latticeRoiUsed"] != "yes") return null
+        val period = result.diagnostics["latticeCandidate"]
+            ?.split(",")
+            ?.getOrNull(2)
+            ?.toIntOrNull()
+            ?: return null
+        if (!BoardFinder.nominalPitchDeviates(period)) return null
+        val roi = result.grid.boardRoi
+        return boardFinder.nominalLatticeIfSupported(
+            pixels, width, height, roi.left, roi.right,
+        )
+    }
+
+    private fun analyzeOnce(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        contentRoi: ContentRoi?,
+        pinnedBoard: ContentRoi?,
+    ): VisionResult {
         SpecialCropAudit.clear()
-        val find = boardFinder.find(pixels, width, height, contentRoi)
+        val find = boardFinder.find(pixels, width, height, contentRoi, pinnedBoard)
         val grid = find.grid
         val diag = find.diagnostics.toMutableMap()
 

@@ -15,9 +15,9 @@ object BubbleModeCaption {
         else -> ANALYSIS
     }
 
-    fun fiveLabel(verified: Int, max: Int): String = "5 LÉPÉS $verified/$max"
+    fun fiveLabel(verified: Int, max: Int): String = "10 LÉPÉS $verified/$max"
 
-    /** Shown on the collapsed chip while a 5-move session is in progress. */
+    /** Shown on the collapsed chip while a 10-move session is in progress. */
     fun collapsedStatus(
         fiveActive: Boolean,
         fiveLabel: String,

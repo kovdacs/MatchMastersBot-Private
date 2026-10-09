@@ -36,6 +36,7 @@ class SpecialCropCallerTest {
             width: Int,
             height: Int,
             contentRoi: ContentRoi?,
+            pinnedBoard: ContentRoi?,
         ): FindResult {
             val xs = floatArrayOf(0f, 20f, 40f, 60f, 191f, 211f, 231f, 251f)
             val ys = floatArrayOf(0f, 20f, 40f, 379f, 399f, 419f, 439f, 459f)

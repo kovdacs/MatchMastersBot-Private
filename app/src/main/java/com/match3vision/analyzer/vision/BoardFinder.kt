@@ -31,6 +31,7 @@ open class BoardFinder(
         width: Int,
         height: Int,
         contentRoi: ContentRoi? = null,
+        pinnedBoard: ContentRoi? = null,
     ): FindResult {
         require(pixels.size >= width * height) { "pixels too small" }
         val diag = mutableMapOf<String, String>()
@@ -40,7 +41,18 @@ open class BoardFinder(
         val overlayMask = OverlayColumnMask.detect(pixels, width, height)
         diag["overlayColumns"] = overlayMask.describe()
 
-        val boardRoi = refineBoardRoi(pixels, width, height, content, overlayMask, diag)
+        val boardRoi = if (pinnedBoard != null && pinnedBoard.width() > 0 && pinnedBoard.height() > 0) {
+            val pitch = pinnedBoard.height() / GridGeometry.GRID_SIZE
+            diag["playfieldSnap"] = "gutter_lattice"
+            diag["latticeRoiUsed"] = "yes"
+            diag["latticeNominal150"] = "pinned"
+            diag["boardRefine"] = "nominal_lattice_150"
+            diag["latticeCandidate"] = "${pinnedBoard.top},${pinnedBoard.bottom},$pitch"
+            diag["lattice"] = "${pinnedBoard.top},${pinnedBoard.bottom},$pitch,nominal"
+            pinnedBoard
+        } else {
+            refineBoardRoi(pixels, width, height, content, overlayMask, diag)
+        }
         diag["boardRoi"] = "LTRB(${boardRoi.left},${boardRoi.top},${boardRoi.right},${boardRoi.bottom})"
 
         val projected = tryProjection(pixels, width, height, boardRoi, overlayMask, diag)
@@ -373,6 +385,24 @@ open class BoardFinder(
         /** Snap must disagree by more than this before a lattice may replace it. */
         internal const val LATTICE_DISAGREE_PX = 80
         internal const val LATTICE_CLIP_MARGIN = 8
+
+        /**
+         * Phone cells are 150 px when the gutters agree. A candidate whose
+         * pitch is farther than this is only replaced when a 150 px window
+         * still clears [LATTICE_MIN_SCORE]. Other legal pitches stay.
+         */
+        internal const val NOMINAL_LATTICE_PITCH = 150
+        internal const val NOMINAL_PITCH_TOLERANCE = 4
+
+        internal fun nominalPitchDeviates(period: Int): Boolean =
+            kotlin.math.abs(period - NOMINAL_LATTICE_PITCH) > NOMINAL_PITCH_TOLERANCE
+
+        /** 150 px is a legal lattice period for this frame width. Not a forced ROI. */
+        internal fun nominalPitchLegal(width: Int, period: Int = NOMINAL_LATTICE_PITCH): Boolean {
+            val pMin = (width / 7f * 0.92f).toInt()
+            val pMax = (width / 7f * 1.06f).toInt()
+            return pMax >= pMin && period in pMin..pMax
+        }
 
         /**
          * Projection pitches at least this far apart are not a grid. Phone
@@ -751,11 +781,35 @@ open class BoardFinder(
      * bottom is not the screen edge. Dark-blue gutters on columns the overlay
      * does not cover. Earlier candidate wins a tie.
      */
+    /**
+     * 7×[NOMINAL_LATTICE_PITCH] only when that pitch is legal for [width] and
+     * the gutter score clears the same bar as any other lattice. Otherwise null.
+     */
+    internal fun nominalLatticeIfSupported(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        left: Int,
+        right: Int,
+    ): ContentRoi? {
+        if (height < LATTICE_MIN_FRAME_HEIGHT || width < LATTICE_MIN_FRAME_WIDTH) return null
+        if (!nominalPitchLegal(width)) return null
+        if (right - left < GridGeometry.GRID_SIZE * 8) return null
+        val mask = OverlayColumnMask.detect(pixels, width, height)
+        val fit = searchGutterLattice(
+            pixels, width, height, mask, onlyPeriod = NOMINAL_LATTICE_PITCH,
+        ) ?: return null
+        if (fit.score < LATTICE_MIN_SCORE || fit.minStd < LATTICE_MIN_LUMA_STD) return null
+        if (fit.bottom - fit.top != NOMINAL_LATTICE_PITCH * GridGeometry.GRID_SIZE) return null
+        return ContentRoi(left, fit.top, right, fit.bottom)
+    }
+
     private fun searchGutterLattice(
         pixels: IntArray,
         width: Int,
         height: Int,
         overlayMask: OverlayColumnMask,
+        onlyPeriod: Int? = null,
     ): LatticeFit? {
         val sampleXs = ArrayList<Int>(width / 3 + 1)
         var x = 0
@@ -818,10 +872,12 @@ open class BoardFinder(
         val pMin = (width / 7f * 0.92f).toInt()
         val pMax = (width / 7f * 1.06f).toInt()
         if (pMax < pMin || pMin < 4) return null
+        if (onlyPeriod != null && onlyPeriod !in pMin..pMax) return null
         val top0 = (height * 0.47f).toInt()
         val top1 = (height * 0.54f).toInt()
         var best: LatticeFit? = null
-        for (period in pMin..pMax) {
+        val periods = if (onlyPeriod != null) onlyPeriod..onlyPeriod else pMin..pMax
+        for (period in periods) {
             val footerCut = (period * 0.6f).toInt()
             var top = top0
             while (top <= top1) {

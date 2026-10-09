@@ -207,7 +207,7 @@ class FloatingBubbleService : Service() {
             isAllCaps = false
             setOnClickListener { armSingleMoveFromBubble() }
         }
-        val fiveBtn = compactBubbleButton("5 LÉPÉS TESZT") { startFiveMoveFromBubble() }
+        val fiveBtn = compactBubbleButton("10 LÉPÉS TESZT") { startFiveMoveFromBubble() }
         fiveMoveBtn = fiveBtn
         val shareBtn = Button(this).apply {
             text = "DIAG MEGOSZT"
@@ -1590,7 +1590,7 @@ class FloatingBubbleService : Service() {
             return
         }
         fiveSeek = FiveMoveSeek().also { it.begin(now) }
-        chipNotice = "5 LÉPÉS: ne érintsd a képernyőt. Várok egy PASS képkockát."
+        chipNotice = "10 LÉPÉS: ne érintsd a képernyőt. Várok egy PASS képkockát."
         refreshBubbleUi()
     }
 
@@ -2319,10 +2319,10 @@ class FloatingBubbleService : Service() {
         fiveMoveBtn?.text = if (five.isActive || five.phase == FiveMoveSession.Phase.STOPPED) {
             five.label()
         } else {
-            "5 LÉPÉS TESZT"
+            "10 LÉPÉS TESZT"
         }
         val modeTitle = if (fiveSeek?.isActive == true) {
-            "5 LÉPÉS …"
+            "10 LÉPÉS …"
         } else {
             BubbleModeCaption.title(
                 fiveActive = five.isActive,

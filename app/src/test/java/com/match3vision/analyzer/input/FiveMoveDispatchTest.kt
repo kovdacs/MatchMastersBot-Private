@@ -107,7 +107,7 @@ class FiveMoveDispatchTest {
     fun fivePermittedGestures_thenTheSessionStops() {
         val (ctrl, exec) = controllerWith(CompletingExecutor(complete = true))
         assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
-        repeat(5) { index ->
+        repeat(FiveMoveSession.MAX_MOVES) { index ->
             val start = 1_000L + index * 1_000L
             val go = ctrl.fiveMove.requestDispatch(readyGates(start))
             assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
@@ -144,16 +144,124 @@ class FiveMoveDispatchTest {
                 ),
             )
         }
-        assertThat(exec.dispatched).hasSize(5)
-        assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(5)
+        assertThat(exec.dispatched).hasSize(FiveMoveSession.MAX_MOVES)
+        assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(FiveMoveSession.MAX_MOVES)
         assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
         assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
         assertThat(ctrl.analysisOnly).isTrue()
         ctrl.runCycleIfActive(passVision(), context(true))
-        assertThat(exec.dispatched).hasSize(5)
+        assertThat(exec.dispatched).hasSize(FiveMoveSession.MAX_MOVES)
+        val late = ctrl.fiveMove.requestDispatch(readyGates(90_000L))
+        assertThat(late).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(
+            ctrl.dispatchFiveMoveOnce(
+                passVision(),
+                context(true),
+                FiveMoveSession.Permit(token = 99L, moveNumber = FiveMoveSession.MAX_MOVES + 1),
+            ),
+        ).isNull()
+        assertThat(exec.dispatched).hasSize(FiveMoveSession.MAX_MOVES)
         val report = ctrl.fiveMove.report()
         assertThat(report).contains("measuredSessionMs=")
         assertThat(report).contains("durationMs=400")
+    }
+
+    @Test
+    fun endedSession_neverDispatchesAQueuedPermit() {
+        val cap = controllerWith(CompletingExecutor(complete = true))
+        val (capCtrl, capExec) = cap
+        assertThat(capCtrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val capGo = capCtrl.fiveMove.requestDispatch(readyGates(1_000L)) as FiveMoveSession.Decision.Go
+        assertThat(
+            capCtrl.fiveMove.pollSafety(
+                nowMs = FiveMoveSession.SESSION_LIMIT_MS,
+                ownUi = false,
+                a11yConnected = true,
+            ),
+        ).isNotNull()
+        assertThat(capCtrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
+        assertThat(capCtrl.dispatchFiveMoveOnce(passVision(), context(true), capGo.permit)).isNull()
+        assertThat(capCtrl.fiveMove.requestDispatch(readyGates(FiveMoveSession.SESSION_LIMIT_MS + 1_000L)))
+            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(capExec.dispatched).isEmpty()
+
+        val settle = controllerWith(CompletingExecutor(complete = true))
+        val (settleCtrl, settleExec) = settle
+        assertThat(settleCtrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val first = settleCtrl.fiveMove.requestDispatch(readyGates(1_000L)) as FiveMoveSession.Decision.Go
+        val cycle = settleCtrl.dispatchFiveMoveOnce(passVision(), context(true), first.permit)
+        val executed = cycle!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+        settleCtrl.fiveMove.noteGesture(
+            FiveMoveSession.GestureFact(
+                startedAtMs = 1_000L,
+                nowMs = 1_100L,
+                callbackCompleted = true,
+                cancelled = false,
+                cells = executed.move.move.toString(),
+                fromX = executed.gesture.startX,
+                fromY = executed.gesture.startY,
+                toX = executed.gesture.endX,
+                toY = executed.gesture.endY,
+                beforeHash = executed.beforeBoardHash,
+                beforeUnknown = 0,
+            ),
+        )
+        assertThat(
+            settleCtrl.fiveMove.onSettle(
+                FiveMoveSession.SettleSample(
+                    nowMs = 2_000L,
+                    boardHash = executed.beforeBoardHash,
+                    diffFraction = 0.98f,
+                    frameFresh = true,
+                    roiPlausible = true,
+                    visionPass = false,
+                    unknownCount = 24,
+                    ownUi = false,
+                    a11yConnected = true,
+                ),
+            ),
+        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(settleCtrl.fiveMove.requestDispatch(readyGates(2_100L)))
+            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        val failed = settleCtrl.fiveMove.onSettle(
+            FiveMoveSession.SettleSample(
+                nowMs = 1_000L + FiveMoveSession.PER_MOVE_BUDGET_MS,
+                boardHash = executed.beforeBoardHash + 1,
+                diffFraction = 0.16f,
+                frameFresh = true,
+                roiPlausible = true,
+                visionPass = false,
+                unknownCount = 2,
+                ownUi = false,
+                a11yConnected = true,
+            ),
+        )
+        assertThat(failed).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(settleCtrl.fiveMove.movesSnapshot().single().verification).contains("CHANGED_UNSETTLED")
+        assertThat(settleCtrl.fiveMove.verifiedCount).isEqualTo(0)
+        settleCtrl.runCycleIfActive(passVision(), context(true))
+        assertThat(settleCtrl.fiveMove.requestDispatch(readyGates(30_000L)))
+            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(
+            settleCtrl.dispatchFiveMoveOnce(
+                passVision(),
+                context(true),
+                FiveMoveSession.Permit(token = 50L, moveNumber = 2),
+            ),
+        ).isNull()
+        assertThat(settleExec.dispatched).hasSize(1)
+
+        val stopped = controllerWith(CompletingExecutor(complete = true))
+        val (stopCtrl, stopExec) = stopped
+        assertThat(stopCtrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val queued = stopCtrl.fiveMove.requestDispatch(readyGates(500L)) as FiveMoveSession.Decision.Go
+        stopCtrl.onBubbleStop("felhasználó STOP")
+        assertThat(stopCtrl.mode).isEqualTo(AutoPlayController.Mode.STOPPED)
+        assertThat(stopCtrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
+        assertThat(stopCtrl.dispatchFiveMoveOnce(passVision(), context(true), queued.permit)).isNull()
+        assertThat(stopCtrl.fiveMove.requestDispatch(readyGates(2_000L)))
+            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(stopExec.dispatched).isEmpty()
     }
 
     private fun readyGates(nowMs: Long) = FiveMoveSession.Gates(
