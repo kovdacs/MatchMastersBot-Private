@@ -106,8 +106,6 @@ class FloatingBubbleService : Service() {
     private var calibrationOverlayVisible: Boolean = false
     private var calibrationDismissWallMs: Long = 0L
     private var chipNotice: String = ""
-    private var debugMenu: LinearLayout? = null
-    private var debugOpen: Boolean = false
     private var fiveSeek: FiveMoveSeek? = null
     private var startBtn: Button? = null
     private var fiveMoveBtn: Button? = null
@@ -208,8 +206,14 @@ class FloatingBubbleService : Service() {
             setLineSpacing(0f, 1.05f)
         }
         startBtn = Button(this).apply {
+            text = "INDÍTÁS"
+            textSize = 11f
+            isAllCaps = false
+            setOnClickListener { startLoopFromBubble() }
+        }
+        val startAlso = Button(this).apply {
             text = "START"
-            textSize = 14f
+            textSize = 11f
             isAllCaps = false
             setOnClickListener { startLoopFromBubble() }
         }
@@ -248,38 +252,29 @@ class FloatingBubbleService : Service() {
             isAllCaps = false
             setOnClickListener { clearDiagnosticsFromBubble() }
         }
-        val stopBtn = Button(this).apply {
-            text = "STOP"
-            textSize = 14f
-            isAllCaps = false
-            setOnClickListener { stopAllAndSelf() }
-        }
-        val debugPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            addView(pauseBtn)
-            addView(touchTestBtn)
-            addView(fiveBtn)
-            addView(boosterToggle)
-            addView(oneMoveBtn)
-            addView(shareBtn)
-            addView(copyBtn)
-            addView(clearDiagBtn)
-        }
-        debugMenu = debugPanel
-        title.setOnLongClickListener {
-            debugOpen = !debugOpen
-            applyDebugVisibility()
-            true
-        }
+        val stopBtn = compactBubbleButton("STOP") { stopAllAndSelf() }
         root.addView(title)
+        root.addView(diagHintView)
         root.addView(statusView)
         root.addView(startBtn)
+        root.addView(startAlso)
+        root.addView(pauseBtn)
+        root.addView(touchTestBtn)
+        root.addView(fiveBtn)
+        root.addView(boosterToggle)
+        root.addView(oneMoveBtn)
+        root.addView(shareBtn)
+        root.addView(copyBtn)
+        root.addView(clearDiagBtn)
         root.addView(stopBtn)
-        root.addView(debugPanel)
         hiddenWhileCapturing.clear()
         hiddenWhileCapturing.add(startBtn!!)
-        hiddenWhileCapturing.add(diagHintView!!)
+        hiddenWhileCapturing.add(startAlso)
+        hiddenWhileCapturing.add(pauseBtn!!)
+        hiddenWhileCapturing.add(oneMoveBtn)
+        hiddenWhileCapturing.add(shareBtn)
+        hiddenWhileCapturing.add(copyBtn)
+        hiddenWhileCapturing.add(clearDiagBtn)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -630,10 +625,6 @@ class FloatingBubbleService : Service() {
         AutoPlaySession.publish(statusText = shown)
     }
 
-    private fun applyDebugVisibility() {
-        debugMenu?.visibility = if (debugOpen && !collapsedForCapture) View.VISIBLE else View.GONE
-    }
-
     private fun dismissCalibrationOverlay() {
         val v = calibrationView
         calibrationOverlayVisible = false
@@ -808,7 +799,6 @@ class FloatingBubbleService : Service() {
         for (child in hiddenWhileCapturing) {
             child.visibility = View.GONE
         }
-        applyDebugVisibility()
         diagHintView?.visibility = View.GONE
         val tight = (2 * d).toInt()
         (v as? LinearLayout)?.setPadding(tight, tight, tight, tight)
@@ -832,8 +822,7 @@ class FloatingBubbleService : Service() {
         for (child in hiddenWhileCapturing) {
             child.visibility = View.VISIBLE
         }
-        applyDebugVisibility()
-        diagHintView?.visibility = View.GONE
+        diagHintView?.visibility = View.VISIBLE
         val pad = (8 * resources.displayMetrics.density).toInt()
         (v as? LinearLayout)?.setPadding(pad, pad, pad, pad)
         collapsedForCapture = false
@@ -2650,18 +2639,43 @@ class FloatingBubbleService : Service() {
                 else -> ""
             },
         )
+        val modeTitle = if (fiveSeek?.isActive == true) {
+            "10 LÉPÉS …"
+        } else {
+            BubbleModeCaption.title(
+                fiveActive = five.isActive,
+                fiveLabel = BubbleModeCaption.fiveLabel(five.verifiedCount, FiveMoveSession.MAX_MOVES),
+                selfCheckOk = selfCheckThisSession(),
+            )
+        }
+        fun withOwner(base: String): String =
+            if (owner.isBlank() || base.contains(owner)) base else base + "\n" + owner
         if (collapsedForCapture) {
-            titleView?.text = "START"
+            titleView?.text = modeTitle
             titleView?.textSize = 13f
             statusView?.maxLines = 3
-            statusView?.textSize = 12f
-            statusView?.text = owner
+            statusView?.textSize = 11f
+            statusView?.text = withOwner(
+                BubbleModeCaption.collapsedStatus(
+                    fiveActive = five.isActive,
+                    fiveLabel = five.label(),
+                    chipNotice = calibrationNotice(),
+                    fallback = modeTitle,
+                ),
+            )
         } else {
             titleView?.text = "Match3 Auto"
             titleView?.textSize = 11f
-            statusView?.maxLines = 4
-            statusView?.textSize = 12f
-            statusView?.text = owner
+            statusView?.maxLines = 32
+            statusView?.textSize = 8.5f
+            val snap = AutoPlaySession.ui.value
+            val warning = if (five.isActive) FiveMoveArm.DO_NOT_TOUCH + ".\n" else ""
+            val noticeText = calibrationNotice()
+            val notice = if (noticeText.isBlank()) "" else noticeText + "\n"
+            statusView?.text = withOwner(
+                warning + notice + snap.diagnostics.bubbleLines(compact = true) +
+                    "\nEGY LÉPÉS: ${ctrl.singleMove.label()}",
+            )
         }
         startBtn?.isEnabled = ctrl.mode != AutoPlayController.Mode.RUNNING &&
             ctrl.mode != AutoPlayController.Mode.STOPPED

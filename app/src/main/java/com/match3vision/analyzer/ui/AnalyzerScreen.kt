@@ -1,7 +1,6 @@
 package com.match3vision.analyzer.ui
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,10 +26,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,8 +51,6 @@ fun AnalyzerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val auto by AutoPlaySession.ui.collectAsStateWithLifecycle()
-    var debugTaps by remember { mutableIntStateOf(0) }
-    var debugOpen by remember { mutableStateOf(false) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // During bubble FUT: hide huge debug overlays so MediaProjection sees Match Masters
@@ -84,13 +77,6 @@ fun AnalyzerScreen(
                 "Match3 Vision Elemző",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable {
-                    debugTaps += 1
-                    if (debugTaps >= 5) {
-                        debugOpen = !debugOpen
-                        debugTaps = 0
-                    }
-                },
             )
             Text(
                 state.subtitle,
@@ -99,13 +85,18 @@ fun AnalyzerScreen(
             )
 
             Text(
+                "1. INDÍTÁS → engedélyek\n" +
+                    "2. Buborék megjelenik\n" +
+                    "3. Nyisd meg a Match Masters-t\n" +
+                    "4. Diagnosztika: a kisegítő szolgáltatás maradhat KI\n" +
+                    "5. Buborék: INDÍTÁS → auto húzás (ehhez a kisegítő kell)\n" +
+                    "6. SZÜNET vagy STOP",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
                 OwnerStatus.hu(auto.statusText),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-            )
-            Text(
-                "START elindítja a játékot. STOP azonnal megáll.",
-                style = MaterialTheme.typography.bodyMedium,
             )
 
             Button(
@@ -122,22 +113,29 @@ fun AnalyzerScreen(
                 ),
             ) {
                 Text(
-                    "START",
+                    "INDÍTÁS",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
 
-            OutlinedButton(
-                onClick = onStopCapture,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp),
+            Button(
+                onClick = {
+                    viewModel.onStartRequested()
+                    onStartCapture()
+                },
+                enabled = state.status != AnalyzerStatus.AwaitingPermission,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("STOP", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("START")
             }
 
-            if (debugOpen) Section("DIAGNOSZTIKA — HOLD") {
+            OutlinedButton(
+                onClick = onStopCapture,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("STOP — buborék + rögzítés leállítása") }
+
+            Section("DIAGNOSZTIKA — HOLD") {
                 Text(
                     "Az első HOLD megmarad, amíg a DIAG TÖRLÉS nem törli. " +
                         "Megosztás és másolás ADB nélkül. A diagnosztika nem ad PASS-t. " +
@@ -158,7 +156,6 @@ fun AnalyzerScreen(
                 ) { Text("Első HOLD törlése") }
             }
 
-            if (debugOpen) {
             PermissionStatusCard(
                 overlayReady = auto.overlayReady,
                 a11yReady = auto.a11yReady,
@@ -258,7 +255,6 @@ fun AnalyzerScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
             )
-            }
         }
     }
 }
@@ -462,7 +458,7 @@ private fun CompactRunningPanel(
             textAlign = TextAlign.Center,
         )
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
-            Text("STOP", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("STOP — buborék + rögzítés leállítása")
         }
     }
 }
