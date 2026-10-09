@@ -23,6 +23,13 @@ import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ScreenMetricsSource
 import com.match3vision.analyzer.board.Board
+import com.match3vision.analyzer.hud.BoosterControl
+import com.match3vision.analyzer.hud.HudObservation
+import com.match3vision.analyzer.hud.HudReader
+import com.match3vision.analyzer.hud.SoloBooster
+import com.match3vision.analyzer.input.AccessibilityGestureExecutor
+import com.match3vision.analyzer.input.GestureSpec
+import com.match3vision.analyzer.input.InputDispatchResult
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.BoardStability
 import com.match3vision.analyzer.input.FiveMoveSession
@@ -101,6 +108,7 @@ class FloatingBubbleService : Service() {
     private var fiveSeek: FiveMoveSeek? = null
     private var startBtn: Button? = null
     private var fiveMoveBtn: Button? = null
+    private var boosterBtn: Button? = null
     private var serviceWallMs: Long = 0L
     private var calibrationLibrary = CalibrationLibrary()
     private var activeSaved: SavedCalibration? = null
@@ -217,6 +225,8 @@ class FloatingBubbleService : Service() {
         }
         val fiveBtn = compactBubbleButton("10 LÉPÉS TESZT") { startFiveMoveFromBubble() }
         fiveMoveBtn = fiveBtn
+        val boosterToggle = compactBubbleButton(BoosterControl.label()) { toggleBoosterFromBubble() }
+        boosterBtn = boosterToggle
         val shareBtn = Button(this).apply {
             text = "DIAG MEGOSZT"
             textSize = 10f
@@ -243,6 +253,7 @@ class FloatingBubbleService : Service() {
         root.addView(pauseBtn)
         root.addView(touchTestBtn)
         root.addView(fiveBtn)
+        root.addView(boosterToggle)
         root.addView(oneMoveBtn)
         root.addView(shareBtn)
         root.addView(copyBtn)
@@ -1866,6 +1877,75 @@ class FloatingBubbleService : Service() {
         return held?.reason?.contains("ROI IMPLAUSIBLE") != true
     }
 
+    private fun toggleBoosterFromBubble() {
+        BoosterControl.enabled = !BoosterControl.enabled
+        boosterBtn?.text = BoosterControl.label()
+        refreshBubbleUi()
+    }
+
+    private fun readHud(pixels: IntArray?, frame: CaptureFrame): HudObservation {
+        if (pixels == null || frame.width <= 0 || frame.height <= 0) return HudObservation.UNKNOWN
+        return try {
+            HudReader.read(pixels, frame.width, frame.height)
+        } catch (t: Throwable) {
+            Timber.w(t, "hud read failed")
+            HudObservation.UNKNOWN
+        }
+    }
+
+    /**
+     * One ACTIVATE tap when the toggle is on and this frame is the solo layout
+     * with the button visible. A miss does not stop gem play. Returns true when
+     * a tap was sent, so the caller must not also swipe on this stale frame.
+     */
+    private suspend fun trySoloBooster(
+        session: FiveMoveSession,
+        hud: HudObservation,
+        frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult,
+    ): Boolean {
+        if (session.boosterLatched || session.phase != FiveMoveSession.Phase.RUNNING) return false
+        val tap = SoloBooster.plan(hud, frame.width, frame.height, BoosterControl.enabled) ?: return false
+        val executor = AccessibilityGestureExecutor()
+        if (!executor.isReady()) return false
+        val started = System.currentTimeMillis()
+        val beforeHash = Board.fromVision(vision.board).contentHash()
+        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = 80L)
+        val dispatched = withContext(Dispatchers.Default) {
+            executor.dispatchRecognizedTap(gesture)
+        }
+        val callback = dispatched is InputDispatchResult.Dispatched && dispatched.callbackCompleted
+        var changed = false
+        var stable = false
+        var lastHash: Long? = null
+        val deadline = started + BOOSTER_SETTLE_MS
+        while (System.currentTimeMillis() < deadline && session.phase == FiveMoveSession.Phase.RUNNING) {
+            delay(FiveMoveSession.POLL_STEP_MS)
+            val next = CaptureService.managerOrNull()?.latestFrame?.value ?: continue
+            if (next.sequence <= frame.sequence) continue
+            val analyzed = withContext(Dispatchers.Default) { analyzeFrame(next) }
+            val nextVision = analyzed.vision ?: continue
+            if (!nextVision.validation.isPass) continue
+            val hash = Board.fromVision(nextVision.board).contentHash()
+            if (hash != beforeHash) changed = true
+            if (lastHash != null && hash == lastHash && hash != beforeHash) {
+                stable = true
+                break
+            }
+            lastHash = hash
+        }
+        session.recordBooster(
+            changed = changed,
+            stable = stable,
+            callbackCompleted = callback,
+            x = tap.x,
+            y = tap.y,
+            nowMs = System.currentTimeMillis(),
+            playExport = hud.log(),
+        )
+        return true
+    }
+
     private suspend fun runFiveMoveTick(
         ctrl: AutoPlayController,
         vision: com.match3vision.analyzer.vision.VisionResult,
@@ -1905,13 +1985,23 @@ class FloatingBubbleService : Service() {
                 return true
             }
             is FiveMoveSession.Decision.Go -> {
+                val hud = readHud(pixels, frame)
+                if (trySoloBooster(session, hud, frame, vision)) {
+                    session.releaseUnusedPermit()
+                    if (session.phase == FiveMoveSession.Phase.STOPPED) {
+                        flushFiveMoveReport(session)
+                        return true
+                    }
+                    refreshBubbleUi()
+                    return false
+                }
                 val started = System.currentTimeMillis()
                 writeMoveFrame(decision.permit.moveNumber, "before", pixels, frame, vision)
                 session.suppressOutsideTouchUntil(started + 800L)
                 setBubbleTouchable(false)
                 val cycle = try {
                     withContext(Dispatchers.Default) {
-                        ctrl.dispatchFiveMoveOnce(vision, cycleContext, decision.permit)
+                        ctrl.dispatchFiveMoveOnce(vision, cycleContext, decision.permit, hud)
                     }
                 } catch (t: Throwable) {
                     session.abort("STOP — exception: ${t.message}", System.currentTimeMillis())
@@ -1960,6 +2050,11 @@ class FloatingBubbleService : Service() {
                         ),
                         candidates = ranking?.ordered ?: emptyList(),
                         selected = move.toString(),
+                        decisionMs = ranking?.decisionMs ?: 0L,
+                        lookahead = ranking?.lookahead ?: "greedy",
+                        greedyMove = ranking?.greedyMove ?: "",
+                        timer = ranking?.timer ?: HudObservation.NOT_DETECTABLE,
+                        hud = ranking?.hud ?: hud.log(),
                     ),
                 )
                 val noted = session.noteGesture(
@@ -2532,6 +2627,7 @@ class FloatingBubbleService : Service() {
     }
 
     companion object {
+        private const val BOOSTER_SETTLE_MS = 10_000L
         private const val COLLAPSED_CONTROL_WIDTH_DP = 220f
         private const val COLLAPSED_CONTROL_HEIGHT_DP = 128f
 

@@ -665,6 +665,8 @@ class AutoPlayController(
         vision: VisionResult,
         context: RuntimeCycleContext?,
         permit: FiveMoveSession.Permit,
+        hud: com.match3vision.analyzer.hud.HudObservation =
+            com.match3vision.analyzer.hud.HudObservation.UNKNOWN,
     ): InputLoopController.CycleResult? {
         if (mode != Mode.RUNNING || (!analysisOnly && enableSwitch.isEnabled())) {
             enableSwitch.setEnabled(false)
@@ -685,7 +687,7 @@ class AutoPlayController(
         inputLoop.inputEngine().stateMachine().reset()
         enableSwitch.setEnabled(true)
         return try {
-            val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context)
+            val cycle = inputLoop.runAnalyzeAndMaybeInput(vision, context, hud)
             lastReason = cycle.reason
             cycle
         } catch (t: Throwable) {

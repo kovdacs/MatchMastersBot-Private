@@ -26,6 +26,11 @@ object GameMoveLog {
         val before: BoardView,
         val candidates: List<PlayMoveRanker.Candidate>,
         val selected: String,
+        val decisionMs: Long = 0L,
+        val lookahead: String = "greedy",
+        val greedyMove: String = "",
+        val timer: String = com.match3vision.analyzer.moves.TurnClock.NOT_DETECTABLE,
+        val hud: String = com.match3vision.analyzer.hud.HudObservation.UNKNOWN.log(),
     )
 
     fun view(
@@ -130,6 +135,11 @@ object GameMoveLog {
         }
         append("],")
         field("selected", pending.selected)
+        field("lookahead", pending.lookahead)
+        field("greedyMove", pending.greedyMove)
+        field("decisionMs", pending.decisionMs.toString(), number = true)
+        field("timer", pending.timer)
+        field("hud", pending.hud)
         append("\"extraMoveRule\":").append(quote(PlayMoveRanker.EXTRA_MOVE_RULE.trim()))
         append('}')
         append(',')
@@ -201,6 +211,10 @@ object GameMoveLog {
         field("uncertain", candidate.uncertain.toString(), raw = true)
         field("lowerRow", candidate.lowerRow.toString(), number = true)
         field("specials", candidate.specials)
+        field("redCleared", candidate.redCleared.toString(), number = true)
+        field("ply", candidate.plyScore.toString(), number = true)
+        field("followUp", candidate.followUp?.toString() ?: "none")
+        field("spawn", candidate.specialSpawn)
         append("\"selected\":").append(selected)
         append('}')
     }

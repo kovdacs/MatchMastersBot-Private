@@ -4,6 +4,7 @@ import com.match3vision.analyzer.capture.FrameSequenceGate
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.moves.Move
 import com.match3vision.analyzer.moves.MoveAnalysisEngine
+import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.moves.PlayMoveRanker
 import com.match3vision.analyzer.vision.VisionResult
 
@@ -64,6 +65,7 @@ class InputLoopController(
     fun runAnalyzeAndMaybeInput(
         vision: VisionResult,
         context: RuntimeCycleContext? = null,
+        hud: HudObservation = HudObservation.UNKNOWN,
     ): CycleResult {
         val sm = inputEngine.stateMachine()
         if (sm.state == BotLoopState.STOP) {
@@ -117,7 +119,7 @@ class InputLoopController(
         AutoPlayTrace.log(AutoPlayTrace.TAG_VISION_PASS, "boardConf=${vision.boardConfidence}")
         sm.onValidationPass()
 
-        val analysis = moveAnalysis.analyze(vision)
+        val analysis = moveAnalysis.analyze(vision, hud = hud)
         lastPlayRanking = if (analysis.blocked) null else analysis.play
         val candidateCount = lastPlayRanking?.ordered?.size ?: 0
         if (analysis.blocked) {

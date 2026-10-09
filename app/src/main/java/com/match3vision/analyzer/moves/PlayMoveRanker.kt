@@ -2,10 +2,12 @@ package com.match3vision.analyzer.moves
 
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.evaluation.MoveEvaluation
+import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.rules.GravityEngine
 import com.match3vision.analyzer.rules.MatchDetector
 import com.match3vision.analyzer.vision.SpecialType
 import com.match3vision.analyzer.vision.TileColor
+import kotlin.math.roundToInt
 
 /**
  * Real-play ordering for a recognized 7×7 board.
@@ -35,15 +37,36 @@ class PlayMoveRanker(
         val uncertain: Boolean,
         val specials: String,
         val lowerRow: Int,
+        val redCleared: Int = 0,
+        val specialSpawn: String = "none",
+        val blueFactor: Double = 1.0,
+        /** Points for this ply only. See [plyPoints]. */
+        val plyScore: Int = 0,
+        val followUp: Move? = null,
+        val followUpExtraMove: Boolean = false,
+        val followUpBlue: Int = 0,
+        val followUpTotal: Int = 0,
+        val followUpUncertain: Boolean = false,
+        val followWeight: Double = 0.0,
+        /** plyScore + followWeight * follow-up ply. Greedy leaves this equal to [plyScore]. */
+        val totalScore: Double = 0.0,
     ) {
-        fun line(): String =
-            "matchLen=$matchLen extraMove=${yes(extraMove)} blueCleared=$blueCleared " +
-                "totalCleared=$totalCleared cascadeSteps=$cascadeSteps " +
-                "uncertain=${yes(uncertain)} specials=$specials lowerRow=$lowerRow"
+        fun line(): String = buildString {
+            append("matchLen=$matchLen extraMove=${yes(extraMove)} blueCleared=$blueCleared ")
+            append("redCleared=$redCleared totalCleared=$totalCleared cascadeSteps=$cascadeSteps ")
+            append("uncertain=${yes(uncertain)} specials=$specials spawn=$specialSpawn ")
+            append("lowerRow=$lowerRow blueFactor=$blueFactor ply=$plyScore")
+            if (followUp != null) {
+                append(" followUp=$followUp weight=$followWeight")
+                append(" followExtra=${yes(followUpExtraMove)} followBlue=$followUpBlue")
+                append(" followTotal=$followUpTotal followUncertain=${yes(followUpUncertain)}")
+                append(" score=$totalScore")
+            }
+        }
 
         /** Finite evaluation so the existing gesture gate can dispatch this move. */
         fun toEvaluation(): MoveEvaluation {
-            val ev = (if (extraMove) 1_000f else 0f) + blueCleared * 10f + totalCleared.toFloat()
+            val ev = totalScore.toFloat().takeIf { it.isFinite() } ?: plyScore.toFloat()
             return MoveEvaluation(
                 move = move,
                 totalScore = ev,
@@ -69,14 +92,37 @@ class PlayMoveRanker(
     data class Ranking(
         val ordered: List<Candidate>,
         val boardSpecials: String,
+        val decisionMs: Long = 0L,
+        /** used, greedy, fallback-budget, or skipped-low-time. */
+        val lookahead: String = "greedy",
+        val greedyMove: String = "",
+        val timer: String = TurnClock.NOT_DETECTABLE,
+        val hud: String = HudObservation.UNKNOWN.log(),
     ) {
         val top3: List<Candidate> get() = ordered.take(3)
 
         fun export(): String = buildString {
             appendLine(EXTRA_MOVE_RULE)
+            appendLine(SCORE_FORMULA)
             appendLine("refill=not simulated; unknown refills are not counted as matches")
-            appendLine("boosters=not used; specials are reported only")
+            appendLine("boosters=not ranked; solo ACTIVATE is a separate default-off tap")
             appendLine("boardSpecials=$boardSpecials")
+            appendLine(MODE_GATE)
+            appendLine("lookahead=$lookahead decisionMs=$decisionMs budgetMs=$DECISION_BUDGET_MS")
+            appendLine("timer=$timer")
+            appendLine("hud=$hud")
+            val chosen = ordered.firstOrNull()
+            val greedy = greedyMove.ifBlank { chosen?.move?.toString() ?: "none" }
+            appendLine("greedyPick=$greedy")
+            if (chosen == null) {
+                appendLine("chosen=none")
+            } else {
+                val differs = chosen.move.toString() != greedy
+                appendLine(
+                    "chosen=${chosen.move} differsFromGreedy=${if (differs) "yes" else "no"} " +
+                        chosen.line(),
+                )
+            }
             if (top3.isEmpty()) {
                 appendLine("playTop3: none")
             } else {
@@ -87,31 +133,187 @@ class PlayMoveRanker(
         }
     }
 
+    /** 0.25.0 order: extra move, blue, total, lower row. No follow-up. */
     fun rank(board: Board): Ranking {
         val specials = boardSpecials(board)
-        val ordered = generator.generate(board)
+        val ordered = greedyCandidates(board, specials)
+        return Ranking(
+            ordered = ordered,
+            boardSpecials = specials,
+            lookahead = "greedy",
+            greedyMove = ordered.firstOrNull()?.move?.toString() ?: "none",
+        )
+    }
+
+    /**
+     * Solo two-ply. Other HUDs keep the 0.25.0 order ([lookahead] `skipped-mode`).
+     * Past [DECISION_BUDGET_MS], that same order is returned as `fallback-budget`.
+     */
+    fun rankLookahead(
+        board: Board,
+        budgetMs: Long = DECISION_BUDGET_MS,
+        clock: () -> Long = System::nanoTime,
+        hud: HudObservation = HudObservation.UNKNOWN,
+    ): Ranking {
+        val started = clock()
+        fun elapsedMs(): Long = (clock() - started) / 1_000_000L
+        val specials = boardSpecials(board)
+        val greedy = greedyCandidates(board, specials)
+        val greedyMove = greedy.firstOrNull()?.move?.toString() ?: "none"
+        val timer = hud.timer
+        if (greedy.isEmpty() && !hud.soloLayout) {
+            return Ranking(emptyList(), specials, elapsedMs(), "greedy", greedyMove, timer, hud.log())
+        }
+        if (!hud.soloLayout) {
+            return Ranking(greedy, specials, elapsedMs(), "skipped-mode", greedyMove, timer, hud.log())
+        }
+        if (TurnClock.skipLookahead(timer)) {
+            return Ranking(greedy, specials, elapsedMs(), "skipped-low-time", greedyMove, timer, hud.log())
+        }
+        val solo = SoloSwap(generator, detector, gravity)
+        val immediate = solo.moves(board).map { soloCandidate(board, it, specials, hud, solo) }
+        if (immediate.isEmpty()) {
+            return Ranking(emptyList(), specials, elapsedMs(), "greedy", "none", timer, hud.log())
+        }
+        val greedySolo = immediate.sortedWith(ORDER)
+        val pool = greedySolo.take(LOOKAHEAD_WIDTH)
+        val searched = ArrayList<Candidate>(pool.size)
+        for (candidate in pool) {
+            if (elapsedMs() > budgetMs) {
+                return Ranking(greedy, specials, elapsedMs(), "fallback-budget", greedyMove, timer, hud.log())
+            }
+            val after = solo.resolve(board, candidate.move).board
+            val weight = followWeight(candidate.extraMove, hud.movesRemaining)
+            val follow = if (weight == 0.0) null else bestSoloFollow(after, specials, hud, solo)
+            val followPly = follow?.plyScore ?: 0
+            searched += candidate.copy(
+                followUp = follow?.move,
+                followUpExtraMove = follow?.extraMove == true,
+                followUpBlue = follow?.blueCleared ?: 0,
+                followUpTotal = follow?.totalCleared ?: 0,
+                followUpUncertain = follow?.uncertain == true,
+                followWeight = weight,
+                totalScore = candidate.plyScore + weight * followPly,
+            )
+        }
+        val ordered = searched.sortedWith(LOOKAHEAD_ORDER) + greedySolo.drop(LOOKAHEAD_WIDTH)
+        return Ranking(ordered, specials, elapsedMs(), "used", greedyMove, timer, hud.log())
+    }
+
+    fun boardAfter(board: Board, move: Move): Board = resolve(board, move).board
+
+    fun soloAfter(board: Board, move: Move): Board = SoloSwap(generator, detector, gravity).resolve(board, move).board
+
+    private fun greedyCandidates(board: Board, specials: String): List<Candidate> =
+        generator.generate(board)
             .filter { !touchesSpecial(board, it) }
             .map { score(board, it, specials) }
             .sortedWith(ORDER)
-        return Ranking(ordered, specials)
+
+    private fun bestSoloFollow(
+        board: Board,
+        specials: String,
+        hud: HudObservation,
+        solo: SoloSwap,
+    ): Candidate? =
+        solo.moves(board)
+            .map { soloCandidate(board, it, specials, hud, solo) }
+            // This comparator sorts the best ply first, so the winner is its minimum.
+            .minWithOrNull(compareByDescending<Candidate> { it.plyScore }.then(ORDER))
+
+    private fun soloCandidate(
+        board: Board,
+        move: Move,
+        specials: String,
+        hud: HudObservation,
+        solo: SoloSwap,
+    ): Candidate {
+        val resolved = solo.resolve(board, move)
+        val gems = gemScore(resolved.counts, hud.legendPoints)
+        val ply = plyPoints(
+            extraMove = resolved.extraMove,
+            blue = resolved.blue,
+            total = resolved.total,
+            lowerRow = maxOf(move.r1, move.r2),
+            uncertain = resolved.uncertain,
+            blueFactor = hud.blueFactor,
+            gemScore = gems,
+        )
+        return Candidate(
+            move = move,
+            matchLen = resolved.matchLen,
+            extraMove = resolved.extraMove,
+            blueCleared = resolved.blue,
+            redCleared = resolved.red,
+            totalCleared = resolved.total,
+            cascadeSteps = resolved.steps,
+            uncertain = resolved.uncertain,
+            specials = specials,
+            specialSpawn = resolved.specialSpawn,
+            blueFactor = hud.blueFactor,
+            lowerRow = maxOf(move.r1, move.r2),
+            plyScore = ply,
+            totalScore = ply.toDouble(),
+        )
     }
 
     private fun score(board: Board, move: Move, specials: String): Candidate {
+        val resolved = resolve(board, move)
+        val ply = plyPoints(
+            extraMove = resolved.extraMove,
+            blue = resolved.blue,
+            total = resolved.total,
+            lowerRow = maxOf(move.r1, move.r2),
+            uncertain = resolved.uncertain,
+        )
+        return Candidate(
+            move = move,
+            matchLen = resolved.matchLen,
+            extraMove = resolved.extraMove,
+            blueCleared = resolved.blue,
+            totalCleared = resolved.total,
+            cascadeSteps = resolved.steps,
+            uncertain = resolved.uncertain,
+            specials = specials,
+            lowerRow = maxOf(move.r1, move.r2),
+            plyScore = ply,
+            totalScore = ply.toDouble(),
+        )
+    }
+
+    private data class Resolved(
+        val board: Board,
+        val matchLen: Int,
+        val extraMove: Boolean,
+        val blue: Int,
+        val total: Int,
+        val steps: Int,
+        val uncertain: Boolean,
+    )
+
+    /** Clear and drop known gems. Holes stay unknown and cannot match. */
+    private fun resolve(board: Board, move: Move): Resolved {
         val swapped = board.swapCopy(move.r1, move.c1, move.r2, move.c2)
         val initial = detector.findMatches(swapped)
         val (matchLen, extraMove) = connectedClear(initial)
-        val tally = tally(swapped)
-        return Candidate(
-            move = move,
-            matchLen = matchLen,
-            extraMove = extraMove,
-            blueCleared = tally.blue,
-            totalCleared = tally.total,
-            cascadeSteps = tally.steps,
-            uncertain = tally.uncertain,
-            specials = specials,
-            lowerRow = maxOf(move.r1, move.r2),
-        )
+        var current = swapped
+        var blue = 0
+        var total = 0
+        var steps = 0
+        var uncertain = swapped.unknownCount() > 0
+        while (steps < MAX_STEPS) {
+            val matches = detector.findMatches(current)
+            if (matches.isEmpty()) break
+            val cells = matches.flatMap { it.cells }.toSet()
+            if (adjacentUnknown(current, cells)) uncertain = true
+            for ((row, col) in cells) {
+                if (current.get(row, col).color == TileColor.B) blue++
+                total++
+            }
+            current = gravity.apply(gravity.clearCells(current, cells)).board
+            steps++
+        }
+        return Resolved(current, matchLen, extraMove, blue, total, steps, uncertain)
     }
 
     /**
@@ -141,35 +343,6 @@ class PlayMoveRanker(
             }
         }
         return best to (best >= EXTRA_MOVE_MIN)
-    }
-
-    private data class Tally(
-        val blue: Int,
-        val total: Int,
-        val steps: Int,
-        val uncertain: Boolean,
-    )
-
-    /** Clear and drop known gems. Holes stay unknown and cannot match. */
-    private fun tally(start: Board): Tally {
-        var board = start
-        var blue = 0
-        var total = 0
-        var steps = 0
-        var uncertain = start.unknownCount() > 0
-        while (steps < MAX_STEPS) {
-            val matches = detector.findMatches(board)
-            if (matches.isEmpty()) break
-            val cells = matches.flatMap { it.cells }.toSet()
-            if (adjacentUnknown(board, cells)) uncertain = true
-            for ((row, col) in cells) {
-                if (board.get(row, col).color == TileColor.B) blue++
-                total++
-            }
-            board = gravity.apply(gravity.clearCells(board, cells)).board
-            steps++
-        }
-        return Tally(blue, total, steps, uncertain)
     }
 
     private fun adjacentUnknown(board: Board, cells: Set<Pair<Int, Int>>): Boolean {
@@ -216,6 +389,68 @@ class PlayMoveRanker(
             .thenByDescending { it.totalCleared }
             .thenByDescending { it.lowerRow }
             .thenBy { it.move.toString() }
+
+        const val EXTRA_MOVE_POINTS = 1_000_000
+        const val BLUE_POINTS = 1_000
+        /** One gem when the score legend is absent or its digits were not read. */
+        const val GEM_POINTS = 10
+        const val ROW_POINTS = 1
+        const val UNCERTAIN_PENALTY = 500
+        const val FULL_BAR_BLUE_FACTOR = 0.15
+        const val LEGEND_SCALE = 100
+        const val DECISION_BUDGET_MS = 150L
+        const val LOOKAHEAD_WIDTH = 15
+        const val FOLLOW_WEIGHT_OURS = 1.0
+        const val FOLLOW_WEIGHT_LIKELY = 0.7
+
+        const val SCORE_FORMULA =
+            "scoreFormula=solo ply = extra*1000000 + blue*1000*blueFactor + gemScore + lowerRow - uncertain*500; " +
+                "gemScore = legendWeight*100 per gem when that color's legend digit was read, otherwise 10 " +
+                "(1 point per gem); blueFactor=0.15 when ACTIVATE is visible, else 1; " +
+                "chosen = ply(now) + weight * ply(followUp); weight=1 when this ply is an extra move or the " +
+                "move counter shows more than 1 left, weight=0 on a detected last move, otherwise 0.7; " +
+                "the weight scales the follow-up only; an extra move is always 1000000 inside a ply; " +
+                "4-line leaves an arrow, 5-line a color bomb, 5-L/T a bomb; unknown refills are never matches."
+
+        const val MODE_GATE =
+            "modeGate=lookahead, legend weights, specials, and ACTIVATE run only when the HUD matches the " +
+                "solo layout. Any other HUD, including PvP, uses the 0.25.0 order and is not tapped."
+
+        private val LOOKAHEAD_ORDER = compareByDescending<Candidate> { it.totalScore }
+            .then(ORDER)
+
+        fun followWeight(extraMove: Boolean, movesRemaining: Int?): Double = when {
+            extraMove -> FOLLOW_WEIGHT_OURS
+            movesRemaining == null -> FOLLOW_WEIGHT_LIKELY
+            movesRemaining > 1 -> FOLLOW_WEIGHT_OURS
+            else -> 0.0
+        }
+
+        fun gemScore(counts: Map<TileColor, Int>, weights: Map<TileColor, Int>): Int {
+            if (weights.isEmpty()) return counts.values.sum() * GEM_POINTS
+            var score = 0
+            for ((color, count) in counts) {
+                if (count == 0 || color == TileColor.UNKNOWN) continue
+                val weight = weights[color]
+                score += if (weight != null) count * weight * LEGEND_SCALE else count * GEM_POINTS
+            }
+            return score
+        }
+
+        fun plyPoints(
+            extraMove: Boolean,
+            blue: Int,
+            total: Int,
+            lowerRow: Int,
+            uncertain: Boolean,
+            blueFactor: Double = 1.0,
+            gemScore: Int = total * GEM_POINTS,
+        ): Int {
+            val blueTerm = (blue * BLUE_POINTS * blueFactor).roundToInt()
+            val penalty = if (uncertain) UNCERTAIN_PENALTY else 0
+            val extra = if (extraMove) EXTRA_MOVE_POINTS else 0
+            return extra + blueTerm + gemScore + lowerRow * ROW_POINTS - penalty
+        }
 
         val EMPTY_RANKING = Ranking(emptyList(), "none")
     }

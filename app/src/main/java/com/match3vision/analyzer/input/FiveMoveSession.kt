@@ -118,6 +118,10 @@ class FiveMoveSession {
     var gesturesDispatched: Int = 0
         private set
 
+    /** One ACTIVATE attempt per session. A miss does not stop gem play. */
+    var boosterLatched: Boolean = false
+        private set
+
     var stopReason: String = ""
         private set
 
@@ -206,6 +210,7 @@ class FiveMoveSession {
         calibrationLine = ""
         gameLines.clear()
         pendingGameLog = null
+        boosterLatched = false
         return true
     }
 
@@ -267,6 +272,7 @@ class FiveMoveSession {
         calibrationLine = ""
         gameLines.clear()
         pendingGameLog = null
+        boosterLatched = false
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -332,6 +338,53 @@ class FiveMoveSession {
     fun releaseUnusedPermit() {
         if (phase != Phase.RUNNING) return
         outstanding = null
+    }
+
+    /**
+     * Records one ACTIVATE tap. A miss latches the booster and leaves the
+     * session running. A stable board change counts as a verified move.
+     */
+    fun recordBooster(
+        changed: Boolean,
+        stable: Boolean,
+        callbackCompleted: Boolean,
+        x: Float,
+        y: Float,
+        nowMs: Long,
+        playExport: String,
+    ): String {
+        boosterLatched = true
+        if (phase != Phase.RUNNING) return "not running"
+        if (gesturesDispatched >= MAX_MOVES) return "cap"
+        gesturesDispatched += 1
+        val verification = when {
+            !callbackCompleted -> "FAILED — booster tap callback was not completed"
+            changed && stable -> "PASS — booster ACTIVATE, board changed, stable"
+            changed -> "FAILED — booster board changed but did not settle"
+            else -> "FAILED — booster tap did not change the board"
+        }
+        record(
+            number = gesturesDispatched,
+            cells = "booster ACTIVATE",
+            fromX = x,
+            fromY = y,
+            toX = x,
+            toY = y,
+            callback = if (callbackCompleted) "onCompleted" else "cancelled",
+            verification = verification,
+            beforeUnknown = 0,
+            afterUnknown = 0,
+            startedAtMs = nowMs,
+            finishedAtMs = nowMs,
+            playExport = playExport,
+        )
+        if (changed && stable && callbackCompleted) {
+            verifiedCount += 1
+            if (verifiedCount >= MAX_MOVES) {
+                stop(nowMs, "STOP — 10 moves verified")
+            }
+        }
+        return verification
     }
 
     fun noteGesture(fact: GestureFact): Decision {

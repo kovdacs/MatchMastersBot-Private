@@ -2,6 +2,7 @@ package com.match3vision.analyzer.moves
 
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.board.GameState
+import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.evaluation.MoveEvaluator
 import com.match3vision.analyzer.vision.ValidationResult
@@ -42,7 +43,11 @@ class MoveAnalysisEngine(
         val playTop3: List<PlayMoveRanker.Candidate> get() = play.top3
     }
 
-    fun analyze(vision: VisionResult, opponentScore: Float = 0f): AnalysisResult {
+    fun analyze(
+        vision: VisionResult,
+        opponentScore: Float = 0f,
+        hud: HudObservation = HudObservation.UNKNOWN,
+    ): AnalysisResult {
         val thresholdGate = visionValidator.validate(
             boardConfidence = vision.boardConfidence,
             gridConfidence = vision.gridConfidence,
@@ -64,10 +69,11 @@ class MoveAnalysisEngine(
             boardConfidence = vision.boardConfidence,
             unknownCount = vision.unknownCount,
             opponentScore = opponentScore,
+            hud = hud,
         )
     }
 
-    fun analyze(state: GameState, opponentScore: Float = 0f): AnalysisResult =
+    fun analyze(state: GameState, opponentScore: Float = 0f, hud: HudObservation = HudObservation.UNKNOWN): AnalysisResult =
         analyzeBoard(
             board = state.board,
             gatePass = state.vision.gatePass,
@@ -76,6 +82,7 @@ class MoveAnalysisEngine(
             unknownCount = state.vision.unknownCount,
             opponentScore = opponentScore,
             holdHint = state.vision.holdReason,
+            hud = hud,
         )
 
     fun analyzeBoard(
@@ -86,6 +93,7 @@ class MoveAnalysisEngine(
         unknownCount: Int,
         opponentScore: Float = 0f,
         holdHint: String? = null,
+        hud: HudObservation = HudObservation.UNKNOWN,
     ): AnalysisResult {
         val thresholdGate = visionValidator.validate(
             boardConfidence = boardConfidence,
@@ -118,7 +126,7 @@ class MoveAnalysisEngine(
             blocked = false,
             holdReason = null,
             topMoves = ranked,
-            play = PlayMoveRanker(moveGenerator).rank(board),
+            play = PlayMoveRanker(moveGenerator).rankLookahead(board, hud = hud),
         )
     }
 
