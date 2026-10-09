@@ -36,6 +36,7 @@ import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.GestureSpec
 import com.match3vision.analyzer.input.InputDispatchResult
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.AutoPlayTrace
 import com.match3vision.analyzer.input.BoardStability
 import com.match3vision.analyzer.input.DispatchPermit
 import com.match3vision.analyzer.input.DispatchRecheck
@@ -953,7 +954,10 @@ class FloatingBubbleService : Service() {
             Timber.i("auto-play continuous cycle STARTED")
             while (isActive) {
                 val ctrl = AutoPlaySession.controller
-                if (ctrl.mode == AutoPlayController.Mode.STOPPED) break
+                if (ctrl.mode == AutoPlayController.Mode.STOPPED) {
+                    restoreExpandedBubble()
+                    break
+                }
                 if (!ctrl.isLoopActive()) {
                     restoreExpandedBubble()
                     refreshBubbleUi()
@@ -973,8 +977,16 @@ class FloatingBubbleService : Service() {
                         a11yConnected = MatchMastersAccessibilityService.isConnected(),
                     )
                     if (safety != null) {
-                        endFiveMoveInLoop(ctrl, safety.reason)
-                        continue
+                        val capturing = CaptureService.managerOrNull()?.isCapturing?.value == true
+                        DiagnosticHistoryStore.noteRuntime(
+                            captureState = if (capturing) "ON" else "OFF",
+                            lastStopReason = safety.reason,
+                        )
+                        // Stop play, but do not expand the bubble or skip this
+                        // iteration. Expanding clears the collapse clock, and
+                        // skipping drops the frame before it can enter the ring.
+                        flushFiveMoveReport(ctrl.fiveMove)
+                        ctrl.finishFiveMoveKeepCapture(safety.reason)
                     }
                 }
                 collapseBubbleForCapture()
@@ -1022,6 +1034,10 @@ class FloatingBubbleService : Service() {
                 val seqGate = AutoPlaySession.frameSequenceGate
                 if (frame == null) {
                     val miss = seqGate.evaluate(null)
+                    DiagnosticHistoryStore.noteRuntime(
+                        captureState = if (capturing) "ON (no frame)" else "OFF",
+                        lastStopReason = if (!miss.allow) miss.reason else null,
+                    )
                     AutoPlaySession.publish(captureReady = capturing)
                     AutoPlaySession.updateDiagnostics(
                         frameReceived = false,
@@ -2681,12 +2697,18 @@ class FloatingBubbleService : Service() {
             frame.timestampMs >= collapseWallMs + DiagnosticHistory.TRANSITION_SKIP_MS
         val pastCapture = captureStartWallMs > 0L &&
             frame.timestampMs >= captureStartWallMs + DiagnosticHistory.TRANSITION_SKIP_MS
+        val startupFrame = DiagnosticHistoryStore.ringCount() == 0
+        DiagnosticHistoryStore.noteRuntime(
+            captureState = tagged.captureState,
+            lastStopReason = AutoPlayTrace.lastStopReason,
+        )
         val effect = DiagnosticHistoryStore.admitLive(
             bundle = tagged,
             frame = frameExport,
             ownUi = exclude,
             pastTransition = pastCollapse && pastCapture,
             plausibleRoi = plausibleRoi && !exclude,
+            force = startupFrame,
         )
         if (!effect.becameBest || pixels == null || exclude) return
         val full = DiagnosticFrame.render(

@@ -18,6 +18,48 @@ import java.io.File
 class DiagnosticAdmissionTest {
 
     @Test
+    fun inditas_firstFrame_isRecordedEvenDuringTransition() {
+        val history = DiagnosticHistory()
+        history.noteRuntime("OFF", null)
+        val first = history.admitLive(
+            bundle(stamp = 1_000L, unknown = 0),
+            frame(),
+            ownUi = true,
+            pastTransition = false,
+            plausibleRoi = false,
+            force = history.ringSnapshot().isEmpty(),
+        )
+        assertThat(first.enteredRing).isTrue()
+        assertThat(history.ringSnapshot()).hasSize(1)
+        assertThat(history.latestLive()).isNotNull()
+        val second = history.admitLive(
+            bundle(stamp = 1_200L, unknown = 0),
+            frame(),
+            ownUi = true,
+            pastTransition = false,
+            plausibleRoi = false,
+            force = history.ringSnapshot().isEmpty(),
+        )
+        assertThat(second.enteredRing).isFalse()
+        assertThat(history.ringSnapshot()).hasSize(1)
+    }
+
+    @Test
+    fun emptyRing_showsCaptureStateAndLastStopReason() {
+        val history = DiagnosticHistory()
+        history.noteRuntime("ON (no frame)", "STOP — our app is in the foreground")
+        history.noteRuntime("OFF", "STOP — accessibility lost")
+        val text = DiagnosticExportText.render(history)
+        assertThat(text).contains("ringCount=0")
+        assertThat(text).contains("--- PINNED FIRST HOLD ---")
+        assertThat(text).contains("none")
+        assertThat(text).contains("--- LATEST ---")
+        assertThat(text).contains("--- BEST IN-GAME ---")
+        assertThat(text).contains("captureState=OFF")
+        assertThat(text).contains("lastStopReason=STOP — accessibility lost")
+    }
+
+    @Test
     fun ownUi_andTransition_stayOutOfRingPinnedAndBest() {
         val history = DiagnosticHistory(capacity = 8)
         history.admitLive(bundle(stamp = 5_000L, unknown = 0), frame(), ownUi = true, pastTransition = true, plausibleRoi = true)

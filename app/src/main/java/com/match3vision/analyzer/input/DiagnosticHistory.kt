@@ -33,6 +33,14 @@ class DiagnosticHistory(
     var fiveMoveReport: String? = null
         private set
 
+    /** Last capture status the loop observed. Survives an empty ring. */
+    var captureState: String = "unknown"
+        private set
+
+    /** Last play or capture stop. `none` until something actually stops. */
+    var lastStopReason: String = "none"
+        private set
+
     data class AdmitEffect(
         val enteredRing: Boolean,
         val becameBest: Boolean,
@@ -66,14 +74,19 @@ class DiagnosticHistory(
      * Ring entries are at least [SAMPLE_INTERVAL_MS] apart and stay spread
      * across the run. [record] is unchanged for older callers.
      */
+    /**
+     * [force] keeps the first frame after INDÍTÁS. Own-UI and the collapse
+     * transition still drop every later frame.
+     */
     fun admitLive(
         bundle: DiagnosticBundle,
         frame: DiagnosticFrame.Export,
         ownUi: Boolean,
         pastTransition: Boolean,
         plausibleRoi: Boolean,
+        force: Boolean = false,
     ): AdmitEffect {
-        if (ownUi || !pastTransition) {
+        if (!force && (ownUi || !pastTransition)) {
             return AdmitEffect(enteredRing = false, becameBest = false)
         }
         val entry = Entry(bundle, frame)
@@ -98,6 +111,14 @@ class DiagnosticHistory(
         fiveMoveReport = text
     }
 
+    /** Recorded even when no frame is admitted, so an empty export still says why. */
+    fun noteRuntime(captureState: String, lastStopReason: String?) {
+        if (captureState.isNotBlank()) this.captureState = captureState
+        if (!lastStopReason.isNullOrBlank() && lastStopReason != "none") {
+            this.lastStopReason = lastStopReason
+        }
+    }
+
     /** Keeps a HOLD that was already stored on disk. Does not replace it. */
     fun adoptPinnedJson(json: String) {
         if (json.isBlank()) return
@@ -118,6 +139,8 @@ class DiagnosticHistory(
         bestInGame = null
         bestPlausible = false
         fiveMoveReport = null
+        captureState = "unknown"
+        lastStopReason = "none"
     }
 
     fun ringSnapshot(): List<Entry> = ring.toList()
@@ -284,6 +307,8 @@ object DiagnosticExportText {
         appendLine("HOLD DIAGNOSTIC EXPORT")
         appendLine("Share/copy retrieves this without ADB.")
         appendLine("diagnosticInfluencesGate=false")
+        appendLine("captureState=${history.captureState}")
+        appendLine("lastStopReason=${history.lastStopReason}")
         appendLine("ringCount=${history.ringSnapshot().size}")
         appendLine("capacity=${history.capacity}")
         val ring = history.ringSnapshot()
@@ -392,14 +417,24 @@ object DiagnosticHistoryStore {
         }
     }
 
+    fun ringCount(): Int = synchronized(lock) { history.ringSnapshot().size }
+
+    fun noteRuntime(captureState: String, lastStopReason: String?) {
+        synchronized(lock) {
+            history.noteRuntime(captureState, lastStopReason)
+            directory?.let { DiagnosticFiles.write(it, history) }
+        }
+    }
+
     fun admitLive(
         bundle: DiagnosticBundle,
         frame: DiagnosticFrame.Export,
         ownUi: Boolean,
         pastTransition: Boolean,
         plausibleRoi: Boolean,
+        force: Boolean = false,
     ): DiagnosticHistory.AdmitEffect = synchronized(lock) {
-        val effect = history.admitLive(bundle, frame, ownUi, pastTransition, plausibleRoi)
+        val effect = history.admitLive(bundle, frame, ownUi, pastTransition, plausibleRoi, force)
         directory?.let { DiagnosticFiles.write(it, history) }
         effect
     }
