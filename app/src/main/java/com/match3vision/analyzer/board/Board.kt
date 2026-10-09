@@ -66,6 +66,23 @@ data class Board(
         return h
     }
 
+    /**
+     * Color and shape of the 49 cells. Specials are not part of the key, so a
+     * glowing arrow does not look like a new board. Move generation still uses
+     * the latest frame's specials.
+     */
+    fun labelHash(): Long {
+        var h = 1125899906842597L
+        forEachTile { t ->
+            h = h * 31 + t.color.ordinal
+            h = h * 31 + t.shape.ordinal
+            h = h * 31 + (if (t.isUnknown) 1 else 0)
+        }
+        return h
+    }
+
+    fun labelsAgree(other: Board): Boolean = labelHash() == other.labelHash()
+
     fun snapshot(): Board = this
 
     fun forEachTile(block: (Tile) -> Unit) {

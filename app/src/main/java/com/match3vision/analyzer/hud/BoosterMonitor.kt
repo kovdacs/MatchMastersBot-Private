@@ -26,8 +26,9 @@ object BoosterMonitor {
         yourTurn: Boolean,
         swipesVerified: Int,
         selfCheckMeasured: Boolean,
+        boosterReady: Boolean = false,
     ): Boolean = controlEnabled &&
-        activateWord &&
+        (activateWord || boosterReady) &&
         ourTurn &&
         !extraMoveAvailable &&
         swipesVerified >= 1 &&

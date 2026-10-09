@@ -45,7 +45,8 @@ class AutoCalibrationTest {
         val permit = (session.requestDispatch(gates(selfCheck = false)) as FiveMoveSession.Decision.Go).permit
         assertThat(session.consumePermit(permit)).isTrue()
         session.noteGesture(gesture())
-        val stopped = session.onSettle(passSample(hash = 99L, overlaps = false))
+        session.onSettle(passSample(hash = 99L, overlaps = false, nowMs = 3_600L, frameSequence = 2L))
+        val stopped = session.onSettle(passSample(hash = 99L, overlaps = false, nowMs = 4_000L, frameSequence = 3L))
         assertThat(stopped).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat((stopped as FiveMoveSession.Decision.Stop).reason).isEqualTo(AutoCalibration.STOP_MISSED)
         assertThat(session.verifiedCount).isEqualTo(0)
@@ -61,7 +62,8 @@ class AutoCalibrationTest {
         val permit = (session.requestDispatch(gates(selfCheck = false)) as FiveMoveSession.Decision.Go).permit
         session.consumePermit(permit)
         session.noteGesture(gesture())
-        val held = session.onSettle(passSample(hash = 99L, overlaps = true))
+        session.onSettle(passSample(hash = 99L, overlaps = true, nowMs = 3_600L, frameSequence = 2L))
+        val held = session.onSettle(passSample(hash = 99L, overlaps = true, nowMs = 4_000L, frameSequence = 3L))
         assertThat(held).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.takeAutoSave()).isTrue()
@@ -101,8 +103,14 @@ class AutoCalibrationTest {
         beforeUnknown = 0,
     )
 
-    private fun passSample(hash: Long, overlaps: Boolean) = FiveMoveSession.SettleSample(
-        nowMs = 2_000L,
+    private fun passSample(
+        hash: Long,
+        overlaps: Boolean,
+        nowMs: Long = 4_000L,
+        frameSequence: Long = 3L,
+    ) = FiveMoveSession.SettleSample(
+        nowMs = nowMs,
+        frameSequence = frameSequence,
         boardHash = hash,
         diffFraction = 0f,
         frameFresh = true,

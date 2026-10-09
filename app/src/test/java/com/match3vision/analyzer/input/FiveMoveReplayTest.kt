@@ -63,14 +63,15 @@ class FiveMoveReplayTest {
             assertThat(session.verifiedCount).isEqualTo(0)
             return
         }
-        val verified = session.onSettle(sampleFrom(pass, nowMs = 2_000L, diffFraction = 0.01f, frameSequence = 8L))
+        session.onSettle(sampleFrom(pass, nowMs = 2_800L, diffFraction = 0.45f, frameSequence = 8L))
+        val verified = session.onSettle(sampleFrom(pass, nowMs = 3_200L, diffFraction = 0.02f, frameSequence = 9L))
         assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         assertThat(session.movesSnapshot().single().ignoredTransient).isAtLeast(1)
-        assertThat(session.requestDispatch(gates(nowMs = 2_100L, frameSequence = 8L)))
+        assertThat(session.requestDispatch(gates(nowMs = 3_300L, frameSequence = 9L)))
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        val next = session.requestDispatch(gates(nowMs = 2_200L, frameSequence = 9L))
+        val next = session.requestDispatch(gates(nowMs = 3_400L, frameSequence = 10L))
         assertThat(next).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         assertThat((next as FiveMoveSession.Decision.Go).permit.moveNumber).isEqualTo(2)
     }

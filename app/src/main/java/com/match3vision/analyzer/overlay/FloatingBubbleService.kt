@@ -37,6 +37,7 @@ import com.match3vision.analyzer.input.InputDispatchResult
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.BoardStability
 import com.match3vision.analyzer.input.FiveMoveSession
+import com.match3vision.analyzer.input.PlayGate
 import com.match3vision.analyzer.input.CalibrationTarget
 import com.match3vision.analyzer.input.CalibrationTouch
 import com.match3vision.analyzer.input.CalibrationWindowPlan
@@ -2002,12 +2003,35 @@ class FloatingBubbleService : Service() {
             overlayCollapsed = collapsedForCapture,
             overlayOutsideRoi = overlayAllows,
             visionPass = vision.validation.isPass,
-            frameFresh = frame.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS,
+            frameFresh = frame.ageMs() <= settleAgeLimit(),
             ownUi = AutoPlaySession.frameGate.analyzerUiForeground,
             msSinceCollapse = if (collapseWallMs > 0L) frame.timestampMs - collapseWallMs else -1L,
             roiPlausible = roiLooksPlausible(vision),
             frameSequence = frame.sequence,
         )
+        if (session.phase == FiveMoveSession.Phase.RUNNING && !vision.validation.isPass) {
+            val early = readHud(pixels, frame)
+            val dimmed = dimmedFrame(pixels, frame, vision)
+            val kind = PlayGate.kind(early, visionPass = false, dimmed = dimmed)
+            when (val safety = session.notePlayHud(kind, now)) {
+                is FiveMoveSession.Decision.Stop -> {
+                    showChipNotice(session.stopReason)
+                    flushFiveMoveReport(session)
+                    return true
+                }
+                is FiveMoveSession.Decision.Hold -> {
+                    AutoPlaySession.updateDiagnostics(
+                        phase = "TARTÁS",
+                        cycleReason = safety.reason,
+                        gestureStatus = "NOT CREATED",
+                        inputBlockReason = safety.reason,
+                    )
+                    refreshBubbleUi()
+                    return false
+                }
+                else -> Unit
+            }
+        }
         when (val decision = session.requestDispatch(gates)) {
             is FiveMoveSession.Decision.Hold -> {
                 AutoPlaySession.updateDiagnostics(
@@ -2026,6 +2050,40 @@ class FloatingBubbleService : Service() {
             is FiveMoveSession.Decision.Go -> {
                 val hud = readHud(pixels, frame)
                 session.noteHud(hud.log())
+                val dimmed = dimmedFrame(pixels, frame, vision)
+                val hudKind = PlayGate.kind(hud, visionPass = true, dimmed = dimmed)
+                when (val hudDecision = session.notePlayHud(hudKind, System.currentTimeMillis())) {
+                    is FiveMoveSession.Decision.Stop -> {
+                        session.releaseUnusedPermit()
+                        showChipNotice(session.stopReason)
+                        flushFiveMoveReport(session)
+                        return true
+                    }
+                    is FiveMoveSession.Decision.Hold -> {
+                        session.releaseUnusedPermit()
+                        AutoPlaySession.updateDiagnostics(
+                            phase = "TARTÁS",
+                            cycleReason = hudDecision.reason,
+                            gestureStatus = "NOT CREATED",
+                        )
+                        refreshBubbleUi()
+                        return false
+                    }
+                    else -> Unit
+                }
+                val spent = session.noteCircles(
+                    classifiable = hud.circlesClassifiable,
+                    bright = hud.circlesBright,
+                    playable = true,
+                    nowMs = System.currentTimeMillis(),
+                    frameSequence = frame.sequence,
+                )
+                if (spent != null) {
+                    session.releaseUnusedPermit()
+                    showChipNotice(session.stopReason)
+                    flushFiveMoveReport(session)
+                    return true
+                }
                 val turnRefusal = com.match3vision.analyzer.hud.TurnGate.refusal(hud)
                 if (turnRefusal != null) {
                     session.abort(turnRefusal, System.currentTimeMillis())
@@ -2049,12 +2107,6 @@ class FloatingBubbleService : Service() {
                         flushFiveMoveReport(session)
                         return true
                     }
-                }
-                val noMoves = session.movesRemainingStop(hud.movesRemaining, System.currentTimeMillis())
-                if (noMoves != null) {
-                    showChipNotice(session.stopReason)
-                    flushFiveMoveReport(session)
-                    return true
                 }
                 val extraMove = PlayMoveRanker().rank(Board.fromVision(vision.board)).ordered.any { it.extraMove }
                 val boosterDecision = SoloBooster.decision(
@@ -2121,7 +2173,7 @@ class FloatingBubbleService : Service() {
                 }
                 val move = executed.move.move
                 val ranking = ctrl.inputLoop().lastPlayRanking
-                val chosen = ranking?.ordered?.firstOrNull()
+                val chosen = ranking?.ordered?.drop(session.playSkip)?.firstOrNull()
                 session.beginGameLog(
                     GameMoveLog.Pending(
                         moveNumber = decision.permit.moveNumber,
@@ -2142,6 +2194,10 @@ class FloatingBubbleService : Service() {
                         hud = ranking?.hud ?: hud.log(),
                     ),
                 )
+                val swiped = Board.fromVision(vision.board)
+                val touchesSpecial = swiped.get(move.r1, move.c1).special != com.match3vision.analyzer.vision.SpecialType.NONE ||
+                    swiped.get(move.r2, move.c2).special != com.match3vision.analyzer.vision.SpecialType.NONE
+                session.noteDispatchedHud(hudKind)
                 val noted = session.noteGesture(
                     FiveMoveSession.GestureFact(
                         startedAtMs = started,
@@ -2162,6 +2218,10 @@ class FloatingBubbleService : Service() {
                         blueCleared = chosen?.blueCleared ?: 0,
                         totalCleared = chosen?.totalCleared ?: 0,
                         playUncertain = chosen?.uncertain == true,
+                        swipeSequence = frame.sequence,
+                        beforeLabel = swiped.labelHash(),
+                        beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
+                        longSettle = (chosen?.matchLen ?: 0) >= 4 || chosen?.extraMove == true || touchesSpecial,
                     ),
                 )
                 session.suppressOutsideTouchUntil(System.currentTimeMillis() + 400L)
@@ -2288,12 +2348,19 @@ class FloatingBubbleService : Service() {
             afterFrame = next
             afterVision = nextVision
             val hudNow = readHud(analyzed.pixels, next)
+            val seenBoard = Board.fromVision(nextVision.board)
             val settled = session.onSettle(
                 FiveMoveSession.SettleSample(
                     nowMs = System.currentTimeMillis(),
-                    boardHash = Board.fromVision(nextVision.board).contentHash(),
+                    boardHash = seenBoard.contentHash(),
                     diffFraction = fraction,
-                    frameFresh = next.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS,
+                    frameFresh = next.ageMs() <= settleAgeLimit(),
+                    labelHash = seenBoard.labelHash(),
+                    frameAgeMs = next.ageMs(),
+                    cadenceMedianMs = CaptureService.managerOrNull()?.cadence?.medianIntervalMs() ?: 0L,
+                    circlesBright = hudNow.circlesBright,
+                    circlesClassifiable = hudNow.circlesClassifiable,
+                    dimmed = dimmedFrame(analyzed.pixels, next, nextVision),
                     roiPlausible = roiLooksPlausible(nextVision),
                     visionPass = nextVision.validation.isPass,
                     unknownCount = nextVision.unknownCount,
@@ -2359,6 +2426,28 @@ class FloatingBubbleService : Service() {
         flushFiveMoveReport(session)
         refreshBubbleUi()
         return session.phase == FiveMoveSession.Phase.STOPPED
+    }
+
+    private fun settleAgeLimit(): Long {
+        val cadence = CaptureService.managerOrNull()?.cadence?.medianIntervalMs() ?: 0L
+        return maxOf(FiveMoveSession.SETTLE_FRAME_AGE_MS, cadence * 3L)
+    }
+
+    private fun dimmedFrame(
+        pixels: IntArray?,
+        frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult?,
+    ): Boolean {
+        val roi = vision?.grid?.boardRoi
+        return PlayGate.dimmed(
+            pixels,
+            frame.width,
+            frame.height,
+            roi?.left ?: 0,
+            roi?.top ?: 0,
+            roi?.right ?: frame.width,
+            roi?.bottom ?: frame.height,
+        )
     }
 
     private fun swapOverlapsProbe(

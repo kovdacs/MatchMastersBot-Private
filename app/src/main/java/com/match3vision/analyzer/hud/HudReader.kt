@@ -75,6 +75,7 @@ object HudReader {
                 card,
                 activateSample.brightFraction,
                 soloPositive = false,
+                barFull = barFull || activateSample.bright,
             )
         }
         val knownSolo = circleSignal || ((activateSample.bright || word) && reds < OPPONENT_RED_MIN)
@@ -95,10 +96,13 @@ object HudReader {
                 circlesSample,
                 card,
                 activateSample.brightFraction,
-                soloPositive = false,
+                soloPositive = turn.state == HudObservation.TURN_YOUR,
+                barFull = false,
             )
         }
         val activate = activateSample.bright || word
+        val barFull = word || card.text == "FULL" || card.text == "7/7" || card.text == "ACTIVATE" ||
+            activateSample.bright
         val legend = HudText.legend(pixels, width, height)
         val fill = when {
             card.text == "ACTIVATE" || word -> "ACTIVATE"
@@ -141,6 +145,7 @@ object HudReader {
             card,
             activateSample.brightFraction,
             soloPositive = true,
+            barFull = barFull,
         )
     }
 
@@ -151,6 +156,7 @@ object HudReader {
         card: HudText.Card,
         brightFraction: Double,
         soloPositive: Boolean,
+        barFull: Boolean = false,
     ): HudObservation = hud.copy(
         movesRemaining = movesRemaining,
         circlesBright = if (circles.classifiable) circles.bright else null,
@@ -161,6 +167,7 @@ object HudReader {
         activateRect = card.activateRect,
         activateBrightFraction = brightFraction,
         soloPositive = soloPositive,
+        barFull = barFull,
     )
 
     fun activateCenter(width: Int, height: Int): Pair<Float, Float> {
@@ -309,7 +316,7 @@ object SoloBooster {
         hud.turnState == HudObservation.TURN_OPPONENT -> "opponent"
         swipesVerified < 1 -> "no-swipe-yet"
         !selfCheckMeasured -> "no-self-check"
-        !hud.activateWord -> "no-activate-word"
+        !hud.activateWord && !hud.boosterReady -> "no-activate-word"
         !hud.soloPositive && !hud.playerTurn() -> "not-our-layout"
         extraMoveAvailable -> "wait-extra"
         else -> "tap"
@@ -321,7 +328,9 @@ object SoloBooster {
         again: HudObservation,
         beforeHash: Long,
         nowHash: Long,
-    ): Boolean = before.activateWord && again.activateWord && beforeHash == nowHash
+    ): Boolean = (before.activateWord || before.boosterReady) &&
+        (again.activateWord || again.boosterReady) &&
+        beforeHash == nowHash
 
     fun plan(
         hud: HudObservation,
@@ -342,6 +351,7 @@ object SoloBooster {
                 hud.playerTurn(),
                 swipesVerified,
                 selfCheckMeasured,
+                hud.boosterReady,
             )
         ) {
             return null

@@ -38,6 +38,10 @@ data class HudObservation(
     val activateRect: String = "none",
     /** Fraction of the ACTIVATE rect above the bright luma cut. Not a tap by itself. */
     val activateBrightFraction: Double = 0.0,
+    /** The booster pill is full on this frame, whether or not the word was read. */
+    val barFull: Boolean = false,
+    /** Word on any of the last 5 frames, or a full bar on 3 of those frames. */
+    val boosterReady: Boolean = false,
     /**
      * True for a circle row or a positively read solo layout.
      * An uncertain frame can still be [soloLayout] for lookahead and is not solo-positive.
@@ -75,6 +79,7 @@ data class HudObservation(
             "circlesBright=${circlesBright?.toString() ?: NOT_DETECTABLE} " +
             "circlesClassifiable=${if (circlesClassifiable) "yes" else "no"} " +
             "activateWord=${if (activateWord) "yes" else "no"} " +
+            "barFull=${if (barFull) "yes" else "no"} boosterReady=${if (boosterReady) "yes" else "no"} " +
             "activateScore=$activateScore activateFloor=$activateFloor activateRect=$activateRect " +
             "soloPositive=${if (soloPositive) "yes" else "no"} " +
             "hudState=$hudState hudScores=$hudScores"

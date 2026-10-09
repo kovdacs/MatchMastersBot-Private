@@ -48,6 +48,28 @@ class HudSoloFramesTest {
     }
 
     @Test
+    fun ownerFrames_f03AndF06_readTheActivateWord() {
+        listOf("hud_solo/f_03.png", "hud_solo/f_06.png").forEach { name ->
+            val frame = RealFrameLoader.loadFromResource(name)
+            assertThat(frame).isNotNull()
+            val hud = HudReader.read(frame!!.pixels, frame.width, frame.height)
+            assertThat(hud.activateScore).isAtLeast(HudText.PHRASE_FLOOR)
+            assertThat(hud.activateWord).isTrue()
+            assertThat(hud.activateRect).contains("LTRB(")
+            assertThat(hud.soloPositive).isTrue()
+        }
+    }
+
+    @Test
+    fun fullBarOnThreeOfFiveFrames_armsTheBoosterWithoutAWord() {
+        val pulse = HudPulse()
+        val full = HudObservation.solo(activateWord = false).copy(barFull = true, activateWord = false)
+        assertThat(pulse.apply(full).boosterReady).isFalse()
+        assertThat(pulse.apply(full).boosterReady).isFalse()
+        assertThat(pulse.apply(full).boosterReady).isTrue()
+    }
+
+    @Test
     fun pulse_keepsARecentWord_andAnOpponentTurnClearsIt() {
         val pulse = HudPulse()
         val off = HudObservation.solo(activateWord = false)

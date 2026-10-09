@@ -22,6 +22,13 @@ internal object HudText {
     const val CARD_TOP = 865
     const val CARD_BOTTOM = 985
 
+    /** Word box that scored on the owner's phone. Probed at ±8 px. */
+    const val WORD_LEFT = 133
+    const val WORD_TOP = 904
+    const val WORD_RIGHT = 307
+    const val WORD_BOTTOM = 942
+    const val WORD_SLACK = 8
+
     const val MULTIPLIER_TOP = 360
     const val MULTIPLIER_BOTTOM = 640
     const val MULTIPLIER_LEFT = 160
@@ -130,13 +137,16 @@ internal object HudText {
         } else {
             Glyphs.scored(band.width, band.height, band.bits, Glyphs.cardWords)
         }
-        val activateScore = maxOf(wordScore(ink), wordScore(band))
-        val rect = if (band != null) {
-            "LTRB(${band.x0},${band.y0},${band.x1},${band.y1})"
-        } else {
-            search
+        val probed = probeActivate(pixels, width, height)
+        val activateScore = maxOf(wordScore(ink), wordScore(band), probed.score)
+        val rect = when {
+            probed.score > 0.0 && probed.score >= wordScore(ink) && probed.score >= wordScore(band) -> probed.rect
+            band != null -> "LTRB(${band.x0},${band.y0},${band.x1},${band.y1})"
+            else -> search
         }
-        val word = Glyphs.accepted(classic, PHRASE_FLOOR) ?: Glyphs.accepted(shaped, PHRASE_FLOOR)
+        val word = Glyphs.accepted(classic, PHRASE_FLOOR)
+            ?: Glyphs.accepted(shaped, PHRASE_FLOOR)
+            ?: if (probed.score >= PHRASE_FLOOR) Glyphs.activateGame else null
         if (word == null) {
             return Card(HudObservation.NOT_DETECTABLE, false, activateScore, rect, PHRASE_FLOOR)
         }
@@ -150,6 +160,37 @@ internal object HudText {
             }
         }
     }
+
+    /**
+     * The 0.26.5 word box, shifted by a few pixels. The wide card rect can miss
+     * the letters; this probe is the score that is logged even under the floor.
+     */
+    private fun probeActivate(pixels: IntArray, width: Int, height: Int): Probe {
+        var best = 0.0
+        var rect = "none"
+        var dy = -WORD_SLACK
+        while (dy <= WORD_SLACK) {
+            var dx = -WORD_SLACK
+            while (dx <= WORD_SLACK) {
+                val left = scaleX(WORD_LEFT, width) + dx
+                val right = scaleX(WORD_RIGHT, width) + dx
+                val top = scaleY(WORD_TOP, height) + dy
+                val bottom = scaleY(WORD_BOTTOM, height) + dy
+                val box = inkBox(pixels, width, height, left, right, top, bottom)
+                val row = letterRow(pixels, width, height, left, right, top, bottom)
+                val score = maxOf(wordScore(box), wordScore(row))
+                if (score > best) {
+                    best = score
+                    rect = "LTRB($left,$top,$right,$bottom)"
+                }
+                dx += 4
+            }
+            dy += 4
+        }
+        return Probe(best, rect)
+    }
+
+    private data class Probe(val score: Double, val rect: String)
 
     /** Similarity of the ACTIVATE templates, even when another word wins the card. */
     private fun wordScore(ink: Ink?): Double {

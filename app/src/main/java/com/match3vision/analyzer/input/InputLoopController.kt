@@ -20,6 +20,9 @@ class InputLoopController(
     private val inputEngine: AutomaticInputEngine = AutomaticInputEngine(),
     private val animationWaitMs: Long = InputThresholds.ANIMATION_WAIT_MS,
 ) {
+    /** Ranked moves skipped after one confirmed miss. The session owns the value. */
+    var playSkip: Int = 0
+
     data class CycleResult(
         val state: BotLoopState,
         val outcome: BotLoopOutcome,
@@ -135,7 +138,7 @@ class InputLoopController(
             )
         }
         sm.onAnalysisReady()
-        val top = lastPlayRanking?.ordered?.firstOrNull()?.toEvaluation()
+        val top = lastPlayRanking?.ordered?.drop(playSkip.coerceAtLeast(0))?.firstOrNull()?.toEvaluation()
         if (top == null) {
             AutoPlayTrace.log("MOVE none", AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
             val t = sm.onNoLegalMove(AutomaticInputEngine.HOLD_NO_LEGAL_MOVE)
