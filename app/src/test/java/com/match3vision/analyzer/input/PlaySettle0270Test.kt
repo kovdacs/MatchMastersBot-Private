@@ -3,6 +3,7 @@ package com.match3vision.analyzer.input
 import com.google.common.truth.Truth.assertThat
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.hud.HudObservation
+import com.match3vision.analyzer.hud.SoloBooster
 import com.match3vision.analyzer.overlay.OwnerStatus
 import com.match3vision.analyzer.vision.SpecialType
 import com.match3vision.analyzer.vision.TileColor
@@ -162,6 +163,47 @@ class PlaySettle0270Test {
         assertThat(session.movesSnapshot().single().verification).contains("extra-move circles unchanged")
         assertThat(session.swipesVerified).isEqualTo(1)
         assertThat(session.swipesDispatched).isEqualTo(1)
+    }
+
+    @Test
+    fun boosterTapDoesNotCountAsAVerifiedSwipe() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val result = session.recordBooster(
+            changed = true,
+            stable = true,
+            callbackCompleted = true,
+            x = 170f,
+            y = 923f,
+            nowMs = 2_000L,
+            playExport = "",
+        )
+        assertThat(result).contains("PASS")
+        assertThat(session.boosterLatched).isTrue()
+        assertThat(session.verifiedCount).isEqualTo(1)
+        assertThat(session.swipesVerified).isEqualTo(0)
+        assertThat(session.swipesDispatched).isEqualTo(0)
+        val hud = HudObservation.solo(movesRemaining = 8, activateWord = true)
+        assertThat(
+            SoloBooster.decision(
+                hud,
+                controlEnabled = true,
+                extraMoveAvailable = false,
+                latched = false,
+                swipesVerified = session.swipesVerified,
+                selfCheckMeasured = true,
+            ),
+        ).isEqualTo("no-swipe-yet")
+        assertThat(
+            SoloBooster.plan(
+                hud,
+                1080,
+                2400,
+                controlEnabled = true,
+                swipesVerified = session.swipesVerified,
+                selfCheckMeasured = true,
+            ),
+        ).isNull()
     }
 
     @Test

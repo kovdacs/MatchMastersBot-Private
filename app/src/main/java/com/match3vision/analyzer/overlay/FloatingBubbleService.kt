@@ -1915,7 +1915,7 @@ class FloatingBubbleService : Service() {
             frame.height,
             BoosterControl.enabled,
             extraMoveAvailable,
-            swipesVerified = session.verifiedCount,
+            swipesVerified = session.swipesVerified,
             selfCheckMeasured = selfCheckThisSession(),
         ) ?: return false
         val latest = CaptureService.managerOrNull()?.latestFrame?.value ?: return false
@@ -2114,7 +2114,7 @@ class FloatingBubbleService : Service() {
                     BoosterControl.enabled,
                     extraMove,
                     session.boosterLatched,
-                    swipesVerified = session.verifiedCount,
+                    swipesVerified = session.swipesVerified,
                     selfCheckMeasured = gates.selfCheckMeasured,
                 )
                 session.noteHud(moveTrace(hud, boosterDecision, hud.log()))
