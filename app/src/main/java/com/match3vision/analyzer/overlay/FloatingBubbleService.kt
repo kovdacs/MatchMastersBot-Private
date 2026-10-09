@@ -2027,7 +2027,6 @@ class FloatingBubbleService : Service() {
         val callback = sent is InputDispatchResult.Dispatched && sent.callbackCompleted
         var changed = false
         var countChange = true
-        var hudChanged = false
         var lastHash: Long? = null
         val deadline = started + BOOSTER_SETTLE_MS
         while (System.currentTimeMillis() < deadline && session.phase == FiveMoveSession.Phase.RUNNING) {
@@ -2038,19 +2037,11 @@ class FloatingBubbleService : Service() {
             val nextVision = analyzed.vision ?: continue
             if (!nextVision.validation.isPass) continue
             val hudNow = readHud(analyzed.pixels, next)
-            if (hudNow.activateWord != hud.activateWord || hudNow.boosterFill != hud.boosterFill) {
-                hudChanged = true
-            }
             if (!com.match3vision.analyzer.hud.TurnGate.allowsVerification(hudNow)) countChange = false
             val hash = Board.fromVision(nextVision.board).contentHash()
             if (hash != beforeHash) changed = true
             if (lastHash != null && hash == lastHash && hash != beforeHash) break
             lastHash = hash
-        }
-        val needsTarget = callback && countChange && !changed && hudChanged
-        if (needsTarget) {
-            session.abort("STOP — booster needs a target", System.currentTimeMillis())
-            return true
         }
         if (!callback) {
             session.endBoosterWindow(System.currentTimeMillis())
@@ -2306,11 +2297,6 @@ class FloatingBubbleService : Service() {
                         is AutomaticInputEngine.ExecuteResult.Stopped -> executed.reason
                         is AutomaticInputEngine.ExecuteResult.Held -> executed.reason
                         else -> cycle?.reason ?: "HOLD — move was not dispatched"
-                    }
-                    if (executed is AutomaticInputEngine.ExecuteResult.Stopped) {
-                        session.abort(reason, System.currentTimeMillis())
-                        flushFiveMoveReport(session)
-                        return true
                     }
                     AutoPlaySession.updateDiagnostics(
                         phase = "TARTÁS",

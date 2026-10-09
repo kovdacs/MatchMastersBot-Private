@@ -103,6 +103,22 @@ class PlaySettle0275Test {
     }
 
     @Test
+    fun staleDispatchPermit_isDroppedOncePassBoardsHaveWaitedTwentySeconds() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        assertThat(session.requestDispatch(gates(1_000L, frameSequence = 2L)))
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        assertThat(session.requestDispatch(gates(2_000L, frameSequence = 3L)))
+            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        val again = session.requestDispatch(
+            gates(FiveMoveSession.IDLE_WITHOUT_GESTURE_MS + 1L, frameSequence = 4L),
+        )
+        assertThat(again).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
+    }
+
+    @Test
     fun idleHelpTouchesDoNotCount_andTwoRecentTouchesStillStop() {
         val stuck = FiveMoveSession()
         stuck.arm(0L)

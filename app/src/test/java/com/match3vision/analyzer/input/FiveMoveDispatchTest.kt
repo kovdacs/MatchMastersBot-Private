@@ -115,9 +115,10 @@ class FiveMoveDispatchTest {
                 beforeUnknown = 0,
             ),
         )
-        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         assertThat(ctrl.fiveMove.requestDispatch(readyGates(2_000L)))
-            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         ctrl.runCycleIfActive(passVision(), context(a11yConnected = true))
         assertThat(exec.dispatched).hasSize(1)
         assertThat(ctrl.fiveMove.verifiedCount).isEqualTo(0)

@@ -116,10 +116,9 @@ class PlaySettle0270Test {
         assertThat(session.notePlayHud(PlayGate.UNKNOWN, 10L)).isNull()
         session.noteDispatchedHud(PlayGate.UNKNOWN)
         session.noteDispatchedHud(PlayGate.UNKNOWN)
-        val stopped = session.notePlayHud(PlayGate.UNKNOWN, 20L)
-        assertThat(stopped).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat(OwnerStatus.hu((stopped as FiveMoveSession.Decision.Stop).reason))
-            .isEqualTo("Nem ismerem a képernyőt – leálltam")
+        assertThat(session.notePlayHud(PlayGate.UNKNOWN, 20L)).isNull()
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
 
         val solo = FiveMoveSession()
         solo.arm(0L)

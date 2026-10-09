@@ -59,7 +59,8 @@ class FiveMoveReplayTest {
         assertThat(session.verifiedCount).isEqualTo(0)
         if (pass.hash == animation.hash) {
             val unchanged = session.onSettle(sampleFrom(pass, nowMs = 1_000L + FiveMoveSession.UNCHANGED_MIN_MS, diffFraction = 0.01f))
-            assertThat(unchanged).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+            assertThat(unchanged).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+            assertThat(session.phase).isNotEqualTo(FiveMoveSession.Phase.STOPPED)
             assertThat(session.verifiedCount).isEqualTo(0)
             return
         }

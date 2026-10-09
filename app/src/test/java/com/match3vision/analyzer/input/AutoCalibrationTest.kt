@@ -47,11 +47,13 @@ class AutoCalibrationTest {
         session.noteGesture(gesture())
         session.onSettle(passSample(hash = 99L, overlaps = false, nowMs = 3_600L, frameSequence = 2L))
         val stopped = session.onSettle(passSample(hash = 99L, overlaps = false, nowMs = 4_000L, frameSequence = 3L))
-        assertThat(stopped).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat((stopped as FiveMoveSession.Decision.Stop).reason).isEqualTo(AutoCalibration.STOP_MISSED)
+        assertThat(stopped).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
         assertThat(session.verifiedCount).isEqualTo(0)
         assertThat(session.takeAutoSave()).isFalse()
-        assertThat(session.requestDispatch(gates(selfCheck = false))).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(session.requestDispatch(gates(selfCheck = false)))
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
     }
 
     @Test

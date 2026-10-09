@@ -49,12 +49,13 @@ class FiveMoveSessionTest {
                 frameSequence = 8L,
             ),
         )
-        assertThat(failed).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(failed).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(0)
         assertThat(session.gesturesDispatched).isEqualTo(2)
-        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
-        val blocked = session.requestDispatch(gates(nowMs = 30_000L))
-        assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
+        val blocked = session.requestDispatch(gates(nowMs = 30_000L, frameSequence = 9L))
+        assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         assertThat(session.gesturesDispatched).isEqualTo(2)
         assertThat(session.report()).contains("board unchanged")
         assertThat(session.report()).contains("measuredSessionMs=")
@@ -70,9 +71,10 @@ class FiveMoveSessionTest {
         val noted = session.noteGesture(
             gesture(startedAtMs = 100L, nowMs = 180L, beforeHash = 1L, completed = false, cancelled = true),
         )
-        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat(session.requestDispatch(gates(nowMs = 200L)))
-            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.requestDispatch(gates(nowMs = 200L, frameSequence = 2L)))
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         assertThat(session.gesturesDispatched).isEqualTo(1)
         assertThat(session.verifiedCount).isEqualTo(0)
     }
@@ -161,11 +163,12 @@ class FiveMoveSessionTest {
                 frameSequence = 3L,
             ),
         )
-        assertThat(decision).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat((decision as FiveMoveSession.Decision.Stop).reason).contains("settle wait")
-        assertThat(session.verifiedCount).isEqualTo(0)
-        assertThat(session.requestDispatch(gates(nowMs = 13_000L)))
-            .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
+        assertThat(decision).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
+        assertThat(session.verifiedCount).isEqualTo(1)
+        assertThat(session.requestDispatch(gates(nowMs = 60_100L, frameSequence = 4L)))
+            .isInstanceOf(FiveMoveSession.Decision.Go::class.java)
     }
 
     @Test

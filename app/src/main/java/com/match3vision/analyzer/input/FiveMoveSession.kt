@@ -248,6 +248,7 @@ class FiveMoveSession {
         val ignoredReasons: ArrayList<String> = ArrayList(),
         var outsideTouches: Int = 0,
         var sawBoardChange: Boolean = false,
+        var sawPass: Boolean = false,
     )
 
     private var unknownMoves: Int = 0
@@ -294,9 +295,8 @@ class FiveMoveSession {
     /**
      * Opponent's Turn stops immediately. A menu or popup is a hold until
      * [MENU_FRAMES] consecutive menu frames span [MENU_HOLD_MS]; any our-turn
-     * frame clears that streak. An unknown HUD (neither solo-positive nor PvP
-     * Your Turn) stops after two such moves. A dimmed transition is ignored.
-     * Solo never increments the unknown streak.
+     * frame clears that streak. An unknown HUD is logged and play continues.
+     * A dimmed transition is ignored. Solo never increments the unknown streak.
      */
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
@@ -315,8 +315,7 @@ class FiveMoveSession {
                 }
             }
             PlayGate.DIMMED -> Decision.Hold("dimmed transition")
-            PlayGate.UNKNOWN ->
-                if (unknownMoves >= 2) abort("STOP — unknown HUD", nowMs) else null
+            PlayGate.UNKNOWN -> null
             else -> {
                 unknownMoves = 0
                 if (kind == PlayGate.OURS) {
@@ -620,7 +619,14 @@ class FiveMoveSession {
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, "STOP — 40 gesture safety cap")
         }
-        if (outstanding != null) return Decision.Hold("dispatch permit already issued")
+        if (outstanding != null) {
+            if (gates.visionPass && idleSinceGesture(gates.nowMs) > IDLE_WITHOUT_GESTURE_MS) {
+                noteIdle(gates.nowMs, true, "dispatch permit already issued")
+                outstanding = null
+            } else {
+                return Decision.Hold("dispatch permit already issued")
+            }
+        }
         val hold = holdReason(gates)
         if (hold != null) {
             noteIdle(gates.nowMs, gates.visionPass, hold)
@@ -780,7 +786,7 @@ class FiveMoveSession {
                 totalCleared = fact.totalCleared,
                 playUncertain = fact.playUncertain,
             )
-            return stop(fact.nowMs, "STOP — gesture callback was not completed")
+            return Decision.Hold("gesture callback was not completed")
         }
         openMove = OpenMove(
             number = gesturesDispatched,
@@ -835,9 +841,13 @@ class FiveMoveSession {
         if (sample.diffFraction != null && sample.diffFraction > STABLE_FRACTION) {
             open.sawBoardChange = true
         }
-        if (open.countsAsSwipe && sample.nowMs - open.startedAtMs >= SETTLE_WAIT_MS) {
-            closeOpen(open, sample, "FAILED — settle wait ${SETTLE_WAIT_MS}ms")
-            return decided(stop(sample.nowMs, "STOP — settle wait ${SETTLE_WAIT_MS}ms"), "settle")
+        if (sample.visionPass && sample.unknownCount <= MAX_UNKNOWN) open.sawPass = true
+        if (open.countsAsSwipe &&
+            sample.nowMs - open.startedAtMs >= SETTLE_WAIT_MS &&
+            !open.sawPass
+        ) {
+            closeOpen(open, sample, "FAILED — settle wait ${SETTLE_WAIT_MS}ms, no PASS board")
+            return decided(stop(sample.nowMs, "STOP — settle wait, no PASS board"), "settle")
         }
         if (sample.dimmed) return settleHold(open, sample, "dimmed transition")
         val ageLimit = maxOf(SETTLE_FRAME_AGE_MS, sample.cadenceMedianMs * 3L)
@@ -900,7 +910,9 @@ class FiveMoveSession {
         if (labelsDiffer || drop) {
             if (autoProbe && swipesVerified == 0 && !sample.swapOverlaps) {
                 closeOpen(open, sample, "FAILED — auto-calibration missed the swapped cells")
-                return decided(stop(sample.nowMs, AutoCalibration.STOP_MISSED), "settle")
+                openMove = null
+                phase = Phase.RUNNING
+                return decided(Decision.Hold("auto-calibration missed, continue"), "settle")
             }
             if (sample.frameSequence > lastSettledFrameSequence) {
                 lastSettledFrameSequence = sample.frameSequence
@@ -933,11 +945,7 @@ class FiveMoveSession {
         if (sample.nowMs - open.playableSinceMs < landed) {
             return settleHold(open, sample, "confirming the board did not change")
         }
-        if (unchangedRetries >= 1) {
-            closeOpen(open, sample, "FAILED — board unchanged")
-            return decided(stop(sample.nowMs, "STOP — board unchanged after move ${open.number}"), "settle")
-        }
-        unchangedRetries = 1
+        unchangedRetries += 1
         playSkip = 1
         closeOpen(open, sample, "RETRY — board unchanged, next move")
         openMove = null
@@ -1140,6 +1148,12 @@ class FiveMoveSession {
         if (!open.countsAsSwipe && sample.nowMs - open.startedAtMs >= BOOSTER_PLAYABLE_MS) {
             return finishBoosterWithoutBoard(open, sample)
         }
+        if (open.countsAsSwipe &&
+            open.sawPass &&
+            sample.nowMs - open.startedAtMs >= SETTLE_WAIT_MS
+        ) {
+            return releasePassSettle(open, sample)
+        }
         return ignore(open, reason)
     }
 
@@ -1158,6 +1172,13 @@ class FiveMoveSession {
         }
         phase = Phase.RUNNING
         return decided(Decision.Hold("booster playable"), "settle")
+    }
+
+    /** PASS frames that never formed a pair are not a stop. The next swipe may go. */
+    private fun releasePassSettle(open: OpenMove, sample: SettleSample): Decision {
+        closeOpen(open, sample, "LOG — pass boards did not settle")
+        phase = Phase.RUNNING
+        return decided(Decision.Hold("continue — pass boards still changing"), "settle")
     }
 
     private fun finishBoosterWithoutBoard(open: OpenMove, sample: SettleSample): Decision {
