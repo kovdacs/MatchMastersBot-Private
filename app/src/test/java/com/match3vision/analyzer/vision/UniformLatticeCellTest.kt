@@ -47,6 +47,63 @@ class UniformLatticeCellTest {
     }
 
     @Test
+    fun phoneSpreadExactly42_snaps() {
+        val pitches = floatArrayOf(146f, 171f, 129f, 171f, 150f, 150f, 147f)
+        val picked = FloatArray(8)
+        var cursor = 0f
+        for (i in pitches.indices) {
+            cursor += pitches[i]
+            picked[i + 1] = cursor
+        }
+        assertThat(BoardFinder.pitchSpread(picked)).isWithin(0.01f).of(42f)
+        val length = picked.last().toInt()
+        val energy = FloatArray(length)
+        val period = 152
+        for (i in 0..7) {
+            val y = i * period
+            if (y in energy.indices) energy[y] = 12f
+        }
+        val fit = BoardFinder.uniformPitchFromEnergy(picked, energy)
+        assertThat(fit.applied).isTrue()
+        assertThat(fit.spreadPx).isWithin(0.01f).of(42f)
+        val out = FloatArray(7) { i -> fit.bounds[i + 1] - fit.bounds[i] }
+        val pitch = out[0]
+        for (p in out) {
+            assertThat(p).isWithin(1f).of(pitch)
+        }
+    }
+
+    @Test
+    fun spread38_staysOnThePeaks() {
+        // pvp_board.jpg projPickedY. Spread is 169-131 = 38, under the snap line.
+        val picked = floatArrayOf(0f, 140f, 309f, 460f, 609f, 740f, 890f, 1040f)
+        assertThat(BoardFinder.pitchSpread(picked)).isWithin(0.01f).of(38f)
+        val energy = FloatArray(1048) { 1f }
+        val fit = BoardFinder.uniformPitchFromEnergy(picked, energy)
+        assertThat(fit.applied).isFalse()
+    }
+
+    @Test
+    fun latticeRoi_usesWidthAndHeightOverSeven() {
+        val yPicked = floatArrayOf(0f, 146f, 317f, 446f, 617f, 767f, 917f, 1064f)
+        val xPicked = floatArrayOf(0f, 159f, 308f, 459f, 619f, 759f, 919f, 1080f)
+        val y = BoardFinder.latticeUniformCuts(1064, yPicked)
+        val x = BoardFinder.latticeUniformCuts(1080, xPicked)
+        assertThat(y.applied).isTrue()
+        assertThat(x.applied).isTrue()
+        assertThat(y.bounds.last()).isWithin(0.01f).of(1064f)
+        assertThat(x.bounds.last()).isWithin(0.01f).of(1080f)
+        val yPitch = 1064f / 7f
+        val xPitch = 1080f / 7f
+        for (i in 0 until 7) {
+            assertThat(y.bounds[i + 1] - y.bounds[i]).isWithin(0.01f).of(yPitch)
+            assertThat(x.bounds[i + 1] - x.bounds[i]).isWithin(0.01f).of(xPitch)
+        }
+        assertThat(y.bounds[0]).isEqualTo(0f)
+        assertThat(x.bounds[0]).isEqualTo(0f)
+    }
+
+    @Test
     fun evenPitches_areNotReplaced() {
         val picked = FloatArray(8) { i -> i * 150f }
         val energy = FloatArray(1050) { 1f }

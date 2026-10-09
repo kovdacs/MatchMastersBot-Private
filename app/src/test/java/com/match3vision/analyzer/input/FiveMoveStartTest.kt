@@ -48,6 +48,47 @@ class FiveMoveStartTest {
         assertThat(report.export).contains("frame seq=7")
     }
 
+    @Test
+    fun phoneHoldUnknown7_doesNotReady_untilEveryCheckPasses() {
+        val seek = FiveMoveSeek()
+        seek.begin(0L)
+        val hold = seek.offer(
+            1_000L,
+            sample(
+                nowMs = 1_000L,
+                visionPass = false,
+                roiPlausible = true,
+                frameAgeMs = 2_875L,
+            ).copy(unknownCount = 7, cadenceMedianMs = 1_024L),
+        )
+        assertThat(hold).isInstanceOf(FiveMoveStart.Offer.Waiting::class.java)
+        assertThat((hold as FiveMoveStart.Offer.Waiting).report.chip)
+            .isEqualTo("Tábla nem látszik: vision HOLD")
+        assertThat(hold.report.ready).isFalse()
+
+        val unknownOnly = seek.offer(
+            2_000L,
+            sample(nowMs = 2_000L, visionPass = false).copy(unknownCount = 0),
+        )
+        assertThat(unknownOnly).isInstanceOf(FiveMoveStart.Offer.Waiting::class.java)
+
+        val unkTooHigh = seek.offer(
+            2_500L,
+            sample(nowMs = 2_500L, visionPass = true).copy(unknownCount = 7),
+        )
+        assertThat(unkTooHigh).isInstanceOf(FiveMoveStart.Offer.Waiting::class.java)
+        assertThat((unkTooHigh as FiveMoveStart.Offer.Waiting).report.chip)
+            .contains("unknown=7")
+
+        val ready = seek.offer(
+            3_000L,
+            sample(nowMs = 3_000L, visionPass = true, frameAgeMs = 2_875L)
+                .copy(unknownCount = 0, cadenceMedianMs = 1_024L),
+        )
+        assertThat(ready).isInstanceOf(FiveMoveStart.Offer.Ready::class.java)
+        assertThat((ready as FiveMoveStart.Offer.Ready).report.ready).isTrue()
+    }
+
     private fun sample(
         nowMs: Long,
         visionPass: Boolean = true,

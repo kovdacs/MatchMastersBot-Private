@@ -115,6 +115,60 @@ class CalibrationAndFiveMoveRefusalTest {
     }
 
     @Test
+    fun stoppedLoop_doesNotResumeUntilTheFiveMoveButton() {
+        val (ctrl, exec) = controller()
+        ctrl.onBubbleStop("felhasználó STOP")
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.STOPPED)
+        assertThat(
+            ctrl.onDiagnosticStart(captureReady = true, overlayReady = true, a11yConnected = true),
+        ).isFalse()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.STOPPED)
+        assertThat(exec.dispatched).isEmpty()
+
+        assertThat(
+            ctrl.explicitFiveMoveRestart(
+                a11yConnected = false,
+                captureReady = true,
+                overlayReady = true,
+            ),
+        ).isEqualTo(FiveMoveArm.PRESS_START)
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.STOPPED)
+
+        assertThat(
+            ctrl.explicitFiveMoveRestart(
+                a11yConnected = true,
+                captureReady = true,
+                overlayReady = true,
+            ),
+        ).isNull()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.IDLE)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(
+            ctrl.onDiagnosticStart(captureReady = true, overlayReady = true, a11yConnected = true),
+        ).isTrue()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.fiveMove.gesturesDispatched).isEqualTo(0)
+
+        val latch = AutoPlayController::class.java.getDeclaredField("unconfirmedCapLatched")
+        latch.isAccessible = true
+        latch.setBoolean(ctrl, true)
+        ctrl.onBubbleStop("felhasználó STOP")
+        assertThat(
+            ctrl.explicitFiveMoveRestart(
+                a11yConnected = true,
+                captureReady = true,
+                overlayReady = true,
+            ),
+        ).isEqualTo(FiveMoveArm.CAP)
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.STOPPED)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(exec.dispatched).isEmpty()
+        assertThat(ctrl.fiveMove.gesturesDispatched).isEqualTo(0)
+    }
+
+    @Test
     fun chipTitles_showMode() {
         assertThat(BubbleModeCaption.title(false, "5 LÉPÉS 0/5", false)).isEqualTo("ELEMZÉS")
         assertThat(BubbleModeCaption.title(false, "5 LÉPÉS 0/5", true)).isEqualTo("KALIBRÁCIÓ OK")

@@ -543,9 +543,35 @@ class AutoPlayController(
     }
 
     /**
-     * Arm the 5-move test from an analysis-only loop.
-     * Does not enable continuous play and does not enable the input switch.
+     * The owner pressed 5 LÉPÉS TESZT while the loop was STOPPED.
+     * This is the only way back from STOPPED, and only because that press
+     * happened. Input stays off. A missing accessibility service, capture,
+     * or overlay leaves the loop STOPPED and tells them to press INDÍTÁS.
      */
+    fun explicitFiveMoveRestart(
+        a11yConnected: Boolean,
+        captureReady: Boolean,
+        overlayReady: Boolean,
+    ): String? {
+        if (mode != Mode.STOPPED) return null
+        if (unconfirmedCapLatched) {
+            enableSwitch.setEnabled(false)
+            lastReason = FiveMoveArm.CAP
+            return FiveMoveArm.CAP
+        }
+        if (!a11yConnected || !captureReady || !overlayReady) {
+            lastReason = FiveMoveArm.PRESS_START
+            return FiveMoveArm.PRESS_START
+        }
+        mode = Mode.IDLE
+        fiveMove.clear()
+        enableSwitch.setEnabled(false)
+        analysisOnly = false
+        analysisOnlyBecauseA11yOff = false
+        lastReason = "5 LÉPÉS — újraindítás a gombnyomásra"
+        return null
+    }
+
     /**
      * Reasons that do not depend on one camera frame.
      * A missing board is not one of them: the bubble waits for a passing frame.
@@ -564,6 +590,10 @@ class AutoPlayController(
         return null
     }
 
+    /**
+     * Arm the 5-move test from an analysis-only loop.
+     * Does not enable continuous play and does not enable the input switch.
+     */
     fun armFiveMoveTest(
         nowMs: Long,
         selfCheckThisSession: Boolean,

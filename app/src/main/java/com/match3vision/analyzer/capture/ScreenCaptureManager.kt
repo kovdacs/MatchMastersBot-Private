@@ -171,6 +171,10 @@ class ScreenCaptureManager(
             image = reader.acquireLatestImage() ?: return
             val now = System.currentTimeMillis()
             val elapsed = com.match3vision.analyzer.input.FrameClock.tryElapsed()
+            // 5 fps is a ceiling. VirtualDisplay delivers a buffer when the
+            // screen changes, and a busy process stretches that gap. The phone
+            // session measured a median near 1024 ms. This check does not
+            // invent frames and does not change the freshness gate.
             val interval = config.frameIntervalMs
             if (now - lastEmitMs < interval) {
                 return

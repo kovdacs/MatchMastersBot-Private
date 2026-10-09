@@ -1541,6 +1541,36 @@ class FloatingBubbleService : Service() {
     private fun startFiveMoveFromBubble() {
         val ctrl = AutoPlaySession.controller
         val now = System.currentTimeMillis()
+        if (ctrl.mode == AutoPlayController.Mode.STOPPED) {
+            val a11y = MatchMastersAccessibilityService.isConnected()
+            val captureOk = CaptureService.managerOrNull() != null
+            val overlayOk = android.provider.Settings.canDrawOverlays(this)
+            val block = ctrl.explicitFiveMoveRestart(a11y, captureOk, overlayOk)
+            if (block != null) {
+                showChipNotice(block)
+                try {
+                    DiagnosticHistoryStore.setFiveMoveReport(FiveMoveStart.immediate(now, block))
+                } catch (t: Throwable) {
+                    Timber.w(t, "five-move restart refusal export failed")
+                }
+                refreshBubbleUi()
+                return
+            }
+            val started = ctrl.onDiagnosticStart(
+                captureReady = captureOk,
+                overlayReady = overlayOk,
+                a11yConnected = a11y,
+            )
+            if (!started) {
+                val reason = ctrl.lastReason.ifBlank { FiveMoveArm.PRESS_START }
+                showChipNotice(reason)
+                refreshBubbleUi()
+                return
+            }
+            AutoPlaySession.syncFrameGateFromMode()
+            collapseBubbleForCapture()
+            ensureLoopRunning()
+        }
         val refusal = ctrl.fiveMoveRefusal(
             selfCheckThisSession = selfCheckThisSession(),
             a11yConnected = MatchMastersAccessibilityService.isConnected(),

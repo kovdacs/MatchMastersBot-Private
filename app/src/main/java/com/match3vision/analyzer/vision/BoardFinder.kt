@@ -375,10 +375,11 @@ open class BoardFinder(
         internal const val LATTICE_CLIP_MARGIN = 8
 
         /**
-         * Projection pitches wider than this are not a grid. Phone 0.24.7.2
-         * measured 126 vs 174 (spread 48) on one board. Replace them with one
-         * period. The PvP golden's row spread is 38 px and must stay on the
-         * peaks that produce grid confidence 0.9872.
+         * Projection pitches at least this far apart are not a grid. Phone
+         * 0.24.7.5 measured 129 vs 171, spread exactly 42, and the old
+         * `spread <= 42` check left those peaks in place. Exactly 42 snaps.
+         * The PvP golden's row spread is 38 px and stays on the peaks that
+         * produce grid confidence 0.9872.
          */
         internal const val UNIFORM_PITCH_SPREAD_PX = 42f
 
@@ -552,7 +553,7 @@ open class BoardFinder(
                 if (pitch > maxP) maxP = pitch
             }
             val spread = maxP - minP
-            if (spread <= UNIFORM_PITCH_SPREAD_PX) {
+            if (spread < UNIFORM_PITCH_SPREAD_PX) {
                 return UniformPitch(picked, applied = false, period = -1, origin = -1, spreadPx = spread)
             }
             val nominal = n.toFloat() / GridGeometry.GRID_SIZE
@@ -603,6 +604,39 @@ open class BoardFinder(
                 origin = bestOrigin,
                 spreadPx = spread,
             )
+        }
+
+        /**
+         * Eight lines spaced by [length] / 7. Used when the board rectangle
+         * itself came from the gutter lattice, so per-frame projection peaks
+         * are not the grid. Recognisers and [VisionThresholds] are not involved.
+         */
+        internal fun latticeUniformCuts(length: Int, picked: FloatArray): UniformPitch {
+            val cells = GridGeometry.GRID_SIZE
+            val step = length.toFloat() / cells
+            val bounds = FloatArray(GridGeometry.BOUNDARY_COUNT) { i ->
+                if (i == cells) length.toFloat() else i * step
+            }
+            return UniformPitch(
+                bounds = bounds,
+                applied = true,
+                period = step.toInt(),
+                origin = 0,
+                spreadPx = pitchSpread(picked),
+            )
+        }
+
+        internal fun pitchSpread(picked: FloatArray): Float {
+            if (picked.size < 2) return 0f
+            var minP = Float.MAX_VALUE
+            var maxP = 0f
+            val last = picked.size - 1
+            for (i in 0 until last) {
+                val pitch = picked[i + 1] - picked[i]
+                if (pitch < minP) minP = pitch
+                if (pitch > maxP) maxP = pitch
+            }
+            return if (minP == Float.MAX_VALUE) 0f else maxP - minP
         }
 
         /** Equal pitches between the outer edges projection already accepted. */
@@ -1029,12 +1063,12 @@ open class BoardFinder(
         val xPicked = pickSevenCellBoundariesInternal(colEnergy, softOutlierFrac, peakX) ?: return null
         val yPicked = pickSevenCellBoundariesInternal(rowEnergy, softOutlierFrac, peakY) ?: return null
         val xFit = if (uniformSnap) {
-            uniformPitchFromEnergy(xPicked, colEnergy)
+            latticeUniformCuts(bw, xPicked)
         } else {
             UniformPitch(xPicked, applied = false, period = -1, origin = -1, spreadPx = 0f)
         }
         val yFit = if (uniformSnap) {
-            uniformPitchFromEnergy(yPicked, rowEnergy)
+            latticeUniformCuts(bh, yPicked)
         } else {
             UniformPitch(yPicked, applied = false, period = -1, origin = -1, spreadPx = 0f)
         }
