@@ -33,6 +33,9 @@ import kotlin.math.hypot
 class FiveMoveSession {
     enum class Phase { IDLE, RUNNING, SETTLING, STOPPED }
 
+    /** One playable board. [TAP] is a single ACTIVATE tap. [SWIPE] must not wait. */
+    enum class BoosterStep { TAP, SWIPE }
+
     data class Gates(
         val nowMs: Long,
         val a11yConnected: Boolean,
@@ -178,6 +181,7 @@ class FiveMoveSession {
 
     private var boosterReadyToRetry: Boolean = false
     private var boosterBoardsSinceTap: Int = 0
+    private var boosterHandlingStartedAt: Long = -1L
     private val boosterAttemptLog = ArrayList<String>()
     private var previousPassLabel: Long? = null
 
@@ -475,6 +479,7 @@ class FiveMoveSession {
         boosterAttempts = 0
         boosterReadyToRetry = false
         boosterBoardsSinceTap = 0
+        boosterHandlingStartedAt = -1L
         boosterAttemptLog.clear()
         previousPassLabel = null
     }
@@ -680,10 +685,51 @@ class FiveMoveSession {
         outstanding = null
     }
 
-    /** The ACTIVATE tap never got a fresh frame. Swipes continue. This is not a latch. */
+    /** The ACTIVATE tap never got a fresh frame, or the 10 s budget ran out. Swipes continue. */
     fun giveUpBooster() {
+        if (boosterGaveUp || boosterLatched) return
         boosterGaveUp = true
-        boosterAttemptLog += "attempt=$boosterAttempts result=not-sent"
+        boosterReadyToRetry = false
+        val result = if (boosterAttempts == 0) "not-sent" else "budget"
+        boosterAttemptLog += "attempt=$boosterAttempts result=$result"
+    }
+
+    /** A booster failure is logged. Play stays running. */
+    fun noteBoosterException(message: String) {
+        val clean = message.replace('\n', ' ').take(160)
+        boosterAttemptLog += "attempt=$boosterAttempts result=exception $clean"
+    }
+
+    /**
+     * One playable board. Returns immediately. Never waits for the word to
+     * vanish and never holds a dispatch permit. After [BOOSTER_HANDLING_BUDGET_MS]
+     * the booster is given up and the caller swipes.
+     */
+    fun considerBoosterFrame(
+        nowMs: Long,
+        activateVisible: Boolean,
+        barFull: Boolean,
+        canSendNow: Boolean,
+    ): BoosterStep {
+        if (phase != Phase.RUNNING) return BoosterStep.SWIPE
+        val interested = !boosterLatched && !boosterGaveUp && (activateVisible || boosterAttempts > 0)
+        if (interested && boosterHandlingStartedAt < 0L) {
+            boosterHandlingStartedAt = nowMs
+        }
+        if (
+            interested &&
+            boosterHandlingStartedAt >= 0L &&
+            nowMs - boosterHandlingStartedAt >= BOOSTER_HANDLING_BUDGET_MS
+        ) {
+            giveUpBooster()
+        }
+        if (!boosterLatched && !boosterGaveUp && boosterAttempts > 0) {
+            noteBoosterBoard(activateVisible, barFull)
+        }
+        if (boosterMayTap() && canSendNow && activateVisible && phase == Phase.RUNNING) {
+            return BoosterStep.TAP
+        }
+        return BoosterStep.SWIPE
     }
 
     /**
@@ -1489,6 +1535,7 @@ class FiveMoveSession {
         const val BOOSTER_TAP_MS = 120L
         const val BOOSTER_MAX_ATTEMPTS = 3
         const val BOOSTER_CONFIRM_BOARDS = 2
+        const val BOOSTER_HANDLING_BUDGET_MS = 10_000L
         const val MENU_FRAMES = 3
         const val MENU_HOLD_MS = 3_000L
         const val PER_MOVE_BUDGET_MS = 20_000L

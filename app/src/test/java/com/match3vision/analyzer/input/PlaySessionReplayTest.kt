@@ -221,6 +221,88 @@ class PlaySessionReplayTest {
         assertThat(play.session.boosterLog()).contains("result=missed")
     }
 
+    @Test(timeout = 2_000)
+    fun activateStaysVisibleAndTapsIgnored_threeAttemptsThenSwipes() {
+        val play = Play()
+        play.start()
+        val deadline = System.nanoTime() + 1_500_000_000L
+        var taps = 0
+        var swipes = 0
+        var steps = 0
+        var swipeSteps = 0
+        while (taps < 3 || swipes < 1) {
+            check(System.nanoTime() < deadline) { "booster handling hung" }
+            steps += 1
+            check(steps < 20) { "booster handling hung taps=$taps swipes=$swipes" }
+            val step = play.session.considerBoosterFrame(
+                nowMs = play.now,
+                activateVisible = true,
+                barFull = true,
+                canSendNow = true,
+            )
+            play.now += FiveMoveSession.PLAYABLE_GAP_MS
+            if (step == FiveMoveSession.BoosterStep.TAP) {
+                check(taps < 3) { "fourth ACTIVATE tap" }
+                play.session.noteBoosterTap(180f, 940f, FiveMoveSession.BOOSTER_TAP_MS)
+                taps += 1
+            } else {
+                swipeSteps += 1
+                if (play.session.boosterGaveUp) {
+                    play.swipe(nextHash = play.hash + 1, dropCircle = false)
+                    swipes += 1
+                }
+            }
+        }
+        assertThat(taps).isEqualTo(3)
+        assertThat(swipeSteps).isAtLeast(1)
+        assertThat(play.session.boosterAttempts).isEqualTo(3)
+        assertThat(play.session.boosterGaveUp).isTrue()
+        assertThat(play.session.boosterLatched).isFalse()
+        assertThat(play.session.boosterMayTap()).isFalse()
+        assertThat(play.session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(play.session.boosterLog()).contains("durationMs=120")
+        assertThat(play.session.boosterLog()).contains("result=missed")
+        play.expectStillPlaying("ignored activate")
+    }
+
+    @Test(timeout = 2_000)
+    fun boosterBudget_givesUpAfterTenSecondsAndSwipes() {
+        val play = Play()
+        play.start()
+        val held = play.session.considerBoosterFrame(
+            nowMs = play.now,
+            activateVisible = true,
+            barFull = true,
+            canSendNow = false,
+        )
+        assertThat(held).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        assertThat(play.session.boosterAttempts).isEqualTo(0)
+        play.now += FiveMoveSession.BOOSTER_HANDLING_BUDGET_MS
+        val expired = play.session.considerBoosterFrame(
+            nowMs = play.now,
+            activateVisible = true,
+            barFull = true,
+            canSendNow = true,
+        )
+        assertThat(expired).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        assertThat(play.session.boosterGaveUp).isTrue()
+        assertThat(play.session.boosterMayTap()).isFalse()
+        assertThat(play.session.boosterLog()).contains("result=not-sent")
+        play.swipe(nextHash = play.hash + 1, dropCircle = false)
+        play.expectStillPlaying("booster budget")
+    }
+
+    @Test(timeout = 2_000)
+    fun boosterException_isLoggedAndPlayContinues() {
+        val play = Play()
+        play.start()
+        play.session.noteBoosterException("planner blew up")
+        assertThat(play.session.boosterLog()).contains("result=exception")
+        assertThat(play.session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        play.swipe(nextHash = play.hash + 1, dropCircle = false)
+        play.expectStillPlaying("booster exception")
+    }
+
     @Test
     fun staleOrMovingFrame_isNotSwiped_andACellMismatchIsALabelError() {
         val play = Play()

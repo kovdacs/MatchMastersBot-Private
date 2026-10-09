@@ -505,6 +505,110 @@ data class DiagnosticBundle(
             file.writeText(bundle.toJson())
         }
 
+        /**
+         * Rebuilds a ring bundle from the JSON [toJson] wrote. Missing fields
+         * stay empty. This does not run vision and does not grant a PASS.
+         */
+        fun resumeFromJson(json: String): DiagnosticBundle {
+            fun s(name: String, default: String = ""): String = jsonField(json, name) ?: default
+            fun nInt(name: String): Int = s(name).toIntOrNull() ?: 0
+            fun nLong(name: String): Long = s(name).toLongOrNull() ?: 0L
+            fun nFloat(name: String): Float = s(name).toFloatOrNull() ?: 0f
+            fun nBool(name: String): Boolean = s(name) == "true"
+            return DiagnosticBundle(
+                appVersion = s("appVersion"),
+                versionCode = nInt("versionCode"),
+                sourceCommit = s("sourceCommit"),
+                diagnosticTimestampMs = nLong("diagnosticTimestampMs"),
+                failureClass = s("failureClass", CLASS_NONE),
+                visionGate = s("visionGate"),
+                visionReason = s("visionReason"),
+                gridConfidence = nFloat("gridConfidence"),
+                boardConfidence = nFloat("boardConfidence"),
+                unknownCount = nInt("unknownCount"),
+                cellLabels = emptyList(),
+                boardRoi = s("boardRoi"),
+                frameWidth = nInt("frameWidth"),
+                frameHeight = nInt("frameHeight"),
+                screenWidth = nInt("screenWidth"),
+                screenHeight = nInt("screenHeight"),
+                screenSource = s("screenSource"),
+                screenRotation = nInt("screenRotation"),
+                coordinateAlignmentProven = nBool("coordinateAlignmentProven"),
+                coordinateReason = s("coordinateReason"),
+                frameSequence = nLong("frameSequence"),
+                captureTimestampMs = nLong("captureTimestampMs"),
+                frameAgeMs = nLong("frameAgeMs"),
+                frameElapsedMs = nLong("frameElapsedMs"),
+                cadence = s("cadence"),
+                accessibilityConnected = nBool("accessibilityConnected"),
+                gestureCapability = s("gestureCapability"),
+                captureState = s("captureState"),
+                moveAnalysis = s("moveAnalysis"),
+                selectedMove = s("selectedMove"),
+                dispatchStatus = s("dispatchStatus"),
+                callbackOutcome = s("callbackOutcome"),
+                verificationStatus = s("verificationStatus"),
+                verificationReason = s("verificationReason"),
+                gridMethod = s("gridMethod"),
+                relVarX = s("relVarX"),
+                relVarY = s("relVarY"),
+                projectionPeakCountX = s("projectionPeakCountX"),
+                projectionPeakCountY = s("projectionPeakCountY"),
+                meanLuminance = s("meanLuminance"),
+                blackFrame = s("blackFrame"),
+                visionDecisions = s("visionDecisions"),
+                dispatchDecision = s("dispatchDecision"),
+                finalSafetyDecision = s("finalSafetyDecision"),
+                frameExportStatus = s("frameExportStatus", DiagnosticFrame.STATUS_NOT_EXPORTED),
+                frameExportReason = s("frameExportReason"),
+                gridBoundaries = s("gridBoundaries"),
+                latticeScore = s("latticeScore", "not measured"),
+                latticeRoiUsed = s("latticeRoiUsed", "not measured"),
+                overlayGateResult = s("overlayGateResult", "not evaluated"),
+                playfieldSnap = s("playfieldSnap", "not measured"),
+                simulated = nBool("simulated"),
+                frameSource = s("frameSource", SOURCE_IN_GAME).ifBlank { SOURCE_IN_GAME },
+            )
+        }
+
+        private fun jsonField(json: String, name: String): String? {
+            val key = "\"$name\""
+            val at = json.indexOf(key)
+            if (at < 0) return null
+            var i = json.indexOf(':', at + key.length)
+            if (i < 0) return null
+            i += 1
+            while (i < json.length && json[i].isWhitespace()) i++
+            if (i >= json.length) return null
+            if (json[i] == '"') {
+                val out = StringBuilder()
+                i += 1
+                while (i < json.length) {
+                    val ch = json[i]
+                    if (ch == '\\' && i + 1 < json.length) {
+                        i += 1
+                        out.append(
+                            when (json[i]) {
+                                'n' -> '\n'
+                                'r' -> '\r'
+                                't' -> '\t'
+                                else -> json[i]
+                            },
+                        )
+                    } else if (ch == '"') {
+                        break
+                    } else {
+                        out.append(ch)
+                    }
+                    i += 1
+                }
+                return out.toString()
+            }
+            val end = json.indexOfAny(charArrayOf(',', '\n', '}'), i).let { if (it < 0) json.length else it }
+            return json.substring(i, end).trim()
+        }
+
         private fun jsonString(raw: String): String {
             val escaped = buildString(raw.length + 8) {
                 for (ch in raw) {

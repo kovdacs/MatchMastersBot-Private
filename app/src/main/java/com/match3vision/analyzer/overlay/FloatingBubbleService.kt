@@ -127,6 +127,7 @@ class FloatingBubbleService : Service() {
     private var calibrationLibrary = CalibrationLibrary()
     private var activeSaved: SavedCalibration? = null
     private var captureStartWallMs: Long = 0L
+    private var lastDiagnosticFlushMs: Long = 0L
     private var pauseBtn: Button? = null
     private var touchTestBtn: Button? = null
     private var diagHintView: TextView? = null
@@ -955,6 +956,7 @@ class FloatingBubbleService : Service() {
             Timber.i("auto-play continuous cycle STARTED")
             while (isActive) {
                 val ctrl = AutoPlaySession.controller
+                persistDiagnosticsIfDue(ctrl)
                 if (ctrl.mode == AutoPlayController.Mode.STOPPED) {
                     restoreExpandedBubble()
                     break
@@ -1859,6 +1861,14 @@ class FloatingBubbleService : Service() {
         if (session.phase == FiveMoveSession.Phase.IDLE && session.startedAtMs == 0L) return
         try {
             DiagnosticHistoryStore.setFiveMoveReport(session.report())
+            val capturing = CaptureService.managerOrNull()?.isCapturing?.value == true
+            val state = if (capturing) {
+                "ON"
+            } else {
+                val current = DiagnosticHistoryStore.snapshot().captureState
+                if (current.isBlank() || current == "unknown") "OFF" else current
+            }
+            DiagnosticHistoryStore.noteRuntime(state, session.stopReason.ifBlank { null })
             val log = session.gameLogText()
             val dir = DiagnosticHistoryStore.directory()
             if (log.isNotBlank() && dir != null) {
@@ -1866,6 +1876,24 @@ class FloatingBubbleService : Service() {
             }
         } catch (t: Throwable) {
             Timber.w(t, "five-move report write failed")
+        }
+    }
+
+    /** Disk copy of the ring and the session, including a process that is about to die. */
+    private fun persistDiagnosticsIfDue(ctrl: AutoPlayController) {
+        val now = System.currentTimeMillis()
+        if (lastDiagnosticFlushMs != 0L && now - lastDiagnosticFlushMs < DIAGNOSTIC_FLUSH_MS) return
+        lastDiagnosticFlushMs = now
+        val session = ctrl.fiveMove
+        if (session.phase != FiveMoveSession.Phase.IDLE || session.startedAtMs != 0L) {
+            flushFiveMoveReport(session)
+            return
+        }
+        try {
+            val capturing = CaptureService.managerOrNull()?.isCapturing?.value == true
+            if (capturing) DiagnosticHistoryStore.noteRuntime("ON", null)
+        } catch (t: Throwable) {
+            Timber.w(t, "diagnostic flush failed")
         }
     }
 
@@ -1948,22 +1976,19 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * One left-card ACTIVATE tap when the word is read, the toggle is on, the
-     * turn is ours, a swipe has already verified, and no extra-move swap is
-     * available. ACTIVATE is read again on the latest frame before the tap.
-     * A booster that needs a target stops the session. A miss latches and
-     * does not tap the board. Returns true when a tap was sent, so the caller
-     * must not also swipe on this stale frame.
+     * True when this already-analyzed frame can take one ACTIVATE tap.
+     * Does not poll, does not analyze another frame, and does not dispatch.
      */
-    private suspend fun trySoloBooster(
+    private fun boosterCanSend(
         session: FiveMoveSession,
         hud: HudObservation,
         frame: CaptureFrame,
         vision: com.match3vision.analyzer.vision.VisionResult,
         extraMoveAvailable: Boolean,
-        boosterDecision: String,
+        selfCheckMeasured: Boolean,
     ): Boolean {
-        if (session.boosterLatched || session.phase != FiveMoveSession.Phase.RUNNING) return false
+        if (session.boosterLatched || session.boosterGaveUp) return false
+        if (session.phase != FiveMoveSession.Phase.RUNNING) return false
         val tap = SoloBooster.plan(
             hud,
             frame.width,
@@ -1971,120 +1996,61 @@ class FloatingBubbleService : Service() {
             BoosterControl.enabled,
             extraMoveAvailable,
             swipesVerified = session.swipesVerified,
-            selfCheckMeasured = selfCheckThisSession(),
+            selfCheckMeasured = selfCheckMeasured,
         ) ?: return false
-        val beforeHash = Board.fromVision(vision.board).contentHash()
+        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
+        val ageLimit = settleAgeLimit()
+        val recheck = DispatchRecheck.evaluate(
+            boosterPermit(gesture, frame, vision, ageLimit),
+            FrameClock.tryElapsed(),
+        )
+        return FreshFrameDispatch.booster(
+            elapsedMs = 0L,
+            ageMs = frame.ageMs(),
+            ageLimitMs = ageLimit,
+            gatesPass = vision.validation.isPass && roiLooksPlausible(vision),
+            showsActivateOrYourTurn = FreshFrameDispatch.showsActivate(hud),
+            recheckAllow = recheck.allow,
+        ) == FreshFrameDispatch.Booster.SEND
+    }
+
+    /**
+     * Schedules one ACTIVATE tap and returns. The call stays on the play
+     * thread so the accessibility callback is not awaited (that await deadlocks
+     * the main looper). It does not enter settle and does not hold the permit.
+     */
+    private fun sendSoloBoosterTap(
+        session: FiveMoveSession,
+        hud: HudObservation,
+        frame: CaptureFrame,
+        extraMoveAvailable: Boolean,
+        selfCheckMeasured: Boolean,
+    ): Boolean {
+        val tap = SoloBooster.plan(
+            hud,
+            frame.width,
+            frame.height,
+            BoosterControl.enabled,
+            extraMoveAvailable,
+            swipesVerified = session.swipesVerified,
+            selfCheckMeasured = selfCheckMeasured,
+        ) ?: return false
+        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
         val executor = AccessibilityGestureExecutor()
         if (!executor.isReady()) return false
-        val started = System.currentTimeMillis()
-        val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
-        val latest = CaptureService.managerOrNull()?.latestFrame?.value
-        var frameNow = if (latest != null && latest.sequence >= frame.sequence) latest else frame
-        var visionNow = vision
-        var hudNow = hud
-        if (frameNow.sequence != frame.sequence || frameNow !== frame) {
-            val again = withContext(Dispatchers.Default) { analyzeFrame(frameNow) }
-            val read = again.vision
-            if (read != null) {
-                visionNow = read
-                hudNow = readHud(again.pixels, frameNow)
-            }
+        val tapAt = System.currentTimeMillis()
+        session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, tapAt)
+        try {
+            executor.dispatchRecognizedTap(gesture)
+        } finally {
+            session.finishOwnGesture(System.currentTimeMillis())
         }
-        var dispatched: InputDispatchResult? = null
-        while (dispatched == null) {
-            val elapsed = System.currentTimeMillis() - started
-            val ageLimit = settleAgeLimit()
-            val liveHash = Board.fromVision(visionNow.board).contentHash()
-            val gates = visionNow.validation.isPass &&
-                roiLooksPlausible(visionNow) &&
-                SoloBooster.stillArmed(hud, hudNow, beforeHash, liveHash)
-            val recheck = DispatchRecheck.evaluate(
-                boosterPermit(gesture, frameNow, visionNow, ageLimit),
-                FrameClock.tryElapsed(),
-            )
-            when (
-                FreshFrameDispatch.booster(
-                    elapsedMs = elapsed,
-                    ageMs = frameNow.ageMs(),
-                    ageLimitMs = ageLimit,
-                    gatesPass = gates,
-                    showsActivateOrYourTurn = FreshFrameDispatch.showsActivate(hudNow),
-                    recheckAllow = recheck.allow,
-                )
-            ) {
-                FreshFrameDispatch.Booster.GIVE_UP -> {
-                    session.giveUpBooster()
-                    return false
-                }
-                FreshFrameDispatch.Booster.WAIT -> {
-                    delay(FiveMoveSession.POLL_STEP_MS)
-                    val next = CaptureService.managerOrNull()?.latestFrame?.value ?: continue
-                    if (next.sequence < frameNow.sequence) continue
-                    val analyzed = withContext(Dispatchers.Default) { analyzeFrame(next) }
-                    val nextVision = analyzed.vision ?: continue
-                    frameNow = next
-                    visionNow = nextVision
-                    hudNow = readHud(analyzed.pixels, next)
-                }
-                FreshFrameDispatch.Booster.SEND -> {
-                    val tapAt = System.currentTimeMillis()
-                    session.beginBoosterWindow(tapAt)
-                    session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, tapAt)
-                    dispatched = try {
-                        withContext(Dispatchers.Default) {
-                            executor.dispatchRecognizedTap(gesture)
-                        }
-                    } finally {
-                        session.finishOwnGesture(System.currentTimeMillis())
-                    }
-                }
-            }
-        }
-        val sent = dispatched
-        val callback = sent is InputDispatchResult.Dispatched && sent.callbackCompleted
-        var changed = false
-        var countChange = true
-        var lastHash: Long? = null
-        val deadline = started + BOOSTER_SETTLE_MS
-        while (System.currentTimeMillis() < deadline && session.phase == FiveMoveSession.Phase.RUNNING) {
-            delay(FiveMoveSession.POLL_STEP_MS)
-            val next = CaptureService.managerOrNull()?.latestFrame?.value ?: continue
-            if (next.sequence <= frame.sequence) continue
-            val analyzed = withContext(Dispatchers.Default) { analyzeFrame(next) }
-            val nextVision = analyzed.vision ?: continue
-            if (!nextVision.validation.isPass) continue
-            val hudNow = readHud(analyzed.pixels, next)
-            if (!com.match3vision.analyzer.hud.TurnGate.allowsVerification(hudNow)) countChange = false
-            val hash = Board.fromVision(nextVision.board).contentHash()
-            if (hash != beforeHash) changed = true
-            if (lastHash != null && hash == lastHash && hash != beforeHash) break
-            lastHash = hash
-        }
-        if (!callback) {
-            session.endBoosterWindow(System.currentTimeMillis())
-            session.recordBooster(
-                changed = changed,
-                stable = false,
-                callbackCompleted = false,
-                x = tap.x,
-                y = tap.y,
-                nowMs = System.currentTimeMillis(),
-                playExport = moveTrace(hud, boosterDecision, hud.log()),
-                countChange = countChange,
-                needsTarget = false,
-            )
-            return true
-        }
-        val beforeBoard = Board.fromVision(vision.board)
-        session.armBoosterSettle(
-            x = tap.x,
-            y = tap.y,
-            nowMs = started,
-            playExport = moveTrace(hud, boosterDecision, hud.log()),
-            swipeSequence = frame.sequence,
-            beforeHash = beforeHash,
-            beforeLabel = beforeBoard.labelHash(),
-            beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
+        session.noteBoosterTap(tap.x, tap.y, FiveMoveSession.BOOSTER_TAP_MS)
+        Timber.i(
+            "booster tap point=(%d,%d) durationMs=%d",
+            tap.x.toInt(),
+            tap.y.toInt(),
+            FiveMoveSession.BOOSTER_TAP_MS,
         )
         return true
     }
@@ -2259,15 +2225,32 @@ class FloatingBubbleService : Service() {
                     refreshBubbleUi()
                     return false
                 }
-                session.noteBoosterBoard(
-                    activateVisible = hud.activateWord || hud.boosterReady,
-                    barFull = hud.barFull,
-                )
                 val extraMove = PlayMoveRanker().rank(boardNow).ordered.any { it.extraMove }
+                val boosterStep = try {
+                    val canSend = boosterCanSend(
+                        session,
+                        hud,
+                        frame,
+                        vision,
+                        extraMove,
+                        gates.selfCheckMeasured,
+                    )
+                    session.considerBoosterFrame(
+                        nowMs = System.currentTimeMillis(),
+                        activateVisible = hud.activateWord || hud.boosterReady,
+                        barFull = hud.barFull,
+                        canSendNow = canSend,
+                    )
+                } catch (t: Throwable) {
+                    Timber.e(t, "booster check failed; continuing play")
+                    session.noteBoosterException(t.message ?: t.javaClass.simpleName)
+                    FiveMoveSession.BoosterStep.SWIPE
+                }
                 val boosterDecision = when {
                     session.boosterLatched -> "latched"
                     session.boosterGaveUp -> "missed"
                     !session.boosterMayTap() && session.boosterAttempts > 0 -> "watching"
+                    boosterStep == FiveMoveSession.BoosterStep.TAP -> "tap"
                     else -> SoloBooster.decision(
                         hud,
                         BoosterControl.enabled,
@@ -2278,24 +2261,25 @@ class FloatingBubbleService : Service() {
                     )
                 }
                 session.noteHud(moveTrace(hud, boosterDecision, hud.log()))
-                if (session.boosterMayTap() &&
-                    trySoloBooster(session, hud, frame, vision, extraMove, boosterDecision)
-                ) {
-                    session.releaseUnusedPermit()
-                    if (session.phase == FiveMoveSession.Phase.STOPPED) {
-                        flushFiveMoveReport(session)
-                        return true
-                    }
-                    if (session.phase == FiveMoveSession.Phase.SETTLING) {
-                        return settleFiveMove(
+                if (boosterStep == FiveMoveSession.BoosterStep.TAP) {
+                    val sent = try {
+                        sendSoloBoosterTap(
                             session,
+                            hud,
                             frame,
-                            vision,
-                            Board.fromVision(vision.board).contentHash(),
+                            extraMove,
+                            gates.selfCheckMeasured,
                         )
+                    } catch (t: Throwable) {
+                        Timber.e(t, "booster tap failed; continuing play")
+                        session.noteBoosterException(t.message ?: t.javaClass.simpleName)
+                        false
                     }
-                    refreshBubbleUi()
-                    return false
+                    if (sent) {
+                        session.releaseUnusedPermit()
+                        refreshBubbleUi()
+                        return false
+                    }
                 }
                 val chosenMove = PlayMoveRanker().rank(boardNow).ordered
                     .drop(session.playSkip)
@@ -3079,7 +3063,7 @@ class FloatingBubbleService : Service() {
     }
 
     companion object {
-        private const val BOOSTER_SETTLE_MS = 10_000L
+        private const val DIAGNOSTIC_FLUSH_MS = 30_000L
         private const val COLLAPSED_CONTROL_WIDTH_DP = 220f
         private const val COLLAPSED_CONTROL_HEIGHT_DP = 128f
 

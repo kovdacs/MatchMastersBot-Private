@@ -111,6 +111,24 @@ class DiagnosticHistory(
         fiveMoveReport = text
     }
 
+    /** Fields reloaded from disk after the process died. Does not clear the ring. */
+    fun adoptResume(captureState: String, lastStopReason: String, fiveMoveReport: String?) {
+        if (captureState.isNotBlank()) this.captureState = captureState
+        if (lastStopReason.isNotBlank()) this.lastStopReason = lastStopReason
+        if (!fiveMoveReport.isNullOrBlank()) this.fiveMoveReport = fiveMoveReport
+    }
+
+    /**
+     * Puts a ring entry back after a process restart. Does not pin a HOLD and
+     * does not resample, so a reload matches the files that were written.
+     */
+    fun restoreEntry(bundle: DiagnosticBundle, frame: DiagnosticFrame.Export) {
+        val entry = Entry(bundle, frame)
+        ring.addLast(entry)
+        while (ring.size > capacity) ring.removeFirst()
+        latestLiveEntry = entry
+    }
+
     /** Recorded even when no frame is admitted, so an empty export still says why. */
     fun noteRuntime(captureState: String, lastStopReason: String?) {
         if (captureState.isNotBlank()) this.captureState = captureState
@@ -264,6 +282,90 @@ object DiagnosticFiles {
             writeFrame(dir, "best-in-game", best.frame)
         }
         File(dir, "export.txt").writeText(DiagnosticExportText.render(history))
+        File(dir, "session-resume.txt").writeText(sessionResume(history))
+    }
+
+    /** captureState, last stop, five-move report (booster attempts), and the ring. */
+    fun loadInto(history: DiagnosticHistory, dir: File) {
+        if (!dir.isDirectory) return
+        val resume = File(dir, "session-resume.txt")
+        if (resume.isFile) {
+            val parsed = parseResume(resume.readText())
+            history.adoptResume(parsed.captureState, parsed.lastStopReason, parsed.fiveMoveReport)
+        } else {
+            val export = File(dir, "export.txt")
+            if (export.isFile) {
+                val text = export.readText()
+                val capture = text.lineSequence()
+                    .firstOrNull { it.startsWith("captureState=") }
+                    ?.substringAfter("=")
+                    .orEmpty()
+                val stop = text.lineSequence()
+                    .firstOrNull { it.startsWith("lastStopReason=") }
+                    ?.substringAfter("=")
+                    .orEmpty()
+                val marker = "--- 10 LÉPÉS TESZT ---"
+                val reportAt = text.indexOf(marker)
+                val report = if (reportAt >= 0) text.substring(reportAt) else null
+                history.adoptResume(capture, stop, report)
+            }
+        }
+        val ringDir = File(dir, "ring")
+        if (!ringDir.isDirectory) return
+        val bundles = ringDir.listFiles()
+            ?.filter { it.isFile && it.name.matches(Regex("bundle-\\d+\\.json")) }
+            ?.sortedBy { it.name }
+            ?: return
+        bundles.forEach { file ->
+            val index = file.name.removePrefix("bundle-").removeSuffix(".json")
+            val bundle = try {
+                DiagnosticBundle.resumeFromJson(file.readText())
+            } catch (_: Throwable) {
+                null
+            } ?: return@forEach
+            val png = File(ringDir, "frame-$index.png").takeIf { it.isFile }?.readBytes()
+            val status = File(ringDir, "frame-$index-status.txt")
+                .takeIf { it.isFile }
+                ?.readLines()
+                ?: emptyList()
+            val frame = DiagnosticFrame.Export(
+                status = status.getOrElse(0) {
+                    if (png != null) DiagnosticFrame.STATUS_EXPORTED else DiagnosticFrame.STATUS_NOT_EXPORTED
+                },
+                reason = status.getOrElse(1) { "" },
+                png = png,
+                width = bundle.frameWidth,
+                height = bundle.frameHeight,
+                pixels = null,
+            )
+            history.restoreEntry(bundle, frame)
+        }
+    }
+
+    private fun sessionResume(history: DiagnosticHistory): String = buildString {
+        append("captureState=").append(history.captureState).append('\n')
+        append("lastStopReason=").append(history.lastStopReason).append('\n')
+        append("---FIVE-MOVE---\n")
+        val report = history.fiveMoveReport
+        if (!report.isNullOrBlank()) append(report)
+    }
+
+    private data class Resume(val captureState: String, val lastStopReason: String, val fiveMoveReport: String?)
+
+    private fun parseResume(text: String): Resume {
+        val marker = "\n---FIVE-MOVE---\n"
+        val at = text.indexOf(marker)
+        val head = if (at < 0) text else text.substring(0, at)
+        val report = if (at < 0) null else text.substring(at + marker.length).ifBlank { null }
+        var capture = ""
+        var stop = ""
+        head.lineSequence().forEach { line ->
+            when {
+                line.startsWith("captureState=") -> capture = line.substringAfter("=")
+                line.startsWith("lastStopReason=") -> stop = line.substringAfter("=")
+            }
+        }
+        return Resume(capture, stop, report)
     }
 
     /** Text plus every downscaled frame PNG the share sheet should attach. */
@@ -371,21 +473,27 @@ object DiagnosticHistoryStore {
     private val lock = Any()
     private var history = DiagnosticHistory()
     private var directory: File? = null
+    private var resumed = false
 
     fun install(dir: File, versionCode: Int = -1) {
         synchronized(lock) {
             directory = dir
             dir.mkdirs()
             val pin = File(dir, "pinned-first-hold.json")
-            if (!pin.isFile) return
-            val text = pin.readText()
-            val pinnedVersion = pinnedVersionCode(text)
-            if (versionCode >= 0 && pinnedVersion != versionCode) {
-                history.clearPin()
-                dropPinFiles(dir)
-                return
+            if (pin.isFile) {
+                val text = pin.readText()
+                val pinnedVersion = pinnedVersionCode(text)
+                if (versionCode >= 0 && pinnedVersion != versionCode) {
+                    history.clearPin()
+                    dropPinFiles(dir)
+                } else {
+                    history.adoptPinnedJson(text)
+                }
             }
-            history.adoptPinnedJson(text)
+            if (!resumed) {
+                DiagnosticFiles.loadInto(history, dir)
+                resumed = true
+            }
         }
     }
 
@@ -457,6 +565,7 @@ object DiagnosticHistoryStore {
         synchronized(lock) {
             history.clear()
             directory?.let { DiagnosticFiles.clear(it) }
+            resumed = true
         }
     }
 
@@ -469,6 +578,7 @@ object DiagnosticHistoryStore {
         synchronized(lock) {
             history = next
             directory = dir
+            resumed = false
         }
     }
 }
