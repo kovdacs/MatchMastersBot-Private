@@ -183,6 +183,8 @@ class FiveMoveSession {
     private var boosterBoardsSinceTap: Int = 0
     private var boosterHandlingStartedAt: Long = -1L
     private val boosterAttemptLog = ArrayList<String>()
+    private var extraFollowUpUntilMs: Long = 0L
+    private var lastBlockLogAtMs: Long = 0L
     private var previousPassLabel: Long? = null
 
     /** Move 1 may dispatch before a saved calibration exists. */
@@ -782,13 +784,43 @@ class FiveMoveSession {
     fun boosterLog(): String = boosterAttemptLog.joinToString("\n")
 
     /**
-     * Null when [labelHash] agrees with the previous PASS frame and the frame
-     * is at most [SwipeGuard.MAX_FRAME_AGE_MS] old.
+     * Null when this frame may be swiped. A rejected frame is an idle reason
+     * in the export, once immediately and then every [IDLE_LOG_EVERY_MS].
+     * After an extra move whose circles did not drop, a fresh PASS frame is
+     * swiped anyway once [EXTRA_FOLLOW_UP_MS] has passed, and sooner when its
+     * labels still match the previous PASS frame.
      */
-    fun considerSwipeFrame(ageMs: Long, labelHash: Long): String? {
+    fun considerSwipeFrame(ageMs: Long, labelHash: Long, nowMs: Long = 0L): String? {
         val previous = previousPassLabel
         previousPassLabel = labelHash
-        return SwipeGuard.motionBlock(ageMs, previous, labelHash)
+        val block = SwipeGuard.motionBlock(ageMs, previous, labelHash) ?: run {
+            extraFollowUpUntilMs = 0L
+            swipeOverride = false
+            return null
+        }
+        val follow = extraFollowUpUntilMs > 0L && nowMs > 0L
+        val labelsAgree = previous != null && previous == labelHash
+        val freshEnough = ageMs <= SETTLE_FRAME_AGE_MS
+        if (follow && freshEnough && (labelsAgree || nowMs >= extraFollowUpUntilMs)) {
+            if (!labelsAgree) notePlayBlock(nowMs, "extra-move follow-up")
+            extraFollowUpUntilMs = 0L
+            swipeOverride = true
+            return null
+        }
+        swipeOverride = false
+        if (nowMs > 0L) notePlayBlock(nowMs, block)
+        return block
+    }
+
+    /** True when [considerSwipeFrame] allowed a swipe past the freshness guard. */
+    var swipeOverride: Boolean = false
+        private set
+
+    /** Exported under `--- IDLE ---`. The first block is kept, then one line per 5 s. */
+    fun notePlayBlock(nowMs: Long, reason: String) {
+        if (lastBlockLogAtMs > 0L && nowMs - lastBlockLogAtMs < IDLE_LOG_EVERY_MS) return
+        lastBlockLogAtMs = nowMs
+        if (idleLog.size < 80) idleLog += "idle reason=$reason"
     }
 
     /**
@@ -895,6 +927,7 @@ class FiveMoveSession {
         }
         gesturesDispatched += 1
         swipesDispatched += 1
+        extraFollowUpUntilMs = 0L
         if (fact.startedAtMs > 0L) lastGestureAtMs = fact.startedAtMs
         val callback = when {
             fact.cancelled || !fact.callbackCompleted -> "cancelled"
@@ -1059,6 +1092,9 @@ class FiveMoveSession {
                 lastSettledFrameSequence = sample.frameSequence
             }
             val extraNote = if (circlesSame && labelsDiffer) " extra-move circles unchanged" else ""
+            if (circlesSame && labelsDiffer) {
+                extraFollowUpUntilMs = sample.nowMs + EXTRA_FOLLOW_UP_MS
+            }
             previousPassLabel = labels
             closeOpen(
                 open,
@@ -1433,6 +1469,9 @@ class FiveMoveSession {
         outsideLog.clear()
         idleLog.clear()
         lastIdleLogAtMs = 0L
+        lastBlockLogAtMs = 0L
+        extraFollowUpUntilMs = 0L
+        swipeOverride = false
         decisionLog.clear()
     }
 
@@ -1536,6 +1575,7 @@ class FiveMoveSession {
         const val BOOSTER_MAX_ATTEMPTS = 3
         const val BOOSTER_CONFIRM_BOARDS = 2
         const val BOOSTER_HANDLING_BUDGET_MS = 10_000L
+        const val EXTRA_FOLLOW_UP_MS = 10_000L
         const val MENU_FRAMES = 3
         const val MENU_HOLD_MS = 3_000L
         const val PER_MOVE_BUDGET_MS = 20_000L

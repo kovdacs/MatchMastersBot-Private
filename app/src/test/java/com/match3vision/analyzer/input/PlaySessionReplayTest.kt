@@ -303,6 +303,42 @@ class PlaySessionReplayTest {
         play.expectStillPlaying("booster exception")
     }
 
+    @Test(timeout = 2_000)
+    fun extraMove_circlesUnchanged_nextSwipeWithinTenSeconds_andIdleIsExported() {
+        val play = Play()
+        play.start(circles = 10)
+        play.swipe(nextHash = 11L, dropCircle = true)
+        play.swipe(nextHash = 12L, dropCircle = true)
+        play.swipe(nextHash = 13L, dropCircle = false)
+        assertThat(play.circles).isEqualTo(8)
+        val opened = play.now
+        var sentAt = 0L
+        var steps = 0
+        while (sentAt == 0L && play.now - opened <= FiveMoveSession.EXTRA_FOLLOW_UP_MS) {
+            check(steps < 20) { "extra-move follow-up hung" }
+            steps += 1
+            play.now += 1_000L
+            val block = play.session.considerSwipeFrame(400L, 9_000L + steps, play.now)
+            if (block == null) sentAt = play.now
+        }
+        assertThat(sentAt).isGreaterThan(0L)
+        assertThat(sentAt - opened).isAtMost(FiveMoveSession.EXTRA_FOLLOW_UP_MS)
+        assertThat(play.session.report()).contains("idle reason=")
+        assertThat(play.session.report()).contains("swipe made during board motion")
+        play.swipe(nextHash = 14L, dropCircle = true)
+        play.expectStillPlaying("extra-move follow-up")
+    }
+
+    @Test(timeout = 2_000)
+    fun extraMove_matchingLabels_swipeDespiteAStaleAge() {
+        val play = Play()
+        play.start(circles = 8)
+        play.swipe(nextHash = 21L, dropCircle = false)
+        val block = play.session.considerSwipeFrame(2_000L, 21L, play.now + 500L)
+        assertThat(block).isNull()
+        assertThat(play.session.swipeOverride).isTrue()
+    }
+
     @Test
     fun staleOrMovingFrame_isNotSwiped_andACellMismatchIsALabelError() {
         val play = Play()

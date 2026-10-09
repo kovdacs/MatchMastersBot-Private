@@ -2214,7 +2214,11 @@ class FloatingBubbleService : Service() {
                     }
                 }
                 val boardNow = Board.fromVision(vision.board)
-                val motion = session.considerSwipeFrame(frame.ageMs(), boardNow.labelHash())
+                val motion = session.considerSwipeFrame(
+                    frame.ageMs(),
+                    boardNow.labelHash(),
+                    System.currentTimeMillis(),
+                )
                 if (motion != null) {
                     session.releaseUnusedPermit()
                     AutoPlaySession.updateDiagnostics(
@@ -2285,7 +2289,7 @@ class FloatingBubbleService : Service() {
                     .drop(session.playSkip)
                     .firstOrNull()
                     ?.move
-                if (chosenMove != null) {
+                if (chosenMove != null && !session.swipeOverride) {
                     val latest = CaptureService.managerOrNull()?.latestFrame?.value
                     if (latest != null && latest.sequence > frame.sequence) {
                         val analyzed = withContext(Dispatchers.Default) { analyzeFrame(latest) }
@@ -2302,6 +2306,7 @@ class FloatingBubbleService : Service() {
                                 )
                             ) {
                                 session.releaseUnusedPermit()
+                                session.notePlayBlock(System.currentTimeMillis(), "label error")
                                 AutoPlaySession.updateDiagnostics(
                                     phase = "TARTÁS",
                                     cycleReason = "label error",
