@@ -47,7 +47,8 @@ class MatchMastersAccessibilityService : AccessibilityService(), AccessibilityGe
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Analyzer/input engine does not react to a11y events for auto-play.
+        // Window, content, and state events are not touches. The outside-touch
+        // counter accepts only a finger MotionEvent on the bubble overlay.
     }
 
     override fun onInterrupt() {

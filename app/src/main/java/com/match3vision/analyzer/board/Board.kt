@@ -85,16 +85,17 @@ data class Board(
 
     /**
      * One key per cell. Unknown cells are [LABEL_UNKNOWN] so they are left out
-     * of a flicker comparison. Specials are not part of the key.
+     * of a flicker comparison. Every special shares [LABEL_SPECIAL], so a
+     * disco that changes color, shape, or special type stays the same cell.
      */
     fun labelKeys(): LongArray {
         val keys = LongArray(SIZE * SIZE)
         var i = 0
         forEachTile { t ->
-            keys[i++] = if (t.isUnknown) {
-                LABEL_UNKNOWN
-            } else {
-                (t.color.ordinal.toLong() shl 16) or t.shape.ordinal.toLong()
+            keys[i++] = when {
+                t.special != SpecialType.NONE -> LABEL_SPECIAL
+                t.isUnknown -> LABEL_UNKNOWN
+                else -> (t.color.ordinal.toLong() shl 16) or t.shape.ordinal.toLong()
             }
         }
         return keys
@@ -120,6 +121,9 @@ data class Board(
     companion object {
         const val SIZE = GridGeometry.GRID_SIZE
         const val LABEL_UNKNOWN = Long.MIN_VALUE
+
+        /** Every special shares one key, so a spinning disco does not look like a new board. */
+        const val LABEL_SPECIAL = Long.MIN_VALUE + 1L
 
         /** Known cells may differ in at most one place. Unknown cells are skipped. */
         fun labelsWithinOne(left: LongArray, right: LongArray): Boolean {

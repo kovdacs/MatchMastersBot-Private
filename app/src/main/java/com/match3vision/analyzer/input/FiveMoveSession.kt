@@ -502,16 +502,22 @@ class FiveMoveSession {
 
     /**
      * A finger landed outside the bubble while this session was running.
-     * Board-diff verification cannot tell that finger from our gesture, so the
-     * open move is not counted. Our own tap and swipe are not a finger.
+     * Only a touchscreen finger [OverlayOutsideTouch] on our overlay counts.
+     * An accessibility window or content event, or a board change, does not.
      */
     fun noteOutsideTouch(
         nowMs: Long,
         x: Float = Float.NaN,
         y: Float = Float.NaN,
-        eventType: String = "ACTION_OUTSIDE",
-        sourceWindow: String = "",
+        eventType: String = OverlayOutsideTouch.ACTION,
+        sourceWindow: String = OverlayOutsideTouch.WINDOW,
+        inputSource: String = OverlayOutsideTouch.TOUCHSCREEN,
+        toolType: String = OverlayOutsideTouch.FINGER,
     ): Decision? {
+        if (!OverlayOutsideTouch.counts(eventType, sourceWindow, inputSource, toolType)) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-not-motion")
+            return null
+        }
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) {
             logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-inactive")
             return null

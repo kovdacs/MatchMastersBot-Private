@@ -1,6 +1,10 @@
 package com.match3vision.analyzer.input
 
 import com.google.common.truth.Truth.assertThat
+import com.match3vision.analyzer.board.Board
+import com.match3vision.analyzer.vision.SpecialType
+import com.match3vision.analyzer.vision.TileColor
+import com.match3vision.analyzer.vision.TileShape
 import org.junit.Test
 
 class PlayOutside0273Test {
@@ -94,6 +98,85 @@ class PlayOutside0273Test {
         assertThat(spaced.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
     }
 
+    @Test
+    fun animatingSpecial_duringBoosterWindow_keepsPlaying() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        session.beginBoosterWindow(1_000L)
+        val spinning = animatedSpecials(SpecialType.LIGHTNING, SpecialType.BOMB, TileColor.B)
+        val later = animatedSpecials(SpecialType.BOMB, SpecialType.TWO_WAY_ARROW, TileColor.Y)
+        assertThat(spinning.unknownCount()).isEqualTo(0)
+        assertThat(later.unknownCount()).isEqualTo(0)
+        assertThat(spinning.get(2, 2).isUnknown).isFalse()
+        assertThat(later.get(4, 5).isUnknown).isFalse()
+        assertThat(Board.labelsWithinOne(spinning.labelKeys(), later.labelKeys())).isTrue()
+        session.armBoosterSettle(
+            x = 220f,
+            y = 924f,
+            nowMs = 1_000L,
+            playExport = "booster",
+            swipeSequence = 1L,
+            beforeHash = 1L,
+            beforeLabel = 1L,
+            beforeCircles = 8,
+        )
+        assertThat(
+            session.noteOutsideTouch(
+                2_000L, 40f, 40f, "TYPE_WINDOW_CONTENT_CHANGED", "accessibility", "touchscreen", "finger",
+            ),
+        ).isNull()
+        assertThat(
+            session.noteOutsideTouch(2_100L, 40f, 40f, "TYPE_WINDOWS_CHANGED", "accessibility"),
+        ).isNull()
+        assertThat(
+            session.noteOutsideTouch(2_200L, 40f, 40f, "BOARD_CHANGE", "vision"),
+        ).isNull()
+        assertThat(session.outsideTouches).isEqualTo(0)
+        session.onSettle(
+            pass(
+                nowMs = 5_000L,
+                hash = spinning.labelHash(),
+                sequence = 2L,
+                keys = spinning.labelKeys(),
+            ),
+        )
+        val playable = session.onSettle(
+            pass(
+                nowMs = 5_400L,
+                hash = later.labelHash(),
+                sequence = 3L,
+                keys = later.labelKeys(),
+            ),
+        )
+        assertThat(playable).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.stopReason).isEmpty()
+        assertThat(session.outsideTouches).isEqualTo(0)
+        assertThat(session.movesSnapshot().last().userInterference).isFalse()
+        assertThat(session.report()).contains("result=ignored-not-motion")
+        assertThat(session.report()).doesNotContain("result=pause")
+        assertThat(session.report()).doesNotContain("result=stop")
+        val next = session.requestDispatch(gates(7_000L))
+        assertThat(next).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+    }
+
+    private fun animatedSpecials(first: SpecialType, second: SpecialType, color: TileColor): Board {
+        val board = Board.fromColors(Array(7) { Array(7) { TileColor.R } })
+        return board
+            .setCopy(
+                2, 2,
+                board.get(2, 2).copy(color = color, shape = TileShape.UNKNOWN, special = first),
+            )
+            .setCopy(
+                4, 5,
+                board.get(4, 5).copy(
+                    color = TileColor.UNKNOWN,
+                    shape = TileShape.UNKNOWN,
+                    special = second,
+                ),
+            )
+    }
+
     private fun gates(nowMs: Long) = FiveMoveSession.Gates(
         nowMs = nowMs,
         a11yConnected = true,
@@ -107,7 +190,12 @@ class PlayOutside0273Test {
         roiPlausible = true,
     )
 
-    private fun pass(nowMs: Long, hash: Long, sequence: Long) = FiveMoveSession.SettleSample(
+    private fun pass(
+        nowMs: Long,
+        hash: Long,
+        sequence: Long,
+        keys: LongArray? = null,
+    ) = FiveMoveSession.SettleSample(
         nowMs = nowMs,
         boardHash = hash,
         diffFraction = 0.2f,
@@ -119,5 +207,6 @@ class PlayOutside0273Test {
         a11yConnected = true,
         frameSequence = sequence,
         labelHash = hash,
+        labelKeys = keys,
     )
 }

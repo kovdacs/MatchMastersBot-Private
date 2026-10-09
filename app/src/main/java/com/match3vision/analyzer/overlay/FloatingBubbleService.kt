@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -37,6 +38,7 @@ import com.match3vision.analyzer.input.InputDispatchResult
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.BoardStability
 import com.match3vision.analyzer.input.FiveMoveSession
+import com.match3vision.analyzer.input.OverlayOutsideTouch
 import com.match3vision.analyzer.input.PlayGate
 import com.match3vision.analyzer.input.CalibrationTarget
 import com.match3vision.analyzer.input.CalibrationTouch
@@ -1847,21 +1849,37 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * ACTION_OUTSIDE on the bubble means a finger hit the glass somewhere else.
-     * Our own swipe and ACTIVATE tap are not a finger: they are ignored from
-     * dispatch until 1500 ms after the callback, and again when the event
-     * lands within 60 px of that path. A counted touch stops the session.
+     * The only outside-touch producer is this overlay listener. It fires for
+     * [MotionEvent.ACTION_OUTSIDE] because the bubble sets
+     * [WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH]. Accessibility
+     * window and content events never get here, and a board or special
+     * animation does not synthesize a MotionEvent. A counted touch is a
+     * touchscreen finger. Anything else is logged and dropped.
      */
     private fun onOutsideTouch(event: MotionEvent) {
         val ctrl = AutoPlaySession.controller ?: return
         val session = ctrl.fiveMove
         if (!session.isActive) return
+        val inputSource = if (event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
+            OverlayOutsideTouch.TOUCHSCREEN
+        } else {
+            "source-${event.source}"
+        }
+        val toolType = if (
+            event.pointerCount > 0 && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER
+        ) {
+            OverlayOutsideTouch.FINGER
+        } else {
+            "tool-${if (event.pointerCount > 0) event.getToolType(0) else -1}"
+        }
         when (val decision = session.noteOutsideTouch(
             System.currentTimeMillis(),
             event.rawX,
             event.rawY,
             MotionEvent.actionToString(event.action),
-            "bubble",
+            OverlayOutsideTouch.WINDOW,
+            inputSource,
+            toolType,
         )) {
             null -> return
             is FiveMoveSession.Decision.Hold -> {
