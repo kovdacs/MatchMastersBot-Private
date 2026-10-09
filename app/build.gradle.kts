@@ -11,8 +11,8 @@ android {
         applicationId = "com.match3vision.analyzer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 40
-        versionName = "0.27.2"
+        versionCode = 41
+        versionName = "0.27.3"
         val gitCommit = System.getenv("GITHUB_SHA") ?: "unknown"
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

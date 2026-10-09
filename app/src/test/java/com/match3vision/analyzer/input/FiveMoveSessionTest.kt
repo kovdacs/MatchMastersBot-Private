@@ -294,7 +294,8 @@ class FiveMoveSessionTest {
                 visionPass = false,
             ),
         )
-        val flagged = session.noteOutsideTouch(2_200L)
+        assertThat(session.noteOutsideTouch(2_200L)).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        val flagged = session.noteOutsideTouch(2_300L)
         assertThat(flagged).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         val manual = session.onSettle(
             sample(

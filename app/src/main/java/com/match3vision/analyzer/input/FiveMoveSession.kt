@@ -193,6 +193,12 @@ class FiveMoveSession {
     private var suppressOutsideUntilMs: Long = 0L
     private var ownGestureOpen: Boolean = false
     private var ownPath: OwnPath? = null
+    private var lastGestureAtMs: Long = 0L
+    private var boosterWindowOpen: Boolean = false
+    private var boosterWindowUntilMs: Long = 0L
+    private var pauseUntilMs: Long = 0L
+    private val outsideTimes = ArrayList<Long>()
+    private val outsideLog = ArrayList<String>()
 
     /** Sequence of the frame that verified the previous move. 0 until then. */
     private var lastSettledFrameSequence: Long = 0L
@@ -269,6 +275,7 @@ class FiveMoveSession {
             if (!classifiable) zeroCircleReads = 0
             return null
         }
+        if (boosterWindowActive(nowMs)) return null
         if (frameSequence == lastCircleSequence) return null
         lastCircleSequence = frameSequence
         if (bright > 0) {
@@ -289,6 +296,9 @@ class FiveMoveSession {
      */
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (boosterWindowActive(nowMs) && (kind == PlayGate.MENU || kind == PlayGate.UNKNOWN)) {
+            return decided(Decision.Hold("booster window"), "hud")
+        }
         val decision: Decision? = when (kind) {
             PlayGate.OPPONENT -> abort("STOP — Opponent's Turn", nowMs)
             PlayGate.MENU -> {
@@ -318,7 +328,8 @@ class FiveMoveSession {
     }
 
     /** Call when a swipe is actually sent, so the unknown streak counts moves. */
-    fun noteDispatchedHud(kind: String) {
+    fun noteDispatchedHud(kind: String, nowMs: Long = 0L) {
+        if (boosterWindowActive(nowMs)) return
         if (kind == PlayGate.UNKNOWN) unknownMoves += 1
         else if (kind == PlayGate.OURS) unknownMoves = 0
     }
@@ -445,15 +456,35 @@ class FiveMoveSession {
      * Our swipe or ACTIVATE tap is in flight. Outside events are ours until
      * [finishOwnGesture]. [x1]..[y2] is the tap point or the swipe segment.
      */
-    fun beginOwnGesture() {
+    fun beginOwnGesture(nowMs: Long = 0L) {
         ownGestureOpen = true
+        if (nowMs > 0L) lastGestureAtMs = nowMs
     }
 
-    fun beginOwnGesture(x1: Float, y1: Float, x2: Float, y2: Float) {
+    fun beginOwnGesture(x1: Float, y1: Float, x2: Float, y2: Float, nowMs: Long = 0L) {
         if (x1.isFinite() && y1.isFinite() && x2.isFinite() && y2.isFinite()) {
             ownPath = OwnPath(x1, y1, x2, y2)
         }
         ownGestureOpen = true
+        if (nowMs > 0L) lastGestureAtMs = nowMs
+    }
+
+    /** ACTIVATE was tapped. Outside touches and a lost HUD do not count until the board is playable again. */
+    fun beginBoosterWindow(nowMs: Long) {
+        boosterWindowOpen = true
+        if (nowMs > 0L) lastGestureAtMs = nowMs
+    }
+
+    /** The booster's playable board arrived, or the tap did not land. */
+    fun endBoosterWindow(nowMs: Long) {
+        if (!boosterWindowOpen) return
+        boosterWindowOpen = false
+        boosterWindowUntilMs = nowMs + OWN_GESTURE_AFTER_MS
+    }
+
+    fun boosterWindowActive(nowMs: Long): Boolean {
+        if (boosterWindowOpen) return true
+        return boosterWindowUntilMs > 0L && nowMs > 0L && nowMs < boosterWindowUntilMs
     }
 
     /** Coordinates learned when the swipe gesture comes back from dispatch. */
@@ -474,13 +505,57 @@ class FiveMoveSession {
      * Board-diff verification cannot tell that finger from our gesture, so the
      * open move is not counted. Our own tap and swipe are not a finger.
      */
-    fun noteOutsideTouch(nowMs: Long, x: Float = Float.NaN, y: Float = Float.NaN): Decision? {
-        if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
-        if (ownGestureOpen || nowMs < suppressOutsideUntilMs) return null
-        if (nearOwnGesture(x, y)) return null
+    fun noteOutsideTouch(
+        nowMs: Long,
+        x: Float = Float.NaN,
+        y: Float = Float.NaN,
+        eventType: String = "ACTION_OUTSIDE",
+        sourceWindow: String = "",
+    ): Decision? {
+        if (phase != Phase.RUNNING && phase != Phase.SETTLING) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-inactive")
+            return null
+        }
+        if (ownGestureOpen || nowMs < suppressOutsideUntilMs) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-own-gesture")
+            return null
+        }
+        if (boosterWindowActive(nowMs)) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-booster-window")
+            return null
+        }
+        if (nearOwnGesture(x, y)) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "ignored-near-path")
+            return null
+        }
         outsideTouches += 1
         openMove?.let { it.outsideTouches += 1 }
-        return abort("STOP — user interference", nowMs)
+        outsideTimes.add(nowMs)
+        while (outsideTimes.isNotEmpty() && nowMs - outsideTimes.first() > OUTSIDE_CLUSTER_MS) {
+            outsideTimes.removeAt(0)
+        }
+        if (outsideTimes.size >= 2) {
+            logOutside(nowMs, x, y, eventType, sourceWindow, "stop")
+            return abort("STOP — user interference", nowMs)
+        }
+        pauseUntilMs = nowMs + OUTSIDE_PAUSE_MS
+        logOutside(nowMs, x, y, eventType, sourceWindow, "pause")
+        return Decision.Hold("pause — outside touch")
+    }
+
+    private fun logOutside(
+        nowMs: Long,
+        x: Float,
+        y: Float,
+        eventType: String,
+        sourceWindow: String,
+        result: String,
+    ) {
+        if (outsideLog.size >= 200) return
+        val since = if (lastGestureAtMs > 0L) nowMs - lastGestureAtMs else -1L
+        val xs = if (x.isFinite()) x.toString() else "none"
+        val ys = if (y.isFinite()) y.toString() else "none"
+        outsideLog += "tSinceGestureMs=$since x=$xs y=$ys event=$eventType source=$sourceWindow result=$result"
     }
 
     private fun nearOwnGesture(x: Float, y: Float): Boolean {
@@ -508,7 +583,6 @@ class FiveMoveSession {
         if (!isActive) return null
         if (ownUi) return abort("STOP — our app is in the foreground", nowMs)
         if (!a11yConnected) return abort("STOP — accessibility lost", nowMs)
-        if (outsideTouches > 0) return abort("STOP — user interference", nowMs)
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
             return abort(sessionLimitText(), nowMs)
         }
@@ -520,7 +594,7 @@ class FiveMoveSession {
         if (phase == Phase.IDLE) return Decision.Stop("10 LÉPÉS not armed")
         if (phase == Phase.SETTLING) return Decision.Hold("settle in progress")
         sessionLimit(gates.nowMs)?.let { return it }
-        if (outsideTouches > 0) return stop(gates.nowMs, "STOP — user interference")
+        if (gates.nowMs < pauseUntilMs) return Decision.Hold("pause — outside touch")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, "STOP — 40 gesture safety cap")
@@ -619,6 +693,8 @@ class FiveMoveSession {
             return stop(nowMs, "STOP — 40 gesture safety cap")
         }
         gesturesDispatched += 1
+        boosterWindowOpen = true
+        if (nowMs > 0L) lastGestureAtMs = nowMs
         openMove = OpenMove(
             number = gesturesDispatched,
             startedAtMs = nowMs,
@@ -649,6 +725,7 @@ class FiveMoveSession {
         }
         gesturesDispatched += 1
         swipesDispatched += 1
+        if (fact.startedAtMs > 0L) lastGestureAtMs = fact.startedAtMs
         val callback = when {
             fact.cancelled || !fact.callbackCompleted -> "cancelled"
             else -> "onCompleted"
@@ -711,10 +788,7 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — ${decision.reason}")
             return decided(decision, "settle")
         }
-        if (outsideTouches > 0) {
-            closeOpen(open, sample, "FAILED — user interference")
-            return decided(stop(sample.nowMs, "STOP — user interference"), "settle")
-        }
+        if (sample.nowMs < pauseUntilMs) return ignore(open, "pause — outside touch")
         if (sample.nowMs - startedAtMs >= SESSION_LIMIT_MS) {
             closeOpen(open, sample, "FAILED — ${SESSION_LIMIT_MS / 1_000}s session limit")
             return decided(stop(sample.nowMs, sessionLimitText()), "settle")
@@ -917,6 +991,9 @@ class FiveMoveSession {
         appendLine("stop=${stopReason.ifBlank { "none" }}")
         appendLine(hudTrace.ifBlank { "hudState=UNKNOWN" })
         appendLine("outsideTouches=$outsideTouches")
+        appendLine("--- OUTSIDE ---")
+        if (outsideLog.isEmpty()) appendLine("none")
+        outsideLog.forEach { appendLine(it) }
         appendLine(
             "board-change verification cannot tell our gesture from a finger on the glass. " +
                 "A detected touch outside the bubble is user interference and that move is not counted. " +
@@ -1050,10 +1127,17 @@ class FiveMoveSession {
         unchangedRetries = 0
         ownGestureOpen = false
         ownPath = null
+        lastGestureAtMs = 0L
+        boosterWindowOpen = false
+        boosterWindowUntilMs = 0L
+        pauseUntilMs = 0L
+        outsideTimes.clear()
+        outsideLog.clear()
         decisionLog.clear()
     }
 
     private fun closeOpen(open: OpenMove, sample: SettleSample, verification: String) {
+        if (!open.countsAsSwipe) endBoosterWindow(sample.nowMs)
         record(
             number = open.number,
             cells = open.cells,
@@ -1170,6 +1254,8 @@ class FiveMoveSession {
         }
         const val OWN_GESTURE_AFTER_MS = 1_500L
         const val OWN_GESTURE_RADIUS_PX = 60f
+        const val OUTSIDE_PAUSE_MS = 3_000L
+        const val OUTSIDE_CLUSTER_MS = 10_000L
         const val MIN_POST_COLLAPSE_MS = 2_000L
         const val MAX_UNKNOWN = 1
         private const val MAX_IGNORED_LINES = 200

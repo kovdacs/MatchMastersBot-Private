@@ -1856,12 +1856,23 @@ class FloatingBubbleService : Service() {
         val ctrl = AutoPlaySession.controller ?: return
         val session = ctrl.fiveMove
         if (!session.isActive) return
-        val decision = session.noteOutsideTouch(
+        when (val decision = session.noteOutsideTouch(
             System.currentTimeMillis(),
             event.rawX,
             event.rawY,
-        ) ?: return
-        Timber.i("fiveMoveSession: user interference %s", decision)
+            MotionEvent.actionToString(event.action),
+            "bubble",
+        )) {
+            null -> return
+            is FiveMoveSession.Decision.Hold -> {
+                Timber.i("fiveMoveSession: pause %s", decision.reason)
+                refreshBubbleUi()
+                return
+            }
+            is FiveMoveSession.Decision.Stop -> Unit
+            is FiveMoveSession.Decision.Go -> return
+        }
+        Timber.i("fiveMoveSession: user interference %s", session.stopReason)
         if (fiveSettleInProgress) return
         closeGameLog(
             session = session,
@@ -1936,7 +1947,8 @@ class FloatingBubbleService : Service() {
         if (!executor.isReady()) return false
         val started = System.currentTimeMillis()
         val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = 80L)
-        session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y)
+        session.beginBoosterWindow(started)
+        session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, started)
         val dispatched = try {
             withContext(Dispatchers.Default) {
                 executor.dispatchRecognizedTap(gesture)
@@ -1973,6 +1985,7 @@ class FloatingBubbleService : Service() {
             return true
         }
         if (!callback) {
+            session.endBoosterWindow(System.currentTimeMillis())
             session.recordBooster(
                 changed = changed,
                 stable = false,
@@ -2162,7 +2175,7 @@ class FloatingBubbleService : Service() {
                 } else {
                     null
                 }
-                session.beginOwnGesture()
+                session.beginOwnGesture(started)
                 setBubbleTouchable(false)
                 val cycle = try {
                     withContext(Dispatchers.Default) {
@@ -2235,7 +2248,7 @@ class FloatingBubbleService : Service() {
                 val swiped = Board.fromVision(vision.board)
                 val touchesSpecial = swiped.get(move.r1, move.c1).special != com.match3vision.analyzer.vision.SpecialType.NONE ||
                     swiped.get(move.r2, move.c2).special != com.match3vision.analyzer.vision.SpecialType.NONE
-                session.noteDispatchedHud(hudKind)
+                session.noteDispatchedHud(hudKind, System.currentTimeMillis())
                 val noted = session.noteGesture(
                     FiveMoveSession.GestureFact(
                         startedAtMs = started,
