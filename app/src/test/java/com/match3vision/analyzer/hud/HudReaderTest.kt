@@ -20,7 +20,7 @@ class HudReaderTest {
         assertThat(hud.mode).isEqualTo("solo")
         assertThat(hud.activate).isEqualTo("yes")
         assertThat(hud.boosterTarget).isEqualTo("none")
-        assertThat(hud.blueFactor).isEqualTo(com.match3vision.analyzer.moves.PlayMoveRanker.FULL_BAR_BLUE_FACTOR)
+        assertThat(hud.blueFactor).isEqualTo(1.0)
         assertThat(hud.moves).isEqualTo("bright=0/10 dark=10/10")
         assertThat(hud.timer).isEqualTo("not detectable")
         assertThat(hud.movesRemaining).isNull()
@@ -31,6 +31,10 @@ class HudReaderTest {
                 activateWord = false,
                 ourTurn = true,
                 extraMoveAvailable = false,
+                soloPositive = true,
+                yourTurn = true,
+                swipesVerified = 1,
+                selfCheckMeasured = true,
             ),
         ).isFalse()
     }

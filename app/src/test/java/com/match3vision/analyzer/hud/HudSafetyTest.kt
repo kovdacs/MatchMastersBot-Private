@@ -87,7 +87,9 @@ class HudSafetyTest {
         assertThat(hud.activate).isEqualTo("yes")
         assertThat(hud.activateWord).isTrue()
         assertThat(hud.boosterFill).isEqualTo("ACTIVATE")
-        val tap = SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)
+        val tap = SoloBooster.plan(
+            hud, 1080, 2400, controlEnabled = true, swipesVerified = 1, selfCheckMeasured = true,
+        )
         assertThat(tap).isNotNull()
         assertThat(tap!!.x).isLessThan(400f)
     }
@@ -127,8 +129,9 @@ class HudSafetyTest {
     fun multiplier_scalesBlue_andLowTimeKeepsTheFastOrder() {
         val plain = PlayMoveRanker.plyPoints(false, 3, 3, 0, false, blueMultiplier = 1)
         val boosted = PlayMoveRanker.plyPoints(false, 3, 3, 0, false, blueMultiplier = 6)
-        val gems = 3 * PlayMoveRanker.GEM_POINTS
-        assertThat(boosted - gems).isEqualTo((plain - gems) * 6)
+        val blueTerm = 3 * PlayMoveRanker.BLUE_POINTS
+        assertThat(boosted - blueTerm).isEqualTo((plain - blueTerm) * 6)
+        assertThat(boosted - plain).isEqualTo(3 * PlayMoveRanker.GEM_POINTS * 5)
 
         val palette = listOf(TileColor.R, TileColor.B, TileColor.Y, TileColor.G, TileColor.P, TileColor.O)
         val colors = Array(7) { row -> Array(7) { col -> palette[(row + col) % 6] } }

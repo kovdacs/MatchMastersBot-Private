@@ -32,6 +32,17 @@ data class HudObservation(
     val circlesClassifiable: Boolean = false,
     /** True only when the left-card glyph is the word ACTIVATE. A bright rect is not enough. */
     val activateWord: Boolean = false,
+    /** This frame's ACTIVATE shape score, before the 5-frame window. */
+    val activateScore: Double = 0.0,
+    val activateFloor: Double = 0.80,
+    val activateRect: String = "none",
+    /** Fraction of the ACTIVATE rect above the bright luma cut. Not a tap by itself. */
+    val activateBrightFraction: Double = 0.0,
+    /**
+     * True for a circle row or a positively read solo layout.
+     * An uncertain frame can still be [soloLayout] for lookahead and is not solo-positive.
+     */
+    val soloPositive: Boolean = false,
     val legendPoints: Map<TileColor, Int> = emptyMap(),
     /** your-turn, time-left, opponent-turn, or not detectable. */
     val turnState: String = NOT_DETECTABLE,
@@ -64,6 +75,8 @@ data class HudObservation(
             "circlesBright=${circlesBright?.toString() ?: NOT_DETECTABLE} " +
             "circlesClassifiable=${if (circlesClassifiable) "yes" else "no"} " +
             "activateWord=${if (activateWord) "yes" else "no"} " +
+            "activateScore=$activateScore activateFloor=$activateFloor activateRect=$activateRect " +
+            "soloPositive=${if (soloPositive) "yes" else "no"} " +
             "hudState=$hudState hudScores=$hudScores"
 
     companion object {
@@ -106,6 +119,7 @@ data class HudObservation(
                 circlesBright = movesRemaining,
                 circlesClassifiable = movesRemaining != null,
                 activateWord = activateWord,
+                soloPositive = true,
                 hudState = HUD_SOLO,
             )
         }

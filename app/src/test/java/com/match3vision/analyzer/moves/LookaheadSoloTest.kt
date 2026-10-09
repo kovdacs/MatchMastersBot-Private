@@ -83,6 +83,10 @@ class LookaheadSoloTest {
                 activateWord = true,
                 ourTurn = true,
                 extraMoveAvailable = false,
+                soloPositive = true,
+                yourTurn = true,
+                swipesVerified = 1,
+                selfCheckMeasured = true,
             ),
         ).isTrue()
         assertThat(
@@ -91,6 +95,10 @@ class LookaheadSoloTest {
                 activateWord = true,
                 ourTurn = true,
                 extraMoveAvailable = true,
+                soloPositive = true,
+                yourTurn = true,
+                swipesVerified = 1,
+                selfCheckMeasured = true,
             ),
         ).isFalse()
         BoosterControl.enabled = true
@@ -230,15 +238,28 @@ class LookaheadSoloTest {
         val hud = HudObservation.solo(activateWord = true)
         assertThat(hud.boosterTarget).isEqualTo("none")
         assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = false)).isNull()
-        val tap = SoloBooster.plan(hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = false)
+        val tap = SoloBooster.plan(
+            hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = false,
+            swipesVerified = 1, selfCheckMeasured = true,
+        )
         assertThat(tap).isNotNull()
         assertThat(tap!!.x).isGreaterThan(40f)
         assertThat(tap.y).isGreaterThan(800f)
-        assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = true)).isNull()
+        assertThat(
+            SoloBooster.plan(
+                hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = true,
+                swipesVerified = 1, selfCheckMeasured = true,
+            ),
+        ).isNull()
         val pvp = HudObservation(mode = "pvp", soloLayout = false, activate = "yes")
         assertThat(pvp.activateWord).isFalse()
         assertThat(SoloBooster.plan(pvp, 1080, 2400, controlEnabled = true)).isNull()
         val pvpWord = HudObservation.pvp(turnState = HudObservation.TURN_YOUR, activateWord = true)
-        assertThat(SoloBooster.plan(pvpWord, 1080, 2400, controlEnabled = true, extraMoveAvailable = false)).isNotNull()
+        assertThat(
+            SoloBooster.plan(
+                pvpWord, 1080, 2400, controlEnabled = true, extraMoveAvailable = false,
+                swipesVerified = 1, selfCheckMeasured = true,
+            ),
+        ).isNotNull()
     }
 }

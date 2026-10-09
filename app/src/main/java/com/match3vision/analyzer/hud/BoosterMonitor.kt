@@ -22,7 +22,17 @@ object BoosterMonitor {
         activateWord: Boolean,
         ourTurn: Boolean,
         extraMoveAvailable: Boolean,
-    ): Boolean = controlEnabled && activateWord && ourTurn && !extraMoveAvailable
+        soloPositive: Boolean,
+        yourTurn: Boolean,
+        swipesVerified: Int,
+        selfCheckMeasured: Boolean,
+    ): Boolean = controlEnabled &&
+        activateWord &&
+        ourTurn &&
+        !extraMoveAvailable &&
+        swipesVerified >= 1 &&
+        selfCheckMeasured &&
+        (soloPositive || yourTurn)
 }
 
 /** Bubble toggle. Default on for solo and PvP. The owner can turn it off. */

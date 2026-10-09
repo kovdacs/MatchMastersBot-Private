@@ -130,6 +130,11 @@ class FiveMoveDispatchTest {
         assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
         repeat(FiveMoveSession.MAX_MOVES) { index ->
             val start = 1_000L + index * 1_000L
+            if (index > 0) {
+                val settled = 50L + index - 1
+                ctrl.fiveMove.noteFreshBoard(settled, fresh = true, pass = true)
+                ctrl.fiveMove.noteFreshBoard(settled, fresh = true, pass = true)
+            }
             val go = ctrl.fiveMove.requestDispatch(readyGates(start))
             assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
             val permit = (go as FiveMoveSession.Decision.Go).permit
@@ -151,10 +156,37 @@ class FiveMoveDispatchTest {
                     beforeUnknown = 0,
                 ),
             )
+            val hash = 50L + index
             ctrl.fiveMove.onSettle(
                 FiveMoveSession.SettleSample(
-                    nowMs = start + 400L,
-                    boardHash = 50L + index,
+                    nowMs = start,
+                    boardHash = hash,
+                    diffFraction = 0f,
+                    frameFresh = true,
+                    roiPlausible = true,
+                    visionPass = true,
+                    unknownCount = 0,
+                    ownUi = false,
+                    a11yConnected = true,
+                ),
+            )
+            ctrl.fiveMove.onSettle(
+                FiveMoveSession.SettleSample(
+                    nowMs = start + 300L,
+                    boardHash = hash,
+                    diffFraction = 0f,
+                    frameFresh = true,
+                    roiPlausible = true,
+                    visionPass = true,
+                    unknownCount = 0,
+                    ownUi = false,
+                    a11yConnected = true,
+                ),
+            )
+            ctrl.fiveMove.onSettle(
+                FiveMoveSession.SettleSample(
+                    nowMs = start + 600L,
+                    boardHash = hash,
                     diffFraction = 0f,
                     frameFresh = true,
                     roiPlausible = true,
@@ -184,7 +216,7 @@ class FiveMoveDispatchTest {
         assertThat(exec.dispatched).hasSize(FiveMoveSession.MAX_MOVES)
         val report = ctrl.fiveMove.report()
         assertThat(report).contains("measuredSessionMs=")
-        assertThat(report).contains("durationMs=400")
+        assertThat(report).contains("durationMs=600")
     }
 
     @Test

@@ -44,6 +44,10 @@ object AutoCalibration {
      * The changed region overlaps the swap when some changed cell shares a
      * swapped row and some changed cell shares a swapped column.
      */
+    /** At least one changed cell lies on a swapped row or a swapped column. */
+    fun supports(changed: Set<Pair<Int, Int>>, r1: Int, c1: Int, r2: Int, c2: Int): Boolean =
+        changed.any { it.first == r1 || it.first == r2 || it.second == c1 || it.second == c2 }
+
     fun overlaps(changed: Set<Pair<Int, Int>>, r1: Int, c1: Int, r2: Int, c2: Int): Boolean {
         if (changed.isEmpty()) return false
         val rows = setOf(r1, r2)

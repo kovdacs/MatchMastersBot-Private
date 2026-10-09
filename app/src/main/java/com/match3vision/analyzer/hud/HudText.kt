@@ -8,7 +8,7 @@ import com.match3vision.analyzer.vision.TileColor
  */
 internal object HudText {
     const val TURN_TOP = 1000
-    const val TURN_BOTTOM = 1064
+    const val TURN_BOTTOM = 1100
     const val TURN_LEFT = 80
     const val TURN_RIGHT = 1000
 
@@ -17,10 +17,10 @@ internal object HudText {
     const val LEGEND_LEFT = 220
     const val LEGEND_RIGHT = 860
 
-    const val CARD_LEFT = 30
-    const val CARD_RIGHT = 360
-    const val CARD_TOP = 860
-    const val CARD_BOTTOM = 1010
+    const val CARD_LEFT = 10
+    const val CARD_RIGHT = 340
+    const val CARD_TOP = 865
+    const val CARD_BOTTOM = 985
 
     const val MULTIPLIER_TOP = 360
     const val MULTIPLIER_BOTTOM = 640
@@ -30,7 +30,7 @@ internal object HudText {
     private const val REF_W = 1080
     private const val REF_H = 2400
     private const val INK = 175
-    private const val PHRASE_FLOOR = 0.80
+    internal const val PHRASE_FLOOR = 0.80
     private const val DIGIT_FLOOR = 0.78
 
     data class Turn(
@@ -45,6 +45,10 @@ internal object HudText {
     data class Card(
         val text: String,
         val activateWord: Boolean,
+        /** Best ACTIVATE-word shape score this frame, even when it is under the floor. */
+        val activateScore: Double = 0.0,
+        val activateRect: String = "none",
+        val floor: Double = PHRASE_FLOOR,
     )
 
     data class Multiplier(val value: Int?, val note: String)
@@ -60,8 +64,12 @@ internal object HudText {
         val yourScore = Glyphs.similarity(ink.width, ink.height, ink.bits, your)
         val opponentScore = Glyphs.similarity(ink.width, ink.height, ink.bits, opponent)
         val timeScore = timePrefixScore(ink)
-        val phrase = Glyphs.best(ink.width, ink.height, ink.bits, listOf(your, opponent), PHRASE_FLOOR)
-        if (phrase?.name == "your") {
+        val phrase = Glyphs.best(ink.width, ink.height, ink.bits, listOf(your, opponent, Glyphs.yourGame), PHRASE_FLOOR)
+            ?: letterRow(pixels, width, height, scaleX(TURN_LEFT, width), scaleX(TURN_RIGHT, width), scaleY(TURN_TOP, height), scaleY(TURN_BOTTOM, height))
+                ?.let { band ->
+                    Glyphs.best(band.width, band.height, band.bits, listOf(Glyphs.yourGame, your, opponent), PHRASE_FLOOR)
+                }
+        if (phrase?.name == "your" || phrase?.name == "your-game") {
             return Turn(HudObservation.TURN_YOUR, "Your Turn", null, yourScore, opponentScore, timeScore)
         }
         if (phrase?.name == "opponent") {
@@ -109,22 +117,47 @@ internal object HudText {
     }
 
     fun card(pixels: IntArray, width: Int, height: Int): Card {
-        val ink = inkBox(
-            pixels, width, height,
-            scaleX(CARD_LEFT, width), scaleX(CARD_RIGHT, width),
-            scaleY(CARD_TOP, height), scaleY(CARD_BOTTOM, height),
-        ) ?: return Card(HudObservation.NOT_DETECTABLE, false)
-        val word = Glyphs.best(ink.width, ink.height, ink.bits, Glyphs.cardWords, PHRASE_FLOOR)
-            ?: return Card(HudObservation.NOT_DETECTABLE, false)
+        val left = scaleX(CARD_LEFT, width)
+        val right = scaleX(CARD_RIGHT, width)
+        val top = scaleY(CARD_TOP, height)
+        val bottom = scaleY(CARD_BOTTOM, height)
+        val search = "LTRB($left,$top,$right,$bottom)"
+        val ink = inkBox(pixels, width, height, left, right, top, bottom)
+        val classic = if (ink == null) null else Glyphs.scored(ink.width, ink.height, ink.bits, Glyphs.cardWords)
+        val band = letterRow(pixels, width, height, left, right, top, bottom)
+        val shaped = if (band == null) {
+            null
+        } else {
+            Glyphs.scored(band.width, band.height, band.bits, Glyphs.cardWords)
+        }
+        val activateScore = maxOf(wordScore(ink), wordScore(band))
+        val rect = if (band != null) {
+            "LTRB(${band.x0},${band.y0},${band.x1},${band.y1})"
+        } else {
+            search
+        }
+        val word = Glyphs.accepted(classic, PHRASE_FLOOR) ?: Glyphs.accepted(shaped, PHRASE_FLOOR)
+        if (word == null) {
+            return Card(HudObservation.NOT_DETECTABLE, false, activateScore, rect, PHRASE_FLOOR)
+        }
         return when (word.name) {
-            "activate" -> Card("ACTIVATE", true)
-            "full" -> Card("FULL", false)
+            "activate", "activate-game" -> Card("ACTIVATE", true, activateScore, rect, PHRASE_FLOOR)
+            "full" -> Card("FULL", false, activateScore, rect, PHRASE_FLOOR)
             else -> {
                 val n = word.name.removePrefix("f").toIntOrNull()
-                if (n == null) Card(HudObservation.NOT_DETECTABLE, false)
-                else Card("$n/7", false)
+                if (n == null) Card(HudObservation.NOT_DETECTABLE, false, activateScore, rect, PHRASE_FLOOR)
+                else Card("$n/7", false, activateScore, rect, PHRASE_FLOOR)
             }
         }
+    }
+
+    /** Similarity of the ACTIVATE templates, even when another word wins the card. */
+    private fun wordScore(ink: Ink?): Double {
+        if (ink == null) return 0.0
+        return maxOf(
+            Glyphs.similarity(ink.width, ink.height, ink.bits, Glyphs.named("activate")),
+            Glyphs.similarity(ink.width, ink.height, ink.bits, Glyphs.activateGame),
+        )
     }
 
     fun multiplier(pixels: IntArray, width: Int, height: Int): Multiplier {
@@ -186,7 +219,98 @@ internal object HudText {
         return hit.name.removePrefix("d").toInt()
     }
 
-    private data class Ink(val width: Int, val height: Int, val bits: BooleanArray)
+    private data class Ink(
+        val width: Int,
+        val height: Int,
+        val bits: BooleanArray,
+        val x0: Int = 0,
+        val y0: Int = 0,
+        val x1: Int = 0,
+        val y1: Int = 0,
+    )
+
+    /**
+     * Union of letter-sized near-white blobs on one text line.
+     * The whole pill is brighter than the word and must not be the matched shape.
+     */
+    private fun letterRow(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        left: Int,
+        right: Int,
+        top: Int,
+        bottom: Int,
+    ): Ink? {
+        data class Comp(val n: Int, val x0: Int, val y0: Int, val x1: Int, val y1: Int)
+        val letters = ArrayList<Comp>()
+        val seen = HashSet<Int>()
+        for (y in top..bottom) {
+            if (y !in 0 until height) continue
+            for (x in left..right) {
+                if (x !in 0 until width) continue
+                val start = y * width + x
+                if (!seen.add(start) || !ink(pixels[start])) continue
+                var x0 = x
+                var x1 = x
+                var y0 = y
+                var y1 = y
+                var n = 0
+                val queue = ArrayDeque<Int>()
+                queue.add(start)
+                while (queue.isNotEmpty()) {
+                    val at = queue.removeFirst()
+                    val ay = at / width
+                    val ax = at - ay * width
+                    if (!ink(pixels[at])) continue
+                    n++
+                    if (ax < x0) x0 = ax
+                    if (ax > x1) x1 = ax
+                    if (ay < y0) y0 = ay
+                    if (ay > y1) y1 = ay
+                    val neighbors = intArrayOf(ax - 1, ax + 1, ax, ax)
+                    val rows = intArrayOf(ay, ay, ay - 1, ay + 1)
+                    for (i in 0 until 4) {
+                        val nx = neighbors[i]
+                        val ny = rows[i]
+                        if (nx !in left..right || ny !in top..bottom) continue
+                        if (nx !in 0 until width || ny !in 0 until height) continue
+                        val next = ny * width + nx
+                        if (!seen.add(next)) continue
+                        if (!ink(pixels[next])) continue
+                        queue.add(next)
+                    }
+                }
+                val cw = x1 - x0 + 1
+                val ch = y1 - y0 + 1
+                if (n >= 80 && ch in 20..55 && cw in 4..48) letters.add(Comp(n, x0, y0, x1, y1))
+            }
+        }
+        if (letters.size < 5) return null
+        val rows = ArrayList<ArrayList<Comp>>()
+        for (comp in letters) {
+            val cy = (comp.y0 + comp.y1) / 2
+            var placed = false
+            for (row in rows) {
+                var sum = 0
+                for (other in row) sum += (other.y0 + other.y1) / 2
+                if (kotlin.math.abs(cy - sum / row.size) < 14) {
+                    row.add(comp)
+                    placed = true
+                    break
+                }
+            }
+            if (!placed) rows.add(arrayListOf(comp))
+        }
+        val row = rows.maxByOrNull { it.size } ?: return null
+        if (row.size < 5) return null
+        val x0 = row.minOf { it.x0 }
+        val y0 = row.minOf { it.y0 }
+        val x1 = row.maxOf { it.x1 }
+        val y1 = row.maxOf { it.y1 }
+        val cropped = cropRect(pixels, width, height, x0, x1, y0, y1)
+        return cropped.copy(x0 = x0, y0 = y0, x1 = x1, y1 = y1)
+    }
 
     private fun inkBox(
         pixels: IntArray,

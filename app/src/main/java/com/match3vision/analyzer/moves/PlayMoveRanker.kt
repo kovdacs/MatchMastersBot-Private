@@ -183,10 +183,10 @@ class PlayMoveRanker(
             val followPly = follow?.plyScore ?: 0
             searched += candidate.copy(
                 followUp = follow?.move,
-                followUpExtraMove = follow?.extraMove == true,
-                followUpBlue = follow?.blueCleared ?: 0,
-                followUpTotal = follow?.totalCleared ?: 0,
-                followUpUncertain = follow?.uncertain == true,
+                followUpExtraMove = weight > 0.0 && follow?.extraMove == true,
+                followUpBlue = if (weight > 0.0) follow?.blueCleared ?: 0 else 0,
+                followUpTotal = if (weight > 0.0) follow?.totalCleared ?: 0 else 0,
+                followUpUncertain = weight > 0.0 && follow?.uncertain == true,
                 followWeight = weight,
                 totalScore = candidate.plyScore + weight * followPly,
             )
@@ -212,7 +212,7 @@ class PlayMoveRanker(
         solo: SoloSwap,
     ): Candidate? =
         solo.moves(board)
-            .map { soloCandidate(board, it, specials, hud, solo) }
+            .map { soloCandidate(board, it, specials, hud, solo, followPly = true) }
             // This comparator sorts the best ply first, so the winner is its minimum.
             .minWithOrNull(compareByDescending<Candidate> { it.plyScore }.then(ORDER))
 
@@ -222,6 +222,7 @@ class PlayMoveRanker(
         specials: String,
         hud: HudObservation,
         solo: SoloSwap,
+        followPly: Boolean = false,
     ): Candidate {
         val resolved = solo.resolve(board, move)
         val gems = gemScore(resolved.counts, hud.legendPoints)
@@ -234,6 +235,7 @@ class PlayMoveRanker(
             blueFactor = hud.blueFactor,
             gemScore = gems,
             blueMultiplier = hud.blueMultiplier(),
+            followUp = followPly,
         )
         return Candidate(
             move = move,
@@ -426,6 +428,7 @@ class PlayMoveRanker(
         const val GEM_POINTS = 10
         const val ROW_POINTS = 1
         const val UNCERTAIN_PENALTY = 500
+        const val FOLLOW_UNCERTAIN_PENALTY = 100
         const val FULL_BAR_BLUE_FACTOR = 0.15
         const val LEGEND_SCALE = 100
         const val DECISION_BUDGET_MS = 150L
@@ -434,25 +437,78 @@ class PlayMoveRanker(
         const val FOLLOW_WEIGHT_LIKELY = 0.7
 
         const val SCORE_FORMULA =
-            "scoreFormula=solo ply = extra*1000000 + blue*1000*blueFactor + gemScore + lowerRow - uncertain*500; " +
+            "scoreFormula=order is extra-now, then extra count over the turn, then blue count, " +
+                "then total clears, then row, then ply; " +
+                "ply = extra*1000000 + blue*1000*blueFactor + gemScore + lowerRow - uncertain*500; " +
+                "a follow-up ply uses uncertain*100; " +
                 "gemScore = legendWeight*100 per gem when that color was read, otherwise the official " +
                 "default (blue 1, red 1, green 2, orange 3, purple 4, yellow 5), logged as legend default; " +
-                "among extra moves the higher one is played first; " +
-                "blueFactor=0.15 when ACTIVATE or FULL is visible, else 1; " +
-                "when a multiplier xN was read, the blue term is multiplied by N; " +
-                "chosen = ply(now) + weight * ply(followUp); weight=1 when this ply is an extra move or the " +
-                "move counter shows more than 1 left, weight=0 on a detected last move, otherwise 0.7; " +
-                "the weight scales the follow-up only; an extra move is always 1000000 inside a ply; " +
+                "among extra moves the higher one is played first; a non-extra prefers the lower row; " +
+                "blueFactor=0.15 only while the bar is full (ACTIVATE, FULL, or 7/7), else 1; " +
+                "when a multiplier xN was read, N scales gemScore and does not scale the blue count; " +
+                "a follow-up extra never outranks an extra now; " +
+                "weight=1 when this ply is an extra move or the move counter shows more than 1 left, " +
+                "weight=0 on a detected last move, otherwise 0.7; weight 0 drops the follow-up extra; " +
                 "4-line leaves an arrow, 5-line a color bomb, 5-L/T a bomb; unknown refills are never matches."
 
         const val MODE_GATE =
             "modeGate=lookahead runs on vision PASS regardless of mode. " +
                 "The session stops only on a positively read Opponent's Turn. " +
-                "An unrecognized HUD is treated as solo. " +
-                "ACTIVATE word on the left card taps when the toggle is on and no extra move is available."
+                "An unrecognized HUD is not a positive solo layout. " +
+                "ACTIVATE is the word shape over the last 5 frames, after one verified swipe " +
+                "and a measured self-check, on a positive solo layout or Your Turn."
 
-        private val LOOKAHEAD_ORDER = compareByDescending<Candidate> { it.totalScore }
-            .then(ORDER)
+        private val LOOKAHEAD_ORDER = Comparator<Candidate> { a, b ->
+            val now = extraFirst(a.extraMove, b.extraMove)
+            if (now != 0) {
+                now
+            } else {
+                val extras = turnExtras(b) - turnExtras(a)
+                if (extras != 0) {
+                    extras
+                } else {
+                    val blue = countedBlue(b) - countedBlue(a)
+                    if (blue != 0) {
+                        blue
+                    } else {
+                        val total = countedClears(b) - countedClears(a)
+                        if (total != 0) {
+                            total
+                        } else {
+                            val row = if (a.extraMove) {
+                                a.lowerRow.compareTo(b.lowerRow)
+                            } else {
+                                b.lowerRow.compareTo(a.lowerRow)
+                            }
+                            if (row != 0) {
+                                row
+                            } else {
+                                val ply = b.plyScore.compareTo(a.plyScore)
+                                if (ply != 0) ply else a.move.toString().compareTo(b.move.toString())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun extraFirst(left: Boolean, right: Boolean): Int = when {
+            left == right -> 0
+            left -> -1
+            else -> 1
+        }
+
+        private fun turnExtras(candidate: Candidate): Int {
+            var count = if (candidate.extraMove) 1 else 0
+            if (candidate.followWeight > 0.0 && candidate.followUpExtraMove) count += 1
+            return count
+        }
+
+        private fun countedBlue(candidate: Candidate): Int =
+            candidate.blueCleared + if (candidate.followWeight > 0.0) candidate.followUpBlue else 0
+
+        private fun countedClears(candidate: Candidate): Int =
+            candidate.totalCleared + if (candidate.followWeight > 0.0) candidate.followUpTotal else 0
 
         fun followWeight(extraMove: Boolean, movesRemaining: Int?): Double = when {
             extraMove -> FOLLOW_WEIGHT_OURS
@@ -480,12 +536,20 @@ class PlayMoveRanker(
             blueFactor: Double = 1.0,
             gemScore: Int = total * GEM_POINTS,
             blueMultiplier: Int = 1,
+            followUp: Boolean = false,
         ): Int {
             val scale = blueMultiplier.coerceAtLeast(1)
-            val blueTerm = (blue * BLUE_POINTS * blueFactor * scale).roundToInt()
-            val penalty = if (uncertain) UNCERTAIN_PENALTY else 0
+            val blueTerm = (blue * BLUE_POINTS * blueFactor).roundToInt()
+            val points = gemScore * scale
+            val penalty = if (!uncertain) {
+                0
+            } else if (followUp) {
+                FOLLOW_UNCERTAIN_PENALTY
+            } else {
+                UNCERTAIN_PENALTY
+            }
             val extra = if (extraMove) EXTRA_MOVE_POINTS else 0
-            return extra + blueTerm + gemScore + lowerRow * ROW_POINTS - penalty
+            return extra + blueTerm + points + lowerRow * ROW_POINTS - penalty
         }
 
         val EMPTY_RANKING = Ranking(emptyList(), "none")

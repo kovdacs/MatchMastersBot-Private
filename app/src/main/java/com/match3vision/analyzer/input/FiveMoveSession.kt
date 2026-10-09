@@ -8,7 +8,7 @@ import com.match3vision.analyzer.moves.PlayMoveRanker
  *
  * Move 1 is a probe. Later moves are issued only after the previous one verifies.
  * The same checks apply to every move. A failed check stops the session.
- * The same move is not retried.
+ * An unchanged board retries the next-best move once. A second miss stops.
  *
  * The clock starts at [arm] (the 10 LÉPÉS TESZT press, after the self-check).
  * All verified moves must finish inside [SESSION_LIMIT_MS].
@@ -82,6 +82,10 @@ class FiveMoveSession {
          * missed the swapped rows and columns.
          */
         val swapOverlaps: Boolean = true,
+        val turnState: String = com.match3vision.analyzer.hud.HudObservation.TURN_YOUR,
+        val soloPositive: Boolean = true,
+        /** False when no changed cell lies on a swapped row or column. */
+        val swapSupported: Boolean = true,
     )
 
     data class MoveRecord(
@@ -126,8 +130,22 @@ class FiveMoveSession {
     var gesturesDispatched: Int = 0
         private set
 
+    /** Swipes only. A booster tap does not count as a swipe. */
+    var swipesDispatched: Int = 0
+        private set
+
+    /**
+     * Ranked moves to skip on the next swipe. An unchanged board sets this to 1
+     * so the next dispatch is the next-best move.
+     */
+    var playSkip: Int = 0
+
     /** One ACTIVATE attempt per session. A miss does not stop gem play. */
     var boosterLatched: Boolean = false
+        private set
+
+    /** While set, no swipe is sent. The booster may be waiting for a target. */
+    var boosterHolding: Boolean = false
         private set
 
     /** Move 1 may dispatch before a saved calibration exists. */
@@ -171,6 +189,17 @@ class FiveMoveSession {
     private val gameLines = ArrayList<String>()
     private var pendingGameLog: GameMoveLog.Pending? = null
 
+    /** Two fresh PASS frames with the same hash, required after the first swipe. */
+    private var doubleReady: Boolean = true
+    private var freshHash: Long? = null
+    private var freshRun: Int = 0
+    private var retryUsed: Boolean = false
+    private var unreadTurnStreak: Int = 0
+    private var zeroStreak: Int = 0
+    private var noLegalAttempts: Int = 0
+    private var lastNoLegalMs: Long = 0L
+    private var boosterHoldSinceMs: Long = 0L
+
     private data class OpenMove(
         val number: Int,
         val startedAtMs: Long,
@@ -192,6 +221,9 @@ class FiveMoveSession {
         val ignoredReasons: ArrayList<String> = ArrayList(),
         var outsideTouches: Int = 0,
         var sawBoardChange: Boolean = false,
+        var stableRun: Int = 0,
+        var stableSinceMs: Long = 0L,
+        var stableHash: Long = Long.MIN_VALUE,
     )
 
     val isActive: Boolean
@@ -200,13 +232,26 @@ class FiveMoveSession {
     fun label(): String = "10 LÉPÉS TESZT: $verifiedCount"
 
     /**
-     * Stops only when the circle row was trusted and it shows zero moves left.
-     * Null means the row was not read, so play continues.
+     * Stops only when three fresh frames in a row read zero moves and the
+     * board has already been stable for a second. An unread row, or any
+     * positive count, resets the streak.
      */
-    fun movesRemainingStop(remaining: Int?, nowMs: Long): Decision? {
+    fun noteMovesRemaining(
+        remaining: Int?,
+        nowMs: Long,
+        frameFresh: Boolean,
+        boardStableMs: Long,
+    ): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
-        if (remaining == null || remaining > 0) return null
-        return stop(nowMs, "STOP — no moves left")
+        if (!frameFresh || remaining == null || remaining > 0) {
+            zeroStreak = 0
+            return null
+        }
+        zeroStreak += 1
+        if (zeroStreak >= MOVES_ZERO_FRAMES && boardStableMs >= MOVES_ZERO_STABLE_MS) {
+            return stop(nowMs, "STOP — no moves left")
+        }
+        return null
     }
 
     fun movesSnapshot(): List<MoveRecord> = moves.toList()
@@ -223,6 +268,7 @@ class FiveMoveSession {
         phase = Phase.RUNNING
         verifiedCount = 0
         gesturesDispatched = 0
+        resetPlayBook()
         stopReason = ""
         startedAtMs = nowMs
         stoppedAtMs = 0L
@@ -246,10 +292,10 @@ class FiveMoveSession {
 
     /** Allow move 1 without a saved TESZT ÉRINTÉS hit. Later moves still need it. */
     fun enableAutoProbe() {
-        if (phase == Phase.RUNNING && gesturesDispatched == 0) autoProbe = true
+        if (phase == Phase.RUNNING && swipesDispatched == 0) autoProbe = true
     }
 
-    fun needsGeometryCheck(): Boolean = autoProbe && gesturesDispatched == 0
+    fun needsGeometryCheck(): Boolean = autoProbe && swipesDispatched == 0
 
     fun openCells(): String? = openMove?.cells
 
@@ -305,6 +351,7 @@ class FiveMoveSession {
         phase = Phase.IDLE
         verifiedCount = 0
         gesturesDispatched = 0
+        resetPlayBook()
         stopReason = ""
         startedAtMs = 0L
         stoppedAtMs = 0L
@@ -322,6 +369,97 @@ class FiveMoveSession {
         boosterLatched = false
         autoProbe = false
         pendingAutoSave = false
+    }
+
+    private fun resetPlayBook() {
+        swipesDispatched = 0
+        playSkip = 0
+        boosterHolding = false
+        doubleReady = true
+        freshHash = null
+        freshRun = 0
+        retryUsed = false
+        unreadTurnStreak = 0
+        zeroStreak = 0
+        noLegalAttempts = 0
+        lastNoLegalMs = 0L
+        boosterHoldSinceMs = 0L
+    }
+
+    /**
+     * Two fresh PASS frames with the same board hash arm the next swipe.
+     * The first swipe does not wait. Settle frames do not count.
+     */
+    fun noteFreshBoard(hash: Long, fresh: Boolean, pass: Boolean) {
+        if (!fresh || !pass) {
+            freshHash = null
+            freshRun = 0
+            return
+        }
+        if (hash == freshHash) {
+            freshRun += 1
+        } else {
+            freshHash = hash
+            freshRun = 1
+        }
+        if (freshRun >= 2) doubleReady = true
+    }
+
+    /** No swipe while a booster may be asking for a target. */
+    fun beginBoosterTargetHold(nowMs: Long) {
+        if (phase != Phase.RUNNING) return
+        boosterHolding = true
+        boosterLatched = true
+        boosterHoldSinceMs = nowMs
+    }
+
+    /**
+     * Clears the hold when ACTIVATE is gone on a stable PASS.
+     * Otherwise stops after [BOOSTER_TARGET_HOLD_MS].
+     */
+    fun pollBoosterTarget(nowMs: Long, activateWord: Boolean, stablePass: Boolean): Decision? {
+        if (!boosterHolding) return null
+        if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (!activateWord && stablePass) {
+            boosterHolding = false
+            return null
+        }
+        if (nowMs - boosterHoldSinceMs >= BOOSTER_TARGET_HOLD_MS) {
+            return stop(nowMs, "STOP — booster needs a target")
+        }
+        return Decision.Hold("HOLD — booster needs a target; no target tap")
+    }
+
+    /**
+     * Counts a shuffle or an empty move list once per second.
+     * The third attempt stops.
+     */
+    fun noteNoLegalMove(nowMs: Long): Decision {
+        if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
+        if (lastNoLegalMs != 0L && nowMs - lastNoLegalMs < NO_MOVE_GAP_MS) {
+            return Decision.Hold("HOLD — no legal move, waiting")
+        }
+        lastNoLegalMs = nowMs
+        noLegalAttempts += 1
+        if (noLegalAttempts >= NO_MOVE_RETRIES) {
+            return stop(nowMs, "STOP — no legal move")
+        }
+        return Decision.Hold("HOLD — no legal move")
+    }
+
+    /**
+     * Two verifications with an unread turn stop, unless the HUD is a positive
+     * solo layout. Solo play has no opponent glyph, so an unread turn continues.
+     */
+    fun noteVerifiedTurn(turnState: String, soloPositive: Boolean, nowMs: Long): Decision? {
+        if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (soloPositive || turnState != com.match3vision.analyzer.hud.HudObservation.NOT_DETECTABLE) {
+            unreadTurnStreak = 0
+            return null
+        }
+        unreadTurnStreak += 1
+        if (unreadTurnStreak >= 2) return stop(nowMs, "STOP — turn not readable")
+        return null
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -364,13 +502,19 @@ class FiveMoveSession {
         sessionLimit(gates.nowMs)?.let { return it }
         if (outsideTouches > 0) return stop(gates.nowMs, "STOP — user interference")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
+        if (boosterHolding) {
+            return Decision.Hold("HOLD — booster needs a target; no target tap")
+        }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, "STOP — 40 gesture safety cap")
         }
         if (outstanding != null) return Decision.Hold("dispatch permit already issued")
         val hold = holdReason(gates)
         if (hold != null) return Decision.Hold(hold)
-        val permit = Permit(token = nextToken++, moveNumber = gesturesDispatched + 1)
+        if (swipesDispatched > 0 && !doubleReady) {
+            return Decision.Hold("HOLD — waiting for a fresh double-read")
+        }
+        val permit = Permit(token = nextToken++, moveNumber = swipesDispatched + 1)
         outstanding = permit
         return Decision.Go(permit)
     }
@@ -390,8 +534,8 @@ class FiveMoveSession {
     }
 
     /**
-     * Records one ACTIVATE tap. A miss latches the booster and leaves the
-     * session running. A stable board change counts as a verified move.
+     * Records one ACTIVATE tap. It counts toward the gesture cap and does not
+     * count as a swipe. A miss latches the booster and leaves gem play running.
      */
     fun recordBooster(
         changed: Boolean,
@@ -431,12 +575,6 @@ class FiveMoveSession {
             finishedAtMs = nowMs,
             playExport = playExport,
         )
-        if (countChange && changed && stable && callbackCompleted) {
-            verifiedCount += 1
-            if (verifiedCount >= MAX_MOVES) {
-                stop(nowMs, "STOP — 40 gesture safety cap")
-            }
-        }
         return verification
     }
 
@@ -447,6 +585,9 @@ class FiveMoveSession {
             return stop(fact.nowMs, "STOP — 40 gesture safety cap")
         }
         gesturesDispatched += 1
+        swipesDispatched += 1
+        freshHash = null
+        freshRun = 0
         val callback = when {
             fact.cancelled || !fact.callbackCompleted -> "cancelled"
             else -> "onCompleted"
@@ -536,10 +677,14 @@ class FiveMoveSession {
             return stop(sample.nowMs, "STOP — per-move settle budget ${PER_MOVE_BUDGET_MS}ms")
         }
         if (!qualifiesAsPass(sample)) {
+            open.stableRun = 0
+            open.stableHash = Long.MIN_VALUE
             return ignore(open, transientReason(sample))
         }
         val stable = sample.diffFraction != null && sample.diffFraction <= STABLE_FRACTION
         if (!stable) {
+            open.stableRun = 0
+            open.stableHash = Long.MIN_VALUE
             val detail = if (sample.diffFraction == null) "no pair yet" else "diff=${sample.diffFraction}"
             return ignore(open, "unstable ($detail)")
         }
@@ -548,12 +693,37 @@ class FiveMoveSession {
             if (sample.nowMs - open.startedAtMs < UNCHANGED_MIN_MS) {
                 return Decision.Hold("waiting to see the board change")
             }
+            if (!retryUsed) {
+                retryUsed = true
+                playSkip = 1
+                doubleReady = false
+                freshHash = null
+                freshRun = 0
+                closeOpen(open, sample, "FAILED — board unchanged, retry next")
+                phase = Phase.RUNNING
+                return Decision.Hold("FAILED — board unchanged, retry next")
+            }
             closeOpen(open, sample, "FAILED — board unchanged")
             return stop(sample.nowMs, "STOP — board unchanged after move ${open.number}")
         }
         if (autoProbe && open.number == 1 && !sample.swapOverlaps) {
             closeOpen(open, sample, "FAILED — auto-calibration missed the swapped cells")
             return stop(sample.nowMs, AutoCalibration.STOP_MISSED)
+        }
+        if (sample.boardHash != open.stableHash) {
+            open.stableHash = sample.boardHash
+            open.stableRun = 1
+            open.stableSinceMs = sample.nowMs
+        } else {
+            open.stableRun += 1
+        }
+        val span = sample.nowMs - open.stableSinceMs
+        if (open.stableRun < STABLE_FRAMES || span < STABLE_SPAN_MS) {
+            return Decision.Hold("waiting for a stable run")
+        }
+        if (!sample.swapSupported) {
+            closeOpen(open, sample, "FAILED — changed cells missed the swapped rows and columns")
+            return stop(sample.nowMs, "STOP — changed cells missed the swapped rows and columns")
         }
         if (sample.frameSequence > lastSettledFrameSequence) {
             lastSettledFrameSequence = sample.frameSequence
@@ -564,6 +734,12 @@ class FiveMoveSession {
             "PASS — callback completed, board changed, stable, fresh, ROI plausible, vision PASS",
         )
         verifiedCount += 1
+        retryUsed = false
+        playSkip = 0
+        noLegalAttempts = 0
+        doubleReady = false
+        freshHash = null
+        freshRun = 0
         if (autoProbe && open.number == 1) {
             autoProbe = false
             pendingAutoSave = true
@@ -574,7 +750,8 @@ class FiveMoveSession {
             return stop(sample.nowMs, "STOP — 40 gesture safety cap")
         }
         phase = Phase.RUNNING
-        return Decision.Hold("move $verifiedCount verified")
+        return noteVerifiedTurn(sample.turnState, sample.soloPositive, sample.nowMs)
+            ?: Decision.Hold("move $verifiedCount verified")
     }
 
     fun abort(reason: String, nowMs: Long): Decision.Stop {
@@ -639,7 +816,10 @@ class FiveMoveSession {
         }
         val measured = if (phase == Phase.IDLE) 0L else (end - startedAtMs).coerceAtLeast(0L)
         appendLine("measuredSessionMs=$measured")
-        appendLine("verified=$verifiedCount gestures=$gesturesDispatched safetyCap=$MAX_MOVES")
+        appendLine(
+            "verified=$verifiedCount gestures=$gesturesDispatched swipes=$swipesDispatched " +
+                "safetyCap=$MAX_MOVES",
+        )
         appendLine(PlayMoveRanker.EXTRA_MOVE_RULE)
         if (calibrationLine.isNotBlank()) appendLine(calibrationLine)
         appendLine("predictedExtraMoveMatches=${moves.count { it.extraMove }}")
@@ -726,7 +906,7 @@ class FiveMoveSession {
         else -> null
     }
 
-    private fun autoProbeOpen(): Boolean = autoProbe && gesturesDispatched == 0
+    private fun autoProbeOpen(): Boolean = autoProbe && swipesDispatched == 0
 
     private fun qualifiesAsPass(sample: SettleSample): Boolean =
         sample.capturedAfterGesture &&
@@ -853,6 +1033,13 @@ class FiveMoveSession {
         const val STABLE_FRACTION = 0.02f
         const val MIN_POST_COLLAPSE_MS = 2_000L
         const val MAX_UNKNOWN = 1
+        const val STABLE_FRAMES = 3
+        const val STABLE_SPAN_MS = 600L
+        const val MOVES_ZERO_FRAMES = 3
+        const val MOVES_ZERO_STABLE_MS = 1_000L
+        const val NO_MOVE_RETRIES = 3
+        const val NO_MOVE_GAP_MS = 1_000L
+        const val BOOSTER_TARGET_HOLD_MS = 8_000L
         private const val MAX_IGNORED_LINES = 200
 
         const val NEED_SELF_CHECK_HU =

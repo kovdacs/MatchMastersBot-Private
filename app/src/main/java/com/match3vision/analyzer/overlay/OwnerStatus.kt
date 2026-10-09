@@ -17,6 +17,9 @@ object OwnerStatus {
             key.contains("10 moves verified") || key.contains("10 moves complete") -> "Kész: 10 lépés megtörtént"
             key.contains("40 gesture") -> "Elértem a biztonsági lépéshatárt – leálltam"
             key.contains("no moves left") -> "Nincs több lépés – leálltam"
+            key.contains("booster needs a target") -> "A booster célpontot kér – leálltam"
+            key.contains("no legal") -> "Nincs szabályos lépés – leálltam"
+            key.contains("turn not readable") -> "Nem látom, kié a kör – leálltam"
             key.contains("300s") -> "Lejárt az 5 perc – leálltam"
             key.contains("120s") -> "Lejárt a 2 perc – leálltam"
             key.contains("user interference") -> "Hozzáértél a képernyőhöz – leálltam"
@@ -32,7 +35,7 @@ object OwnerStatus {
                 "Egy felirat takarja a táblát, várok…"
             key.contains("time left") || key.contains("low-time") || key.contains("kevés az idő") ->
                 "Kevés az idő, gyorsan lépek"
-            key.contains("vision") || key.contains("not pass") || key.contains("no legal") ||
+            key.contains("vision") || key.contains("not pass") ||
                 key.contains("tábla nem") || key.contains("nem látom") ->
                 "Nem látom a táblát – nyisd meg a játékot"
             key.contains("auto: move-1") || key.contains("move-1 verified") ->

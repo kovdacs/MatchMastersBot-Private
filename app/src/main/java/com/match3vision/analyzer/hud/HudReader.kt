@@ -45,7 +45,8 @@ object HudReader {
         if ((opponent || redPvp) && !circleSignal) {
             val mult = HudText.multiplier(pixels, width, height)
             val ready = word && player
-            val full = card.text == "FULL" || card.text == "7/7" || ready
+            val barFull = card.text == "FULL" || card.text == "7/7" || card.text == "ACTIVATE" || word
+            val full = barFull
             return withCircles(
                 HudObservation(
                     timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
@@ -57,7 +58,7 @@ object HudReader {
                         card.text.endsWith("/7") -> BoosterMonitor.CHARGING
                         else -> BoosterMonitor.UNKNOWN
                     },
-                    blueFactor = if (full) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+                    blueFactor = if (barFull) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
                     soloLayout = false,
                     activate = if (ready) "yes" else "no",
                     boosterTarget = if (ready) "none" else "unknown",
@@ -71,7 +72,9 @@ object HudReader {
                 ),
                 movesRemaining,
                 circlesSample,
-                word,
+                card,
+                activateSample.brightFraction,
+                soloPositive = false,
             )
         }
         val knownSolo = circleSignal || ((activateSample.bright || word) && reds < OPPONENT_RED_MIN)
@@ -90,7 +93,9 @@ object HudReader {
                 ),
                 movesRemaining = null,
                 circlesSample,
-                word,
+                card,
+                activateSample.brightFraction,
+                soloPositive = false,
             )
         }
         val activate = activateSample.bright || word
@@ -113,7 +118,13 @@ object HudReader {
                     fill.endsWith("/7") -> BoosterMonitor.CHARGING
                     else -> BoosterMonitor.phase(fill)
                 },
-                blueFactor = if (activate || fill == "full") PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+                blueFactor = if (
+                    word || card.text == "FULL" || card.text == "7/7" || card.text == "ACTIVATE"
+                ) {
+                    PlayMoveRanker.FULL_BAR_BLUE_FACTOR
+                } else {
+                    1.0
+                },
                 soloLayout = true,
                 activate = if (activate) "yes" else "no",
                 boosterTarget = if (word) "none" else if (activate) "none" else "unknown",
@@ -127,7 +138,9 @@ object HudReader {
             ),
             movesRemaining,
             circlesSample,
-            word,
+            card,
+            activateSample.brightFraction,
+            soloPositive = true,
         )
     }
 
@@ -135,12 +148,19 @@ object HudReader {
         hud: HudObservation,
         movesRemaining: Int?,
         circles: CircleSample,
-        activateWord: Boolean,
+        card: HudText.Card,
+        brightFraction: Double,
+        soloPositive: Boolean,
     ): HudObservation = hud.copy(
         movesRemaining = movesRemaining,
         circlesBright = if (circles.classifiable) circles.bright else null,
         circlesClassifiable = circles.classifiable,
-        activateWord = activateWord,
+        activateWord = card.activateWord,
+        activateScore = card.activateScore,
+        activateFloor = card.floor,
+        activateRect = card.activateRect,
+        activateBrightFraction = brightFraction,
+        soloPositive = soloPositive,
     )
 
     fun activateCenter(width: Int, height: Int): Pair<Float, Float> {
@@ -281,14 +301,27 @@ object SoloBooster {
         controlEnabled: Boolean,
         extraMoveAvailable: Boolean,
         latched: Boolean,
+        swipesVerified: Int = 0,
+        selfCheckMeasured: Boolean = false,
     ): String = when {
         latched -> "latched"
         !controlEnabled -> "toggle-off"
         hud.turnState == HudObservation.TURN_OPPONENT -> "opponent"
+        swipesVerified < 1 -> "no-swipe-yet"
+        !selfCheckMeasured -> "no-self-check"
         !hud.activateWord -> "no-activate-word"
+        !hud.soloPositive && !hud.playerTurn() -> "not-our-layout"
         extraMoveAvailable -> "wait-extra"
         else -> "tap"
     }
+
+    /** The word and the board must still match the frame that planned the tap. */
+    fun stillArmed(
+        before: HudObservation,
+        again: HudObservation,
+        beforeHash: Long,
+        nowHash: Long,
+    ): Boolean = before.activateWord && again.activateWord && beforeHash == nowHash
 
     fun plan(
         hud: HudObservation,
@@ -296,9 +329,23 @@ object SoloBooster {
         height: Int,
         controlEnabled: Boolean,
         extraMoveAvailable: Boolean = false,
+        swipesVerified: Int = 0,
+        selfCheckMeasured: Boolean = false,
     ): Tap? {
         val ourTurn = hud.turnState != HudObservation.TURN_OPPONENT
-        if (!BoosterMonitor.mayTap(controlEnabled, hud.activateWord, ourTurn, extraMoveAvailable)) return null
+        if (!BoosterMonitor.mayTap(
+                controlEnabled,
+                hud.activateWord,
+                ourTurn,
+                extraMoveAvailable,
+                hud.soloPositive,
+                hud.playerTurn(),
+                swipesVerified,
+                selfCheckMeasured,
+            )
+        ) {
+            return null
+        }
         val (x, y) = HudReader.activateCenter(width, height)
         if (x < 0f || y < 0f) return null
         return Tap(x, y)
