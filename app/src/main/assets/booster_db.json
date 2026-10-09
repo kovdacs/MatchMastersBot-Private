@@ -1,0 +1,3117 @@
+[
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Bronze",
+  "charge_cost_pieces": 6,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE when bar is full; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Fireworks fall on random spots and make small explosions (wiki: a 5-piece plus shape, ~5 pts).",
+  "costs_move": false,
+  "grants_extra_move": "no direct extra move; cascades possible",
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Fully automatic random effect; only ordinary pieces remain.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Exact blast shape (5-piece plus) is from the fan wiki only."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238615861914-Firecracker",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "random small explosions; costs 6 pieces"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Firecracker",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "5-piece plus at a random place; first unlocked booster"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=sb85NrREIz8&t=26s",
+    "type": "official_video",
+    "timestamp": "0:26",
+    "note": "Academy #2: using your booster does not cost a move; charge with blue stars; opponent charges with red circles"
+   }
+  ],
+  "id": "firecracker",
+  "name": "Firecracker"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "(possibly successor of legacy 'Paint Bucket' – unverified)"
+  ],
+  "rarity_tier": "Bronze",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Paints some random pieces with one random color; can cause automatic matches and even create specials.",
+  "costs_move": false,
+  "grants_extra_move": "auto-matches it causes may create specials; extra-move behaviour of auto-matches unknown",
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; board must be re-scanned afterwards because colors change.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238568806938-Color-Splash",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "random repaint; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=sb85NrREIz8&t=26s",
+    "type": "official_video",
+    "timestamp": "0:26",
+    "note": "Academy #2: using your booster does not cost a move; charge with blue stars; opponent charges with red circles"
+   }
+  ],
+  "id": "color_splash",
+  "name": "Color Splash"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Quacky",
+   "duck (bronze)"
+  ],
+  "rarity_tier": "Bronze",
+  "charge_cost_pieces": 6,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Duck swims along the board's CENTER row and eliminates those pieces (fires specials sitting in that row). Wiki: in the past it removed the bottom row.",
+  "costs_move": false,
+  "grants_extra_move": "no direct; cascades possible",
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Deterministic (center row). Do not confuse with Colonel McQuack (Diamond 1 duck with military cap).",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5237991131034-Quack-Attack",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "center row; costs 6"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Quack_Attack",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "removes middle row; formerly bottom row"
+   }
+  ],
+  "id": "quack_attack",
+  "name": "Quack Attack"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Silver",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target described.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none (not described as player-chosen)",
+  "effect": "One BIG explosion on the board that removes all pieces in the blast ('big brother' of Firecracker). Blast location: not documented (presumably random).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Treat as automatic; verify no 'Pick a piece' prompt appears on first use.",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "No source states whether the explosion position is chosen or random."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238426114330-Crazy-Rocket",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "big explosion; costs 7"
+   }
+  ],
+  "id": "crazy_rocket",
+  "name": "Crazy Rocket"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Jelly",
+   "The Slime (former name)"
+  ],
+  "rarity_tier": "Silver",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE, prompt 'Pick a piece' appears, tap one board piece; jelly spreads from it.",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "one board piece (any)",
+  "effect": "Jelly spreads from the chosen piece in random directions; every covered piece is removed.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Choosing a special piece as origin tends to give more points (wiki tip)."
+  ],
+  "v1_safe": false,
+  "v1_note": "Needs a target tap after ACTIVATE.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238390569370-The-Jelly",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "you choose the piece the Jelly spreads from"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/The_Jelly",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "'Pick a piece' prompt; formerly 'The Slime'"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=7GSUX02CRIs&t=494s",
+    "type": "official_video",
+    "timestamp": "8:14",
+    "note": "the Slime has become the Jelly (silver)"
+   }
+  ],
+  "id": "the_jelly",
+  "name": "The Jelly"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Silver",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Pops special pieces onto the board (wiki: 3 random specials). They remain only until the END OF YOUR TURN; unmatched ones vanish.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "temporary standard special pieces – must be matched/fired before turn ends to score",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Activation is automatic; AI should then prioritise firing the temporary specials in the same turn.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238293716122-Mystery-Hat",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "specials vanish at end of turn; costs 7"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Mystery_Hat",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "3 random specials"
+   }
+  ],
+  "id": "mystery_hat",
+  "name": "Mystery Hat"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE, then tap a board piece; its row AND column are cleared (cross).",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "one board piece (cross centre)",
+  "effect": "Eliminates a row and a column of your choice (cross shape).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs a target. Gameplay narration: 'go right here, smack in the middle'. Remove Cross perk is described by Candivore as 'just like the Laser Booster, you will choose a select piece'.",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Help center says 'an adjacent row AND a column of your choice' – whether one tap picks both (cross centre) or two separate taps is not 100% stated; the cross-centre single tap is the most consistent reading."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5238255682586-Laser-Beam",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "row AND column of your choice; costs 7"
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216784220826-Remove-Cross",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "Remove Cross works just like the Laser booster: choose a piece"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=1Q5FI88b7KU&t=1355s",
+    "type": "third_party_video",
+    "timestamp": "22:35",
+    "note": "Luke_TV: laser beam creates a cross (column + entire row); \"typically I would target...\"; avoid blues"
+   }
+  ],
+  "id": "laser_beam",
+  "name": "Laser Beam"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Little Dragon",
+   "Lil Dragon"
+  ],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (arms the dragon), then make a NORMAL MATCH swap; the match triggers the burn.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "next match you make",
+  "effect": "Your next match burns pieces: a horizontal match burns the pieces above and below it, a vertical match burns pieces to its sides. Flames activate anything they hit (specials, mushrooms).",
+  "costs_move": "the follow-up match is a normal move (costs a move unless it is a 4+ match)",
+  "grants_extra_move": "only if the follow-up match itself is 4+",
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Activation is a simple tap, but value depends on choosing the follow-up match well; needs planner support (simulate burn band).",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019659960-Lil-Dragon",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "create a match after activation; horizontal burns up/down, vertical burns sides"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=QuhtptkL__Q&t=93s",
+    "type": "official_video",
+    "timestamp": "1:33",
+    "note": "Official: dragon requires a small extra step – you need to make a match"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-vajZ-VPBGw&t=360s",
+    "type": "third_party_video",
+    "timestamp": "6:00",
+    "note": "GameOnTom: when you make a match the pieces alongside are burned"
+   }
+  ],
+  "id": "lil_dragon",
+  "name": "Lil' Dragon"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "owl"
+  ],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Owl finds and makes every possible match on the board for you (3-, 4- and 5-matches); 4+ matches it makes become specials and it fires matchable specials anywhere.",
+  "costs_move": false,
+  "grants_extra_move": "NO – 4+ matches made by Mastermind do NOT grant extra moves (official). Take your own extra moves BEFORE activating.",
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Fully automatic. Important ordering rule: play available 4+ matches first.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019700779-Mastermind",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "makes matches for you; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=QuhtptkL__Q&t=172s",
+    "type": "official_video",
+    "timestamp": "2:52",
+    "note": "Official: Mastermind 4+ matches will not turn into an extra move"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-vajZ-VPBGw&t=450s",
+    "type": "third_party_video",
+    "timestamp": "7:30",
+    "note": "GameOnTom: full board refresh"
+   }
+  ],
+  "id": "mastermind",
+  "name": "Mastermind"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE, then pick a color (fan wiki: 'select a color on the board' – i.e. tap a piece of that color). Exact picker UI unverified.",
+  "category": "TAP_THEN_COLOR",
+  "target_requirement": "one color present on the board",
+  "effect": "Removes every piece of the chosen color from the board (specials of that color fire).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs a color choice. Strategy: pick high-value/mushroom/special-carrying color; avoid blue (no recharge) unless snowballing is proven; red denies opponent.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019700759-Magic-Wand",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "pick any color, removes it; costs 7"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Magic_Wand",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "select a color on the board"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-vajZ-VPBGw&t=186s",
+    "type": "third_party_video",
+    "timestamp": "3:06",
+    "note": "GameOnTom: used on yellows / purples"
+   }
+  ],
+  "id": "magic_wand",
+  "name": "Magic Wand"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Sweep It",
+   "Sweepit",
+   "broom (gold)"
+  ],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 6,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Sweeps (all pieces of) one random color to the side of the board, opening new (special) matches. Wiki: to the right side.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; re-scan board after.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Cost 6 per help center & wiki; gamerorbis says 7 (low-reliability). A Reddit thread mentions a period where gold/diamond boosters cost 6 then went back to 7 – read the cost from the bar ('n/7')."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019700719-Sweep-it",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "one color swept to side; costs 6"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Sweep_It",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "random color to the right"
+   }
+  ],
+  "id": "sweep_it",
+  "name": "Sweep It!"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Balloon Blast!"
+  ],
+  "rarity_tier": "Gold",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target (confirmed in owner's own recording).",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Picks random columns and wipes out a random portion of each.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "~6–7 s 'BALLOON BLAST!' animation (owner recording, Perfect Heist)",
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Verified by owner recording: tap ACTIVATE -> animation -> pieces removed, no prompt.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Fan wiki claims you must make a move after activation – contradicted by owner's recording (score rose with no move)."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019700699-Balloon-Blast",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "random columns, random portion; costs 7"
+   },
+   {
+    "url": "owner screen recording 1 (Perfect Heist, Balloon Blast) – Google Drive 1ApELMQcyqISepA5hbC7SBTL8LlMKAGYf; frames /workspace/mm/video/f_*.jpg",
+    "type": "owner_recording",
+    "timestamp": "0:00-0:16",
+    "note": "ACTIVATE button tapped, 'BALLOON BLAST!' animation, score 115->197 with no target prompt; afterwards Hammer shows 'Pick a piece'."
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Balloon_Blast!",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "claims a move is needed – contradicted"
+   }
+  ],
+  "id": "balloon_blast",
+  "name": "Balloon Blast"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Diamond Tier 1",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE, then tap a board piece.",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "a piece whose color has at least 2 pieces in the same row or column (otherwise cannot activate)",
+  "effect": "All pieces of the chosen piece's color in its row and column are connected by current and zapped, together with pieces in between.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Teemo: using it on blue removes blues without charging the booster (avoid blue).",
+   "Wiki tip: target red to deny opponent."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Fan wiki says 'pick a color'; official says 'choose a piece' (the piece defines the color)."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019660160-High-Voltage",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "choose a piece; needs >=2 of that color in row/col; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=zu8QK3kXtM8&t=33s",
+    "type": "official_video",
+    "timestamp": "0:33",
+    "note": "Official channel (Teemo): 'we'll need to select a tile'; 1:03 blues zapped give no energy"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/High_Voltage",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "high_voltage",
+  "name": "High Voltage"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "leprechaun"
+  ],
+  "rarity_tier": "Diamond Tier 1",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none (works on green pieces)",
+  "effect": "Leprechaun spreads clovers that turn all GREEN pieces into clovers, producing big matches. Whether clovers remain as a new piece type needing a match is not documented.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; value depends on number of greens. Verify board recognition afterwards (clover sprites).",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019700899-Crazy-Clovers",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "greens become clovers; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=zu8QK3kXtM8&t=81s",
+    "type": "official_video",
+    "timestamp": "1:21",
+    "note": "Teemo: clovers walk over the screen; pair with Checkerboard landing on green"
+   }
+  ],
+  "id": "crazy_clovers",
+  "name": "Crazy Clovers"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Appleberry"
+  ],
+  "rarity_tier": "Diamond Tier 1",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Spreads fruits (fruit type = one board color, e.g. lemons = yellow) and eats all of them plus anything in his way; clears a large part of the board.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; color chosen by the game ('you never really know what you're going to get').",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "gamerorbis says the player chooses the color – contradicts official text and official channel video."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019709799-Mr-Appleberry",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "fruit corresponds to a color; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=zu8QK3kXtM8&t=138s",
+    "type": "official_video",
+    "timestamp": "2:18",
+    "note": "Teemo: turns a certain color of fruit, you never know which"
+   }
+  ],
+  "id": "mr_appleberry",
+  "name": "Mr. Appleberry"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "duck with military cap",
+   "'Kacsa' in owner's PvP video"
+  ],
+  "rarity_tier": "Diamond Tier 1",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target (seen in owner's PvP recording).",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Parachutes drop 3 special pieces, then 3 rows of rubber ducks eat rows (official: 'orders rows to be eaten up'). Specials not cleared turn back to normal tiles at the end of your turn.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "up to 3 temporary standard specials (revert to normal at end of turn)",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Owner's own booster in recording 2. Automatic.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019815819-Colonel-McQuack",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "drops specials, eats rows; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=zu8QK3kXtM8&t=165s",
+    "type": "official_video",
+    "timestamp": "2:45",
+    "note": "Teemo: three parachutes, three rows of ducks; 3:01 leftover specials turn back to normal at end of turn"
+   },
+   {
+    "url": "owner screen recording 2 (PvP Multiplier Madness, Colonel McQuack vs opponent) – Google Drive 1heU3NpLxltkfOh2krhPKM1OlEMAcM1SA; frames /workspace/mm/video/g2_*.jpg",
+    "type": "owner_recording",
+    "timestamp": "1:08, 3:35, 3:38",
+    "note": "Bar shows 'n/7' then 'FULL'; pink ACTIVATE button appears next to the booster icon of the player whose booster is full (opponent's ACTIVATE is visible on the right side of your screen too)."
+   }
+  ],
+  "id": "colonel_mcquack",
+  "name": "Colonel McQuack"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "train"
+  ],
+  "rarity_tier": "Diamond Tier 2",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "at least one YELLOW piece on the board (otherwise cannot activate)",
+  "effect": "Trains attach to all yellow pieces and run their tracks left OR right (random), clearing horizontal rows.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "SE version described as 'fast and snappy' (Tom); base not stated",
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; check yellow present before tapping (button may be disabled).",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019709879-All-Aboard",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "yellow trains; needs yellow; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lXyqT_AlJCQ",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo Diamond T2: attaches to yellows, decides left or right, clears horizontal rows"
+   }
+  ],
+  "id": "all_aboard",
+  "name": "All Aboard"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Roxy",
+   "Foxy"
+  ],
+  "rarity_tier": "Diamond Tier 2",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Sprays 3–4 long same-color lines on the board (random colors), creating long matches/specials. Unlike the SE, no spray cans are left for the player.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019770400-Foxy-Roxy",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "spray paints long matches; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lXyqT_AlJCQ",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: 3 or 4 spray cans, unlike SE you do not get cans to choose paths"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Foxy_Roxy",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "Tier 2 diamond; ~90% chance to make a special"
+   }
+  ],
+  "id": "foxy_roxy",
+  "name": "Foxy Roxy"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Diamond Tier 2",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Robot twists/turns the board and mechanically 'fixes' matches for you, including special pieces.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019668960-Butler-Bot",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "arranges matches incl. specials; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lXyqT_AlJCQ",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: shifts pieces into the correct spot; can move unreachable specials"
+   }
+  ],
+  "id": "butler_bot",
+  "name": "Butler Bot"
+ },
+ {
+  "kind": "booster",
+  "aliases": [],
+  "rarity_tier": "Diamond Tier 2",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Hoovers up random colors from the board (Teemo: two colors selected and warped off). No follow-up extraction (that is the SE).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019660080-UFO",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "removes random colors; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lXyqT_AlJCQ",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: two colors selected and warped off; unlike SE no follow-up"
+   }
+  ],
+  "id": "ufo",
+  "name": "UFO"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Cobra Queen"
+  ],
+  "rarity_tier": "Diamond Tier 2",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Copies columns and places replicas right next to the originals (doubling contents), creating many ready matches/specials (gameplay: ~3 duplicates).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Official text says COLUMNS; two gameplay videos (Teemo, Dab Plays) say 'rows' duplicated to the right – likely loose wording. Trust official (columns) but verify on first use."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019764220-Queen-Cobra",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "copies columns next to originals; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lXyqT_AlJCQ",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: creates three duplicate rows (sic)"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=0iZRRndYVhk&t=62s",
+    "type": "third_party_video",
+    "timestamp": "1:02",
+    "note": "Dab Plays: duplicates them to the right, 3–4 perfect moves"
+   }
+  ],
+  "id": "queen_cobra",
+  "name": "Queen Cobra"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Woolly",
+   "Wooly"
+  ],
+  "rarity_tier": "Diamond Tier 3",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE, then choose a color (exact picker UI not documented – may be tapping a piece of that color or a color menu; verify).",
+  "category": "TAP_THEN_COLOR",
+  "target_requirement": "one color",
+  "effect": "Pieces move on the board following Woolly's steps (left/right/up/down from where that color is) and are transformed into the chosen color, then match. Colors near the edges give less value.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "Described as 'one of the longest boosters to activate' (GameOnTom) – bad in non-stop-timer modes.",
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Requires color choice; long animation.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019770420-Woolly-Workout",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "transform pieces to color of your choice; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=v5Y4z6MUBPo&t=45s",
+    "type": "third_party_video",
+    "timestamp": "0:45",
+    "note": "GameOnTom: the color that you choose is exercised left/right/up/down; 2:54 one of the longest activations"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=uv7ph-rhjDE&t=348s",
+    "type": "official_video",
+    "timestamp": "5:48",
+    "note": "official channel: choose the color you prefer"
+   }
+  ],
+  "id": "woolly_workout",
+  "name": "Woolly Workout"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Dr. Color",
+   "Dr Color"
+  ],
+  "rarity_tier": "Diamond Tier 3",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; official text describes no player choice (inference: automatic).",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none documented",
+  "effect": "Test tubes change one color on the board into another color, leaving many same-colored pieces -> matches and specials.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Likely automatic. Verify that no color prompt appears on first use; stop if one does.",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Not stated whether source/target colors are random or chosen."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019815699-Doctor-Color",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "one color becomes another; costs 7"
+   }
+  ],
+  "id": "doctor_color",
+  "name": "Doctor Color"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Magneto"
+  ],
+  "rarity_tier": "Diamond Tier 3",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Magnets pull colors to the sides of the board, creating match opportunities.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019711259-El-Magneto",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "takes colors to the sides; costs 7"
+   }
+  ],
+  "id": "el_magneto",
+  "name": "El Magneto"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Valentine Vinnie",
+   "Vinnie",
+   "cupid hamster"
+  ],
+  "rarity_tier": "Diamond Tier 3",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: arrows mark targets and place hearts); then match hearts with normal swaps.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "none for activation; hearts must be matched (3+ same color) or hit later",
+  "effect": "Shoots hearts onto the board. Matching a heart removes all other pieces of that heart's color; joining two hearts clears both colors. During the activation itself hearts are not consumed by special hits.",
+  "costs_move": "activation free; heart matches are normal moves",
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "colored heart pieces",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Hearts are a new piece type -> vision must recognise them; planner must value 'clear whole color'.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019770440-Vinnie-Valentine",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "hearts: match to clear color; costs 7"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Valentine_Vinnie",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/6793235546650-Match-Masters-Tips-and-Tricks",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "vinnie_valentine",
+  "name": "Vinnie Valentine"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Charles",
+   "octopus"
+  ],
+  "rarity_tier": "Diamond Tier 3",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: rook + bishop sweep, knights placed); then match a knight to make all knights jump.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "none for activation; knights are activated by matching one",
+  "effect": "Rook (orthogonal) and bishop (diagonal) cross the board removing pieces, then 3 knights (previously 4) are placed; matching one knight activates all knights, each jumping in chess-knight pattern removing pieces, then new knights spawn. Re-activating while knights remain replaces them.",
+  "costs_move": "activation free; knight match is a normal move",
+  "grants_extra_move": null,
+  "multi_step": "knights respawn after each knight activation",
+  "follow_up_pieces": "3 knight pieces (colored)",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Initial sweep is automatic and still scores; knights need recognition.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5527644886682-Checkmate-Charles",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "knights remove multiple pieces; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=Ao6wr6_QLRI",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: knights reduced from 4 to 3; activating one knight activates all; teleport knights"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Checkmate_Charles",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "rook+bishop then 3 knights; Diamond T3"
+   }
+  ],
+  "id": "checkmate_charles",
+  "name": "Checkmate Charles"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Froggy Foo"
+  ],
+  "rarity_tier": "Legendary",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: kicks pieces off, places 2 lotus flowers with flower-shaped water areas); then make a normal match INSIDE a lotus water area.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "a match within a lotus area",
+  "effect": "Lotus collects all pieces of the matched color into the petal pattern and scores them as rainbow pieces with color multipliers: blue/red 1, green 2, orange 3, purple 4, yellow 5 (doubled in Rainbow). Activates specials, big combos.",
+  "costs_move": "lotus match is a normal move but 'always creates an extra move' (net free)",
+  "grants_extra_move": "YES – each lotus use guarantees an extra move (official guide: 'three extra moves')",
+  "multi_step": "2 lotuses per activation; lotuses do NOT stack – re-activating before using the 2nd lotus loses it. Some solos limit to 1 lotus.",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Not sold for coins / not in boxes or random prizes; event & sale only (added to Piñatas per updates)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "High value but needs lotus-area recognition. Official tip: 1st lotus on blue (recharge), 2nd on high-value color; drop colors into lotus before using.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10721263732378-Froggy-Fu",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "lotus, color values, costs 7"
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/11256898277402-How-can-I-get-the-new-booster-Froggy-Fu",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=1yvELJBQqsk&t=60s",
+    "type": "official_video",
+    "timestamp": "1:00",
+    "note": "Official guide: two lotus flowers; 1:07 match within the water; 0:49 three extra moves; 3:04 lotuses do not stack; 4:34 solos may limit to one lotus"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=HAZseFawfN4&t=81s",
+    "type": "official_video",
+    "timestamp": "1:21",
+    "note": "Match News: new booster (Jun 2026)"
+   }
+  ],
+  "id": "froggy_fu",
+  "name": "Froggy Fu"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Monkey Joo Joo",
+   "Monkey Juju",
+   "Joo Joo"
+  ],
+  "rarity_tier": "Legendary (formerly Diamond Tier 3)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: skulls placed); skulls then fire when matched or hit (by matches, specials, other skulls).",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "none for activation",
+  "effect": "Places skulls that cross the board removing everything in their path; each exploded skull is replaced by a new one. Direction depends on skull color (purple: +, green: X, yellow/orange: 3-way triangles). Skulls merge for huge detonations; more skulls added per activation in a round.",
+  "costs_move": "activation free; firing skulls via matches uses normal moves",
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "colored skull pieces (removed after the round / end of turn – sources differ)",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "~8 s from activation until you can move again (Teemo, Rumble)",
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Skull pieces need recognition + path simulation.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Skull lifetime: wiki says they disappear at end of turn; Teemo says removed after every round."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019770460-Monkey-Joojoo",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "skulls; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=_iBhpUnS45k&t=35s",
+    "type": "official_video",
+    "timestamp": "0:35",
+    "note": "Teemo: skulls placed, replaced when used, merge; 3:12 ~8 s animation; 2:52 removed after each round"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Monkey_Joo_Joo",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "skull directions by color"
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/6793235546650-Match-Masters-Tips-and-Tricks",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "monkey_joojoo",
+  "name": "Monkey Joojoo"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Billy Boom",
+   "Boombot"
+  ],
+  "rarity_tier": "Legendary",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target. Further bombs drop automatically after every move you make in that turn.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Robot assistant removes random color(s) (gameplay: 2 colors; does not take specials), then drops bombs (gameplay: 3); after every following move this turn, more bombs drop until you re-activate or the turn ends. Bombs are standard bombs (explode 8 neighbours + 1 extra in each cross direction).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": "bomb drops continue after each of your moves during the turn",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [
+   "billie_boom_powered_up"
+  ],
+  "animation_duration": "'super fast activation' (GameOnTom)",
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic; afterwards board has many standard bombs – planner should fire them. Bombs may remain for the opponent (Teemo) – use them before turn ends.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Bombs persistence: wiki says bombs disappear at end of your turn; Teemo says 'these bombs will stay out there for your opponent'."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360020402519-Billie-Boom",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "removes a random color, bombs after every move this turn; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=s1f0OkBEkD4&t=46s",
+    "type": "official_video",
+    "timestamp": "0:46",
+    "note": "Teemo: does not suck up specials; 1:03 bombs stay for opponent; 2:24 bomb blast pattern"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=n0FB3VKOh9o&t=201s",
+    "type": "third_party_video",
+    "timestamp": "3:21",
+    "note": "GameOnTom: no target, super fast activation"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=x9zuITd51pE&t=261s",
+    "type": "third_party_video",
+    "timestamp": "4:21",
+    "note": "GameOnTom: standard takes 2 colors, 3 bombs; 8:20 tap ACTIVATE immediately"
+   }
+  ],
+  "id": "billie_boom",
+  "name": "Billie Boom"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Bronco Boogie",
+   "Broccoli"
+  ],
+  "rarity_tier": "Legendary",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round). Exception: a Disco Ball swiped directly into BLUE does not charge the booster; blues cleared as side effects do.",
+  "activation_gesture": "Tap ACTIVATE (auto: clears random pieces, places Disco Balls); then DRAG/swap a Disco Ball toward any adjacent color.",
+  "category": "DRAG",
+  "target_requirement": "disco ball swapped with an adjacent piece of the color to clear",
+  "effect": "Disco Ball clears ALL pieces of the color it is slid into (and fires all specials of that color). New version: you may also swap a disco ball to make a normal match without triggering it.",
+  "costs_move": false,
+  "grants_extra_move": "disco moves are free; side-effect cascades can create extra moves",
+  "multi_step": "3 disco balls on first activation, 2 on each later activation (until new round)",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Mini Cleo does NOT duplicate disco balls.",
+   "Use disco on red to deny opponent; never directly on blue."
+  ],
+  "v1_safe": false,
+  "v1_note": "Free action but needs disco-ball recognition and swipe.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4405415101466-Brocco-Boogie",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "slide disco balls toward a color; no move cost; blue rule; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=hN1CoFACkas&t=110s",
+    "type": "official_video",
+    "timestamp": "1:50",
+    "note": "Official guide: 3 disco balls then 2; 1:58 when dragged; 2:47 do not use a turn; 3:31 not on blues; 4:00 Mini Cleo does not duplicate"
+   }
+  ],
+  "id": "brocco_boogie",
+  "name": "Brocco Boogie"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Cleo",
+   "Cleopatra"
+  ],
+  "rarity_tier": "Legendary",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: removes pieces, places scarabs); then SWAP a scarab with an adjacent piece to clone that piece.",
+  "category": "DRAG",
+  "target_requirement": "scarab swapped with an adjacent piece (any, incl. specials)",
+  "effect": "The piece the scarab is fed scatters multiple copies across the board (specials too) -> extra moves, big explosions.",
+  "costs_move": "scarab swap appears to count as a move unless it results in a 4+ match (gameplay: turn ended when the beetle swap made no 4-match; wiki: ~70% extra move)",
+  "grants_extra_move": null,
+  "multi_step": "2 scarabs on first activation, 1 per later activation in the same turn",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs scarab recognition and choice of piece (best: blue or a special).",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4943601891866-Cleo-Cadabra",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "swap a scarab with a piece; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=lBJUYRv2yxE&t=141s",
+    "type": "official_video",
+    "timestamp": "2:21",
+    "note": "Official guide: two beetles initially; 2:30 one per later activation"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=BZk2waqDqpA&t=131s",
+    "type": "official_video",
+    "timestamp": "2:11",
+    "note": "Teemo: opponent attached beetle, no 4-row -> their turn was over"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Cleo_Cadabra",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "cleo_cadabra",
+  "name": "Cleo Cadabra"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Meow Mixy",
+   "Hacker Cat",
+   "Mixy"
+  ],
+  "rarity_tier": "Legendary",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: hacker windows recolor rectangles of pieces, specials created); then a 'kitty code' (MATCH THESE COLORS) panel lists colors – make a normal match of one listed color to convert the other listed colors into it.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "normal match of one of the listed code colors",
+  "effect": "Windows repaint all pieces inside to one color; kitty code converts linked colors into the matched color -> massive matches/specials. First code offers 3 colors, later codes 2.",
+  "costs_move": "code match is a normal move; 'almost always gives an extra move'",
+  "grants_extra_move": "usually (gameplay)",
+  "multi_step": "code popup appears twice per activation (wiki); re-activating resets the code",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "'one of the fastest' activations (GameOnTom); owner recording shows the hacker-cat animation",
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs to read the code panel. Avoid choosing red in code (helps opponent); prefer blue.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/6664403959194-Mixy-Meow",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "screens, kitty code; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=4fCTUIKjuzQ&t=39s",
+    "type": "official_video",
+    "timestamp": "0:39",
+    "note": "Official channel: windows then kitty code"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=MhjoqpHxJ2Y&t=30s",
+    "type": "official_video",
+    "timestamp": "0:30",
+    "note": "Teemo: windows, second phase kitty code"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=d7UZB9q5elw",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: first code 3 colors then 2"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=v9wlHqwMwio&t=122s",
+    "type": "official_video",
+    "timestamp": "2:02",
+    "note": "one of the fastest boosters"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Mixy_Meow",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "mixy_meow",
+  "name": "Mixy Meow"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Magneto SE"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round). Exception: blues matched DURING the El Magneto SE activation do not charge the bar; only blues matched afterwards count.",
+  "activation_gesture": "Tap ACTIVATE; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "4 magnets pull one color to each of the four sides (not red/blue, which fall together); many specials (often lightnings) created; specials also pulled.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Automatic. Players note it rarely gives guaranteed extra moves.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4409370784154-El-Magneto-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "magnets pull colors to sides; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=LLfM94VP-7k&t=101s",
+    "type": "official_video",
+    "timestamp": "1:41",
+    "note": "Official guide: does not touch reds and blues; 2:06 blues during activation do not charge"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=dzOUs512XZ8&t=34s",
+    "type": "official_video",
+    "timestamp": "0:34",
+    "note": "Teemo: four magnets, one color to each side"
+   }
+  ],
+  "id": "el_magneto_se",
+  "name": "El Magneto SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Dr. Color SE"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no player choice described (inference: automatic).",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "enough colors on board (may be blocked after Checkerboard perk)",
+  "effect": "Changes pieces on the board to match another color -> loads of same-colored pieces, specials and matches.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "May be restricted if Checkerboard perk was used first and too few colors remain."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Likely automatic; verify no prompt.",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4409444018586-Doctor-Color-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "changes pieces to another color; checkerboard restriction; costs 7"
+   }
+  ],
+  "id": "doctor_color_se",
+  "name": "Doctor Color SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Allaboard SE",
+   "Aboard SE"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: yellow trains clear rows); then match the bandit pieces that jump off to drop dynamite.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "yellow on board to activate; bandits matched later",
+  "effect": "Trains remove yellow pieces' rows to the left or right; hijacking bandits jump onto the board; matching a bandit drops dynamite that explodes blue or red pieces.",
+  "costs_move": "activation free; bandit matches are normal moves",
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "bandit pieces",
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": "'fast and snappy' booster (GameOnTom)",
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Train part is automatic; bandits need recognition. Tip: match bandits low on the board first for chain reactions.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4414254932634-All-Aboard-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "trains + bandits + dynamite; needs yellow; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=iBCb59E2RLQ&t=154s",
+    "type": "official_video",
+    "timestamp": "2:34",
+    "note": "GameOnTom: fast and snappy; perks can be slow"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=d7UZB9q5elw",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo: two bandits of same color in a 4-row = activate again"
+   }
+  ],
+  "id": "all_aboard_se",
+  "name": "All Aboard SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "UFO Special Edition",
+   "mothership"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round). Official tip: using UFO SE on blues clears all blues and adds them to the bar (snowball).",
+  "activation_gesture": "Tap ACTIVATE (auto: abducts 2 random colors, places extractor pieces); then match an extractor to abduct all remaining pieces of the matched color.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "extractor included in a match",
+  "effect": "Abducts random colors, then extractors capture the color of the next pieces you match.",
+  "costs_move": "extractor match USES a move (Teemo) unless it is a 4+ match",
+  "grants_extra_move": null,
+  "multi_step": "2 extractors on first activation, 1 per later activation",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [
+   "ufo_se_powered_up"
+  ],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Extractor recognition needed; prefer blue extraction.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4419288346138-UFO-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "extractor captures next match; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=BuDurBjpO-E&t=39s",
+    "type": "official_video",
+    "timestamp": "0:39",
+    "note": "Teemo: two extractors first time then one; 0:59 extractors use up a turn"
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/6793235546650-Match-Masters-Tips-and-Tricks",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "ufo_se",
+  "name": "UFO SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Valentine Vinnie SE",
+   "Vinnie SE"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: 3 arrows, 4 on bigger boards); then match two-colored hearts with normal swaps.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "hearts matched (either of their 2 colors) or hit by specials",
+  "effect": "Arrows absorb pieces around random targets; centre becomes a TWO-color heart; activating a heart clears every piece of both its colors; joining two hearts clears up to 4 colors.",
+  "costs_move": "activation free; heart matches normal moves",
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": "2-color hearts",
+  "mode_restrictions": [],
+  "power_up_variants": [
+   "vinnie_valentine_se_powered_up"
+  ],
+  "animation_duration": null,
+  "interactions": [
+   "Mini Cleo perk cannot duplicate hearts.",
+   "Hammer can activate a heart."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/4410421030426-Vinnie-Valentine-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "two-color hearts; join two -> four colors; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=RJT53tAdREw&t=111s",
+    "type": "official_video",
+    "timestamp": "1:51",
+    "note": "Official guide: three arrows; 2:03 four on bigger board; 3:02 two hearts = up to 4 colors; 3:38 Mini Cleo cannot duplicate hearts"
+   }
+  ],
+  "id": "vinnie_valentine_se",
+  "name": "Vinnie Valentine SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "Foxy SE",
+   "Roxy SE"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: 3–4 straight spray lines like base Foxy); then swap/drag a spray can in a direction (horizontal/vertical) to repaint that row/column into the matched color.",
+  "category": "DRAG",
+  "target_requirement": "spray can swapped with an adjacent piece; direction = spray direction",
+  "effect": "Base spray lines + player-directed spray cans that turn a whole row or column into the matched color (no direction change in non-powered version).",
+  "costs_move": "spray-can use appears to be a normal swap; often yields a 4+ 'free move' (not guaranteed for non-powered SE)",
+  "grants_extra_move": null,
+  "multi_step": "2 spray cans on first activation, 1 on each later activation",
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [
+   "foxy_roxy_se_powered_up"
+  ],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs spray-can recognition and direction planning.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "likely"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216406065818-Foxy-Roxy-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "spray cans turn row/column into matching color; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=BZk2waqDqpA&t=72s",
+    "type": "official_video",
+    "timestamp": "1:12",
+    "note": "Teemo: pick horizontal or vertical; 1:16 later casts give one can"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=3Bvt_gHLIWI",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Teemo Zany Zappers: 3–4 cans auto, then 2 cans first time for you"
+   }
+  ],
+  "id": "foxy_roxy_se",
+  "name": "Foxy Roxy SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "SweepIt SE",
+   "Sweeper SE",
+   "rockstar broom"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: 2 random colors swept to two sides); then swap/push a small broom into a color – the swipe direction decides where that color goes.",
+  "category": "DRAG",
+  "target_requirement": "broom swapped with an adjacent piece; direction matters",
+  "effect": "Broom pushes ALL pieces of the color it is swapped with to the edge in the swipe direction; other random pieces may also turn that color. Best on the most frequent color.",
+  "costs_move": "unknown (not stated); broom use often creates extra moves",
+  "grants_extra_move": null,
+  "multi_step": "2 brooms on first activation, 1 per later activation",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Cannot activate if fewer than 3 colors on board (e.g. after Checkerboard) – wiki."
+  ],
+  "power_up_variants": [],
+  "animation_duration": "fast/'speedy' activation (GameOnTom) – good for non-stop timers",
+  "interactions": [
+   "Mini Cleo perk does not duplicate brooms (official guide).",
+   "Brooms can fire specials."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/7217312412570-Sweep-It-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "broom sweeps color in swap direction; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=Kt5x8zd1Dz0&t=100s",
+    "type": "official_video",
+    "timestamp": "1:40",
+    "note": "Official guide: two brooms then one; 3:50 direction matters; 3:12 Mini Cleo does not work"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=4fCTUIKjuzQ&t=61s",
+    "type": "official_video",
+    "timestamp": "1:01",
+    "note": "two broomsticks, edge depends on push direction"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=7GSUX02CRIs&t=104s",
+    "type": "official_video",
+    "timestamp": "1:44",
+    "note": "fast animation"
+   },
+   {
+    "url": "https://match-masters.fandom.com/wiki/Sweep_It_SE",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": "<3 colors -> cannot activate"
+   }
+  ],
+  "id": "sweep_it_se",
+  "name": "Sweep It SE"
+ },
+ {
+  "kind": "booster",
+  "aliases": [
+   "SE Jelly",
+   "Jelly Special Edition"
+  ],
+  "rarity_tier": "Special Edition (SE)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: jelly consumes pieces, then a jelly zone is spread); then make a normal match touching/inside the jelly zone.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "a match within the jelly area",
+  "effect": "Matching inside the jelly zone turns every piece inside it into the matched color -> guaranteed extra move + specials (often lightning). Specials inside fire.",
+  "costs_move": "jelly-zone match is a normal move but always yields an extra move (net free)",
+  "grants_extra_move": "YES – 'two guaranteed extra moves every activation' (official guide)",
+  "multi_step": "jelly-zone special usable twice per activation (platter icons) per official guide",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Known freeze bug with Jelly SE in 'Any Move' mode (fixed per release notes)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Needs jelly-zone recognition. Tip: one use for blues, one for points.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Teemo (official channel, Jan 2025) describes 2 automatic pools + a 3rd you trigger; official Bunny&Piggy guide says the special is usable twice per activation. Count from the platter icons on screen."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/8498360198938-Jelly-SE",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "jelly zone converts to matched color; costs 7"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=nnW83w3ihgE&t=108s",
+    "type": "official_video",
+    "timestamp": "1:48",
+    "note": "Official guide: twice per activation; 2:19 always an extra move; 2:28 two guaranteed extra moves"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=4fCTUIKjuzQ&t=98s",
+    "type": "official_video",
+    "timestamp": "1:38",
+    "note": "Teemo: third pool you choose"
+   }
+  ],
+  "id": "jelly_se",
+  "name": "Jelly SE"
+ },
+ {
+  "kind": "powered_up_variant",
+  "aliases": [
+   "Billie Boom PU",
+   "Billie Boom powered-up"
+  ],
+  "rarity_tier": "Legendary – Powered Up",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE; no target. Further bombs drop automatically after every move you make in that turn.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Robot removes 3 colors (vs 2) and throws 4 specials on first activation (3 later); Boombot launches special pieces, not just bombs.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": "bomb drops continue after each of your moves during the turn",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Power-ups: limited-time events (since mid-2026 the owned regular booster is auto-converted during the event). Earlier model (Dec 2025–early 2026): spend 'power-up energy' before a match for a one-time boost (e.g. 175 energy for Vinnie SE PU); unused power-up energy not lost if not activated. Only Supreme Legends & Ultimate Legends tiers; not usable in All Stars Solo events."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Variant of Billie Boom – same booster slot; recognise via 'electrifying' skin."
+  ],
+  "v1_safe": true,
+  "v1_note": "Same gesture as Billie Boom; bigger effect.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "likely"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10013694509466-Booster-Power-Up",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10541323790106-Recent-Updates-New-Versions",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "PU Billie Boom Aug 12/13 2026; multi-booster PU Sep 2 2026"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=x9zuITd51pE&t=249s",
+    "type": "third_party_video",
+    "timestamp": "4:09",
+    "note": "GameOnTom: 3 colors, 4 specials first activation"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-q8h9ylA08c",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Match Minute: Boombot launches special pieces too"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=5Mu0tm0iOcc&t=7s",
+    "type": "official_video",
+    "timestamp": "0:07",
+    "note": "Match News holiday special: powered-up Billie Boom introduced"
+   }
+  ],
+  "id": "billie_boom_powered_up",
+  "name": "Billie Boom (Powered Up)"
+ },
+ {
+  "kind": "powered_up_variant",
+  "aliases": [
+   "Vinnie Valentine SE PU",
+   "Vinnie Valentine SE powered-up"
+  ],
+  "rarity_tier": "Special Edition (SE) – Powered Up",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: 3 arrows, 4 on bigger boards); then match two-colored hearts with normal swaps.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "hearts matched (either of their 2 colors) or hit by specials",
+  "effect": "Same as Vinnie SE plus: after your first match post-activation Vinnie shoots another (single-color) heart -> up to 4 hearts per activation.",
+  "costs_move": "activation free; heart matches normal moves",
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Power-ups: limited-time events (since mid-2026 the owned regular booster is auto-converted during the event). Earlier model (Dec 2025–early 2026): spend 'power-up energy' before a match for a one-time boost (e.g. 175 energy for Vinnie SE PU); unused power-up energy not lost if not activated. Only Supreme Legends & Ultimate Legends tiers; not usable in All Stars Solo events."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Variant of Vinnie Valentine SE – same booster slot; recognise via 'electrifying' skin."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "likely"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10541323790106-Recent-Updates-New-Versions",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "PU Vinnie SE Jul 20 2026; Sep 2 2026"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=iX_1T2F5oQk&t=53s",
+    "type": "official_video",
+    "timestamp": "0:53",
+    "note": "Official guide: another heart after first match; 3:21 costs 175 power-up energy"
+   }
+  ],
+  "id": "vinnie_valentine_se_powered_up",
+  "name": "Vinnie Valentine SE (Powered Up)"
+ },
+ {
+  "kind": "powered_up_variant",
+  "aliases": [
+   "UFO SE PU",
+   "UFO SE powered-up"
+  ],
+  "rarity_tier": "Special Edition (SE) – Powered Up",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: abducts 2 random colors, places extractor pieces); then match an extractor to abduct all remaining pieces of the matched color.",
+  "category": "FOLLOW_UP_MATCH",
+  "target_requirement": "extractor included in a match",
+  "effect": "'Engine powered up' – stronger activation; exact differences NOT documented in sources found.",
+  "costs_move": "extractor match USES a move (Teemo) unless it is a 4+ match",
+  "grants_extra_move": null,
+  "multi_step": "2 extractors on first activation, 1 per later activation",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Power-ups: limited-time events (since mid-2026 the owned regular booster is auto-converted during the event). Earlier model (Dec 2025–early 2026): spend 'power-up energy' before a match for a one-time boost (e.g. 175 energy for Vinnie SE PU); unused power-up energy not lost if not activated. Only Supreme Legends & Ultimate Legends tiers; not usable in All Stars Solo events."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Variant of UFO SE – same booster slot; recognise via 'electrifying' skin."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "unknown",
+   "activation": "likely",
+   "effect": "unknown",
+   "cost": "likely"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10541323790106-Recent-Updates-New-Versions",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "PU UFO SE Jul 10–12 2026; Sep 2 2026"
+   },
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10013694509466-Booster-Power-Up",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "ufo_se_powered_up",
+  "name": "UFO SE (Powered Up)"
+ },
+ {
+  "kind": "powered_up_variant",
+  "aliases": [
+   "Foxy Roxy SE PU",
+   "Foxy Roxy SE powered-up"
+  ],
+  "rarity_tier": "Special Edition (SE) – Powered Up",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "Tap ACTIVATE (auto: 3–4 straight spray lines like base Foxy); then swap/drag a spray can in a direction (horizontal/vertical) to repaint that row/column into the matched color.",
+  "category": "DRAG",
+  "target_requirement": "spray can swapped with an adjacent piece; direction = spray direction",
+  "effect": "Activation sprays multiple patterns (L-shapes, spirals, rectangles, staircases, alternating rows; can trigger >1 pattern); spray cans repaint along their path and bounce off board edges changing direction; always guarantees an extra move. 2 cans first activation, then 1.",
+  "costs_move": "spray-can use appears to be a normal swap; often yields a 4+ 'free move' (not guaranteed for non-powered SE)",
+  "grants_extra_move": null,
+  "multi_step": "2 spray cans on first activation, 1 on each later activation",
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Power-ups: limited-time events (since mid-2026 the owned regular booster is auto-converted during the event). Earlier model (Dec 2025–early 2026): spend 'power-up energy' before a match for a one-time boost (e.g. 175 energy for Vinnie SE PU); unused power-up energy not lost if not activated. Only Supreme Legends & Ultimate Legends tiers; not usable in All Stars Solo events."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Variant of Foxy Roxy SE – same booster slot; recognise via 'electrifying' skin."
+  ],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "likely"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/10541323790106-Recent-Updates-New-Versions",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "PU Foxy SE Jul 30 2026"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=xQlwlTdGG-c",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Official PU Foxy SE guide (short)"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=qUWtX95FbK0",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Match Minute Feb 2026"
+   }
+  ],
+  "id": "foxy_roxy_se_powered_up",
+  "name": "Foxy Roxy SE (Powered Up)"
+ },
+ {
+  "kind": "legacy_booster",
+  "aliases": [],
+  "rarity_tier": "Bronze (legacy – not in current help center)",
+  "charge_cost_pieces": 7,
+  "charge_color_rule": "Default: matching/clearing BLUE star pieces charges your bar (any blue removed, incl. by specials/cascades/booster side-effects, unless noted). Mode modifiers can change this (Shared Energy: blue+red; Energized: 2 random colors; Rainbow Energy; Red Alert; Plunder Pirates chests +5 PvP/+3 solo; Boosted: cost-1; Super Sprint: half cost; Ramp Up: cost rises per activation; Limited Activations: max 2/round).",
+  "activation_gesture": "unknown (likely tap ACTIVATE)",
+  "category": "UNKNOWN",
+  "target_requirement": "none described",
+  "effect": "Spreads the bucket's paint color onto 6 random tiles (fan wiki).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "unknown",
+   "activation": "unknown",
+   "effect": "likely",
+   "cost": "unknown"
+  },
+  "conflicts": [
+   "Only on fan wiki; current Bronze tier per help center is Firecracker / Color Splash / Quack Attack. Possibly renamed to Color Splash (similar effect) – unverified."
+  ],
+  "sources": [
+   {
+    "url": "https://match-masters.fandom.com/wiki/Paint_Bucket",
+    "type": "fan_wiki",
+    "timestamp": null,
+    "note": ""
+   }
+  ],
+  "id": "paint_bucket",
+  "name": "Paint Bucket"
+ },
+ {
+  "kind": "perk",
+  "aliases": [
+   "Tap Hammer",
+   "Kalapács"
+  ],
+  "rarity_tier": "Free perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap the Hammer perk button, prompt 'Pick a piece', tap a board piece.",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "any piece",
+  "effect": "Removes the chosen piece; on a special piece it detonates it. Pieces above fall (can create cascades / 4+ matches, e.g. Checkerboard + Hammer in bottom corner).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": "Simple target tap – good v2 candidate.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019518059-Hammer",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "owner screen recording 1 (Perfect Heist, Balloon Blast) – Google Drive 1ApELMQcyqISepA5hbC7SBTL8LlMKAGYf; frames /workspace/mm/video/f_*.jpg",
+    "type": "owner_recording",
+    "timestamp": "0:00-0:16",
+    "note": "ACTIVATE button tapped, 'BALLOON BLAST!' animation, score 115->197 with no target prompt; afterwards Hammer shows 'Pick a piece'."
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=u4cQA5IW-sw&t=106s",
+    "type": "third_party_video",
+    "timestamp": "1:46",
+    "note": "tap the bottom corner after Checkerboard"
+   },
+   {
+    "url": "https://www.bluestacks.com/blog/game-guides/match-masters/mmt-boosts-tools-guide-en.html",
+    "type": "third_party_guide",
+    "timestamp": null,
+    "note": "does not consume a move; can detonate specials"
+   }
+  ],
+  "id": "hammer",
+  "name": "Hammer"
+ },
+ {
+  "kind": "perk",
+  "aliases": [
+   "Keverés"
+  ],
+  "rarity_tier": "Free perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap the Shuffle perk button; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Randomly rearranges all pieces on the board.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Use only when no good move: after taking all 4+ matches, when only non-blue 3-matches or moves that help opponent remain.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019518099-Shuffle",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=9IIn7DP2C1k",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Academy #4: use when stuck or when only move helps opponent"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "shuffle",
+  "name": "Shuffle"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap the Teleport perk, then select two pieces anywhere on the board to swap them (exact gesture – two taps vs drag – not documented).",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "two pieces (any positions)",
+  "effect": "Switches any two pieces on the board; the resulting matches resolve ('lock in the move').",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Unclear whether resulting 4+ matches grant an extra move (not documented)."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019531840-Teleport",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=0iZRRndYVhk&t=48s",
+    "type": "third_party_video",
+    "timestamp": "0:48",
+    "note": "swap two pieces anywhere"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "teleport",
+  "name": "Teleport"
+ },
+ {
+  "kind": "perk",
+  "aliases": [
+   "Cross"
+  ],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk, then tap a piece.",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "one piece",
+  "effect": "Removes the chosen piece's whole row and column (like Laser Beam).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216784220826-Remove-Cross",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=123s",
+    "type": "official_video",
+    "timestamp": "2:03",
+    "note": "removes horizontal+vertical for the selected piece"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "remove_cross",
+  "name": "Remove Cross"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk, then choose a column (presumably by tapping a piece in it).",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "one column",
+  "effect": "Clones the chosen column to the right (rightmost column clones to the left).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": false,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Teemo says 'select a row' – official says column."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216729748122-Mini-Cobra",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=143s",
+    "type": "official_video",
+    "timestamp": "2:23",
+    "note": "(says row)"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "mini_cobra",
+  "name": "Mini Cobra"
+ },
+ {
+  "kind": "perk",
+  "aliases": [
+   "Cleo perk",
+   "'Clear perk' (auto-caption mis-hearing)"
+  ],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk, then tap a piece (scarab is released onto it).",
+  "category": "TAP_THEN_PIECE",
+  "target_requirement": "one piece (works on specials)",
+  "effect": "Duplicates the chosen piece multiple times across the board (also specials). May not work as expected if too few colors.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Does not duplicate Brocco disco balls, Sweep It SE brooms or Vinnie hearts."
+  ],
+  "v1_safe": false,
+  "v1_note": "Best target: blue (instant booster) or a special (bomb/lightning).",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216713769626-Mini-Cleo",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=61s",
+    "type": "official_video",
+    "timestamp": "1:01",
+    "note": "select a tile; works on specials"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "mini_cleo",
+  "name": "Mini Cleo"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target. Effect applies to your NEXT match.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none (next match)",
+  "effect": "Your next match, any color, charges the booster as if those pieces were blue.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Tap right before making the largest available match.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "confirmed",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216715052058-Energy-Boost",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=69s",
+    "type": "official_video",
+    "timestamp": "1:09",
+    "note": "turns matched colors into blue stars"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "energy_boost",
+  "name": "Energy Boost"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Adds blue stars to the board (can create blue matches/specials).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019456760-Star-Maker",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "star_maker",
+  "name": "Star Maker"
+ },
+ {
+  "kind": "perk",
+  "aliases": [
+   "Lightning Maker",
+   "Lightning perk"
+  ],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Creates two lightning special pieces on the board.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019583339-Create-Lightning",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "create_lightning",
+  "name": "Create Lightning"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Plants a bomb in the middle of the board which explodes immediately (8 neighbours + 1 in each cross direction); if a special occupies the centre it spawns under it (wiki).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019521139-Bomb-Delivery",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=190s",
+    "type": "official_video",
+    "timestamp": "3:10",
+    "note": "explodes immediately"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=1Q5FI88b7KU&t=1337s",
+    "type": "third_party_video",
+    "timestamp": "22:17",
+    "note": "Luke_TV: explodes the center"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "bomb_delivery",
+  "name": "Bomb Delivery"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "at least one special piece on board",
+  "effect": "Explodes all special pieces on the board at once.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019531620-Detonator",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "detonator",
+  "name": "Detonator"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; official: game picks a RANDOM color (no target).",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none (official)",
+  "effect": "Eliminates all pieces of a randomly chosen color (newly falling pieces of that color are not removed).",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": "Verify on first use – one video claims you select the color.",
+  "confidence": {
+   "overall": "likely",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [
+   "Help center: random color. Teemo (official channel): 'selecting a color tile on the board will eliminate all the other tiles of that color'. Leo's Academy: 'removes a color'."
+  ],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019458520-Mini-Wand",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": "random color"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=155s",
+    "type": "official_video",
+    "timestamp": "2:35",
+    "note": "selecting a color tile"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "mini_wand",
+  "name": "Mini Wand"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Rearranges/fixes pieces to make up to ~3 (special) matches automatically.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [],
+  "v1_safe": true,
+  "v1_note": null,
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/360019583039-Mini-Mastermind",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=174s",
+    "type": "official_video",
+    "timestamp": "2:54",
+    "note": "about three of them"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=1Q5FI88b7KU&t=1344s",
+    "type": "third_party_video",
+    "timestamp": "22:24",
+    "note": "Luke_TV: three matches to be exact"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   }
+  ],
+  "id": "mini_mastermind",
+  "name": "Mini Mastermind"
+ },
+ {
+  "kind": "perk",
+  "aliases": [],
+  "rarity_tier": "Premium perk",
+  "charge_cost_pieces": null,
+  "charge_color_rule": "n/a – perks are not charged; once per match",
+  "activation_gesture": "Tap perk; no target.",
+  "category": "NO_TARGET_TAP",
+  "target_requirement": "none",
+  "effect": "Repaints the board in a checkerboard of 2 random colors (fan wiki: excluding blue); specials may keep their color. Then Hammer in a bottom corner / dropping pieces in the right order chains many extra moves.",
+  "costs_move": false,
+  "grants_extra_move": null,
+  "multi_step": null,
+  "follow_up_pieces": null,
+  "mode_restrictions": [
+   "Perks: choose 2 before the match; each usable ONCE per match (Perk Reload modifier: reload each round); do NOT cost a move; perk buttons are under the board, bottom-left. Hammer & Shuffle free; premium perks kept in inventory if not used (current help center)."
+  ],
+  "power_up_variants": [],
+  "animation_duration": null,
+  "interactions": [
+   "Can block Doctor Color SE / Sweep It SE activation (too few colors)."
+  ],
+  "v1_safe": true,
+  "v1_note": "Only useful together with a follow-up plan (Hammer corner); otherwise skip.",
+  "confidence": {
+   "overall": "confirmed",
+   "activation": "likely",
+   "effect": "confirmed",
+   "cost": "confirmed"
+  },
+  "conflicts": [],
+  "sources": [
+   {
+    "url": "https://candivore.zendesk.com/hc/en-us/articles/5216785409946-Checkerboard",
+    "type": "official_help_center",
+    "timestamp": null,
+    "note": ""
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=-mwbErKIc_Y&t=92s",
+    "type": "official_video",
+    "timestamp": "1:32",
+    "note": "2 random colors; specials may not change"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=TZ7xY1Ls65o",
+    "type": "official_video",
+    "timestamp": null,
+    "note": "Leo's Academy Ep4 Perks: all 13+ perks, under the board bottom-left, do not use a turn, kept if unused"
+   },
+   {
+    "url": "https://www.youtube.com/watch?v=u4cQA5IW-sw&t=63s",
+    "type": "third_party_video",
+    "timestamp": "1:03",
+    "note": "Checkerboard + tap Hammer combo"
+   }
+  ],
+  "id": "checkerboard",
+  "name": "Checkerboard"
+ }
+]
