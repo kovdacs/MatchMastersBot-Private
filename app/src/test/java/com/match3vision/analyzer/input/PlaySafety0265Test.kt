@@ -140,6 +140,55 @@ class PlaySafety0265Test {
     }
 
     @Test
+    fun alternatingPixelDiff_withIdenticalLabels_verifies() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val permit = (session.requestDispatch(gates(selfCheck = true, nowMs = 1_000L)) as FiveMoveSession.Decision.Go).permit
+        session.consumePermit(permit)
+        session.noteGesture(gesture(beforeHash = 1L))
+        val diffs = floatArrayOf(0.45f, 0.02f, 0.45f, 0.02f)
+        var last: FiveMoveSession.Decision = FiveMoveSession.Decision.Hold("none")
+        diffs.forEachIndexed { index, diff ->
+            last = session.onSettle(
+                pass(
+                    nowMs = 1_200L + index * 200L,
+                    hash = 1_000L + index,
+                    labelHash = 77L,
+                    diffFraction = diff,
+                ),
+            )
+        }
+        assertThat(last).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(session.verifiedCount).isEqualTo(1)
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(session.movesSnapshot().single().verification).contains("labels stable")
+        assertThat(session.movesSnapshot().single().verification).contains("pixelDiff=")
+    }
+
+    @Test
+    fun specialFlicker_doesNotChangeTheLabelKey() {
+        val colors = latin()
+        val plain = Board.fromColors(colors)
+        val glowing = plain.setCopy(
+            4,
+            3,
+            plain.get(4, 3).copy(special = com.match3vision.analyzer.vision.SpecialType.TWO_WAY_ARROW),
+        )
+        val dimmed = glowing.setCopy(4, 3, glowing.get(4, 3).copy(special = com.match3vision.analyzer.vision.SpecialType.NONE))
+        assertThat(glowing.labelsAgree(dimmed)).isTrue()
+        assertThat(plain.labelsAgree(glowing)).isTrue()
+        var tracked = plain
+        var key = plain.labelHash()
+        listOf(glowing, dimmed, glowing).forEach { frame ->
+            if (!tracked.labelsAgree(frame)) key = frame.labelHash()
+            tracked = frame
+        }
+        assertThat(key).isEqualTo(plain.labelHash())
+        val moved = plain.setCopy(0, 0, plain.get(0, 0).copy(color = TileColor.B, shape = com.match3vision.analyzer.vision.TileShape.STAR))
+        assertThat(plain.labelsAgree(moved)).isFalse()
+    }
+
+    @Test
     fun followUpPenalty_isSmaller_andAMultiplierScalesGemsNotBlue() {
         val now = PlayMoveRanker.plyPoints(false, 0, 3, 0, true, followUp = false)
         val later = PlayMoveRanker.plyPoints(false, 0, 3, 0, true, followUp = true)
@@ -186,10 +235,17 @@ class PlaySafety0265Test {
         beforeUnknown = 0,
     )
 
-    private fun pass(nowMs: Long, hash: Long, supported: Boolean = true) = FiveMoveSession.SettleSample(
+    private fun pass(
+        nowMs: Long,
+        hash: Long,
+        supported: Boolean = true,
+        labelHash: Long = hash,
+        diffFraction: Float = 0f,
+    ) = FiveMoveSession.SettleSample(
         nowMs = nowMs,
         boardHash = hash,
-        diffFraction = 0f,
+        labelHash = labelHash,
+        diffFraction = diffFraction,
         frameFresh = true,
         roiPlausible = true,
         visionPass = true,

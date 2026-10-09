@@ -66,6 +66,36 @@ data class Board(
         return h
     }
 
+    /**
+     * Color and shape of ordinary cells. A special cell is a wildcard so a
+     * glowing special does not change the key.
+     */
+    fun labelHash(): Long {
+        var h = 1125899906842597L
+        forEachTile { t ->
+            if (t.special != SpecialType.NONE) {
+                h = h * 31 + 1
+            } else {
+                h = h * 31 + t.color.ordinal
+                h = h * 31 + t.shape.ordinal
+            }
+        }
+        return h
+    }
+
+    /** True when every cell that is not a special on either board has the same color and shape. */
+    fun labelsAgree(other: Board): Boolean {
+        for (row in 0 until SIZE) {
+            for (col in 0 until SIZE) {
+                val left = get(row, col)
+                val right = other.get(row, col)
+                if (left.special != SpecialType.NONE || right.special != SpecialType.NONE) continue
+                if (left.color != right.color || left.shape != right.shape) return false
+            }
+        }
+        return true
+    }
+
     fun snapshot(): Board = this
 
     fun forEachTile(block: (Tile) -> Unit) {

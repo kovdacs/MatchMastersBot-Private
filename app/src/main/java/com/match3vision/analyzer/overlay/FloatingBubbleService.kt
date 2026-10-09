@@ -2201,6 +2201,7 @@ class FloatingBubbleService : Service() {
                         toX = executed.gesture.endX,
                         toY = executed.gesture.endY,
                         beforeHash = executed.beforeBoardHash,
+                        beforeLabelHash = Board.fromVision(vision.board).labelHash(),
                         beforeUnknown = vision.unknownCount,
                         playExport = moveTrace(hud, boosterDecision, ranking?.export().orEmpty()) +
                             (activateCrop?.let { "\nactivateCrop=$it" } ?: ""),
@@ -2230,6 +2231,8 @@ class FloatingBubbleService : Service() {
         beforeHash: Long,
     ): Boolean {
         var previous: IntArray? = null
+        var labelBoard = Board.fromVision(beforeVision.board)
+        var labelHash = labelBoard.labelHash()
         var afterPixels: IntArray? = null
         var afterFrame: CaptureFrame? = null
         var afterVision: com.match3vision.analyzer.vision.VisionResult? = null
@@ -2335,10 +2338,16 @@ class FloatingBubbleService : Service() {
             afterFrame = next
             afterVision = nextVision
             val hudNow = readHud(analyzed.pixels, next)
+            val seenBoard = Board.fromVision(nextVision.board)
+            if (nextVision.validation.isPass) {
+                if (!labelBoard.labelsAgree(seenBoard)) labelHash = seenBoard.labelHash()
+                labelBoard = seenBoard
+            }
             val settled = session.onSettle(
                 FiveMoveSession.SettleSample(
                     nowMs = System.currentTimeMillis(),
-                    boardHash = Board.fromVision(nextVision.board).contentHash(),
+                    boardHash = seenBoard.contentHash(),
+                    labelHash = labelHash,
                     diffFraction = fraction,
                     frameFresh = next.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS,
                     roiPlausible = roiLooksPlausible(nextVision),

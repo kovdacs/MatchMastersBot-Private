@@ -54,6 +54,8 @@ class FiveMoveSession {
         val toY: Float,
         val beforeHash: Long,
         val beforeUnknown: Int,
+        /** Recognized-board key at dispatch. Defaults to [beforeHash] for older callers. */
+        val beforeLabelHash: Long = beforeHash,
         val playExport: String = "",
         val matchLen: Int = 0,
         val extraMove: Boolean = false,
@@ -86,6 +88,12 @@ class FiveMoveSession {
         val soloPositive: Boolean = true,
         /** False when no changed cell lies on a swapped row or column. */
         val swapSupported: Boolean = true,
+        /**
+         * Recognized-board key. Special cells are omitted. Consecutive PASS
+         * frames with the same key are stable even when the pixel diff is large.
+         * Defaults to [boardHash] for older callers.
+         */
+        val labelHash: Long = boardHash,
     )
 
     data class MoveRecord(
@@ -209,6 +217,7 @@ class FiveMoveSession {
         val toX: Float,
         val toY: Float,
         val beforeHash: Long,
+        val beforeLabelHash: Long,
         val beforeUnknown: Int,
         val callback: String,
         val playExport: String = "",
@@ -624,6 +633,7 @@ class FiveMoveSession {
             toX = fact.toX,
             toY = fact.toY,
             beforeHash = fact.beforeHash,
+            beforeLabelHash = fact.beforeLabelHash,
             beforeUnknown = fact.beforeUnknown,
                 callback = callback,
                 playExport = fact.playExport,
@@ -681,14 +691,7 @@ class FiveMoveSession {
             open.stableHash = Long.MIN_VALUE
             return ignore(open, transientReason(sample))
         }
-        val stable = sample.diffFraction != null && sample.diffFraction <= STABLE_FRACTION
-        if (!stable) {
-            open.stableRun = 0
-            open.stableHash = Long.MIN_VALUE
-            val detail = if (sample.diffFraction == null) "no pair yet" else "diff=${sample.diffFraction}"
-            return ignore(open, "unstable ($detail)")
-        }
-        val changed = sample.boardHash != open.beforeHash
+        val changed = sample.labelHash != open.beforeLabelHash
         if (!changed) {
             if (sample.nowMs - open.startedAtMs < UNCHANGED_MIN_MS) {
                 return Decision.Hold("waiting to see the board change")
@@ -710,8 +713,9 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — auto-calibration missed the swapped cells")
             return stop(sample.nowMs, AutoCalibration.STOP_MISSED)
         }
-        if (sample.boardHash != open.stableHash) {
-            open.stableHash = sample.boardHash
+        if (sample.labelHash != open.stableHash) {
+            open.sawBoardChange = true
+            open.stableHash = sample.labelHash
             open.stableRun = 1
             open.stableSinceMs = sample.nowMs
         } else {
@@ -719,7 +723,7 @@ class FiveMoveSession {
         }
         val span = sample.nowMs - open.stableSinceMs
         if (open.stableRun < STABLE_FRAMES || span < STABLE_SPAN_MS) {
-            return Decision.Hold("waiting for a stable run")
+            return Decision.Hold("waiting for a stable run pixelDiff=${sample.diffFraction}")
         }
         if (!sample.swapSupported) {
             closeOpen(open, sample, "FAILED — changed cells missed the swapped rows and columns")
@@ -731,7 +735,8 @@ class FiveMoveSession {
         closeOpen(
             open,
             sample,
-            "PASS — callback completed, board changed, stable, fresh, ROI plausible, vision PASS",
+            "PASS — callback completed, board changed, labels stable, fresh, ROI plausible, vision PASS " +
+                "pixelDiff=${sample.diffFraction}",
         )
         verifiedCount += 1
         retryUsed = false
@@ -805,8 +810,10 @@ class FiveMoveSession {
                 "each move within ${PER_MOVE_BUDGET_MS}ms",
         )
         appendLine(
-            "settle: consecutive coarse ROI samples whose changed fraction is " +
-                "<= $STABLE_FRACTION. This path does not use a fixed animation sleep.",
+            "settle: $STABLE_FRAMES vision PASS frames with the same recognized labels, " +
+                "spanning >= ${STABLE_SPAN_MS}ms. Special cells are ignored. " +
+                "Pixel diff is a log only and is not the stability test. " +
+                "This path does not use a fixed animation sleep.",
         )
         val end = when {
             phase == Phase.IDLE -> startedAtMs
