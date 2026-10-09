@@ -1981,6 +1981,7 @@ class FloatingBubbleService : Service() {
             }
             is FiveMoveSession.Decision.Go -> {
                 val hud = readHud(pixels, frame)
+                session.noteHud(hud.log())
                 val turnRefusal = com.match3vision.analyzer.hud.TurnGate.refusal(hud)
                 if (turnRefusal != null) {
                     session.abort(turnRefusal, System.currentTimeMillis())

@@ -57,14 +57,19 @@ class HudSafetyTest {
     }
 
     @Test
-    fun unrecognizedPvp_stops_andDoesNotTapTheRightButton() {
+    fun unrecognizedPvp_doesNotStop_andLogsUnknown() {
         val pixels = frame()
         paint(pixels, 1000, 1050, 890, 940, 180, 30, 40)
         paint(pixels, HudReader.ACTIVATE_LEFT, HudReader.ACTIVATE_RIGHT, HudReader.ACTIVATE_TOP, HudReader.ACTIVATE_BOTTOM, 80, 180, 255)
         val hud = HudReader.read(pixels, 1080, 2400)
         assertThat(hud.mode).isEqualTo("pvp")
         assertThat(hud.playerTurn()).isFalse()
-        assertThat(TurnGate.refusal(hud)).isEqualTo("STOP — unrecognized PvP HUD")
+        assertThat(hud.hudState).isEqualTo(HudObservation.HUD_UNKNOWN)
+        assertThat(TurnGate.refusal(hud)).isNull()
+        assertThat(hud.log()).contains("hudState=UNKNOWN")
+        assertThat(hud.log()).contains("opponentReds=")
+        assertThat(hud.hudScores).contains("your=")
+        assertThat(hud.hudScores).contains("opponent=")
         assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)).isNull()
     }
 

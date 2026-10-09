@@ -164,6 +164,9 @@ class FiveMoveSession {
     /** Reused calibration line, included in the export when set. */
     private var calibrationLine: String = ""
 
+    /** Latest HUD classifier line, including hudState and scores. */
+    private var hudTrace: String = ""
+
     private val gameLines = ArrayList<String>()
     private var pendingGameLog: GameMoveLog.Pending? = null
 
@@ -221,6 +224,7 @@ class FiveMoveSession {
         suppressOutsideUntilMs = 0L
         lastSettledFrameSequence = 0L
         calibrationLine = ""
+        hudTrace = ""
         gameLines.clear()
         pendingGameLog = null
         boosterLatched = false
@@ -246,6 +250,11 @@ class FiveMoveSession {
 
     fun noteCalibration(text: String) {
         calibrationLine = text.trim()
+    }
+
+    /** Records the HUD reading for the export. Does not stop the session. */
+    fun noteHud(text: String) {
+        hudTrace = text.trim()
     }
 
     fun beginGameLog(pending: GameMoveLog.Pending) {
@@ -296,6 +305,7 @@ class FiveMoveSession {
         suppressOutsideUntilMs = 0L
         lastSettledFrameSequence = 0L
         calibrationLine = ""
+        hudTrace = ""
         gameLines.clear()
         pendingGameLog = null
         boosterLatched = false
@@ -626,6 +636,7 @@ class FiveMoveSession {
                 "A move counts only after a fresh stable PASS board differs from the pre-move board.",
         )
         appendLine("stop=${stopReason.ifBlank { "none" }}")
+        appendLine(hudTrace.ifBlank { "hudState=UNKNOWN" })
         appendLine("outsideTouches=$outsideTouches")
         appendLine(
             "board-change verification cannot tell our gesture from a finger on the glass. " +

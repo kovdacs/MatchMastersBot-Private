@@ -32,6 +32,14 @@ data class HudObservation(
     /** Read xN. Null means the bonus is not applied. */
     val multiplier: Int? = null,
     val multiplierNote: String = NOT_DETECTABLE,
+    /**
+     * OPPONENT, YOUR, TIME, or SOLO when that reading is positive.
+     * UNKNOWN when the frame is unrecognized or ambiguous.
+     */
+    val hudState: String = HUD_UNKNOWN,
+    /** Classifier inputs. Present so a live export can be tuned. */
+    val hudScores: String = "opponentReds=0 your=0.00 opponent=0.00 time=0.00 " +
+        "activateLuma=0 activateBright=0.00 circlesBright=0 circlesDark=0 circlesClassifiable=no",
 ) {
     fun playerTurn(): Boolean = turnState == TURN_YOUR || turnState == TURN_TIME
 
@@ -45,7 +53,8 @@ data class HudObservation(
             "blueFactor=$blueFactor legend=$legend yourTurn=$yourTurn " +
             "turnState=$turnState timeLeft=${timeLeftSeconds?.toString() ?: NOT_DETECTABLE} " +
             "multiplier=$multiplierNote " +
-            "movesRemaining=${movesRemaining?.toString() ?: NOT_DETECTABLE}"
+            "movesRemaining=${movesRemaining?.toString() ?: NOT_DETECTABLE} " +
+            "hudState=$hudState hudScores=$hudScores"
 
     companion object {
         const val NOT_DETECTABLE = "not detectable"
@@ -53,6 +62,19 @@ data class HudObservation(
         const val TURN_YOUR = "your-turn"
         const val TURN_OPPONENT = "opponent-turn"
         const val TURN_TIME = "time-left"
+        const val HUD_UNKNOWN = "UNKNOWN"
+        const val HUD_OPPONENT = "OPPONENT"
+        const val HUD_YOUR = "YOUR"
+        const val HUD_TIME = "TIME"
+        const val HUD_SOLO = "SOLO"
+
+        fun hudStateFor(turnState: String, soloLayout: Boolean): String = when {
+            turnState == TURN_OPPONENT -> HUD_OPPONENT
+            turnState == TURN_YOUR -> HUD_YOUR
+            turnState == TURN_TIME -> HUD_TIME
+            soloLayout -> HUD_SOLO
+            else -> HUD_UNKNOWN
+        }
 
         /** Recognized solo frame. Legend digits are not invented. */
         fun solo(activateVisible: Boolean = false, movesRemaining: Int? = null): HudObservation {
@@ -67,6 +89,7 @@ data class HudObservation(
                 blueFactor = if (full) com.match3vision.analyzer.moves.PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
                 legend = "legend default",
                 movesRemaining = movesRemaining,
+                hudState = HUD_SOLO,
             )
         }
 
@@ -100,6 +123,7 @@ data class HudObservation(
                 timeLeftSeconds = timeLeftSeconds,
                 multiplier = multiplier,
                 multiplierNote = if (multiplier != null) "x$multiplier" else NOT_DETECTABLE,
+                hudState = hudStateFor(turnState, soloLayout = false),
             )
         }
 

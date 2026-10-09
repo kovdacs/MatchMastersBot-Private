@@ -454,8 +454,9 @@ class PlayMoveRanker(
                 "4-line leaves an arrow, 5-line a color bomb, 5-L/T a bomb; unknown refills are never matches."
 
         const val MODE_GATE =
-            "modeGate=solo lookahead runs on the solo layout. PvP is dispatched only when the turn bar reads " +
-                "Your Turn or Time Left. Opponent's Turn and an unrecognized PvP HUD stop the session. " +
+            "modeGate=solo lookahead runs on the solo layout. PvP lookahead runs on Your Turn or Time Left. " +
+                "The session stops only on a positively read Opponent's Turn. An unrecognized HUD is " +
+                "hudState=UNKNOWN and play continues. " +
                 "ACTIVATE stays on the solo layout only, and only when the debug toggle is on."
 
         private val LOOKAHEAD_ORDER = compareByDescending<Candidate> { it.totalScore }

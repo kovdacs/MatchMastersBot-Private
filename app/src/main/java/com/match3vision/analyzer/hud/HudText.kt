@@ -37,6 +37,9 @@ internal object HudText {
         val state: String,
         val label: String,
         val seconds: Int?,
+        val yourScore: Double = 0.0,
+        val opponentScore: Double = 0.0,
+        val timeScore: Double = 0.0,
     )
 
     data class Card(
@@ -54,18 +57,35 @@ internal object HudText {
         ) ?: return unreadTurn()
         val your = Glyphs.named("your")
         val opponent = Glyphs.named("opponent")
+        val yourScore = Glyphs.similarity(ink.width, ink.height, ink.bits, your)
+        val opponentScore = Glyphs.similarity(ink.width, ink.height, ink.bits, opponent)
+        val timeScore = timePrefixScore(ink)
         val phrase = Glyphs.best(ink.width, ink.height, ink.bits, listOf(your, opponent), PHRASE_FLOOR)
         if (phrase?.name == "your") {
-            return Turn(HudObservation.TURN_YOUR, "Your Turn", null)
+            return Turn(HudObservation.TURN_YOUR, "Your Turn", null, yourScore, opponentScore, timeScore)
         }
         if (phrase?.name == "opponent") {
-            return Turn(HudObservation.TURN_OPPONENT, "Opponent's Turn", null)
+            return Turn(HudObservation.TURN_OPPONENT, "Opponent's Turn", null, yourScore, opponentScore, timeScore)
         }
-        val seconds = timeLeftSeconds(ink)
+        val seconds = if (timeScore >= PHRASE_FLOOR) timeLeftSeconds(ink) else null
         if (seconds != null) {
-            return Turn(HudObservation.TURN_TIME, "Time Left: $seconds", seconds)
+            return Turn(
+                HudObservation.TURN_TIME,
+                "Time Left: $seconds",
+                seconds,
+                yourScore,
+                opponentScore,
+                timeScore,
+            )
         }
-        return unreadTurn()
+        return Turn(
+            HudObservation.NOT_DETECTABLE,
+            HudObservation.NOT_DETECTABLE,
+            null,
+            yourScore,
+            opponentScore,
+            timeScore,
+        )
     }
 
     fun legend(pixels: IntArray, width: Int, height: Int): Pair<String, Map<TileColor, Int>> {
@@ -125,12 +145,18 @@ internal object HudText {
 
     private fun unreadTurn() = Turn(HudObservation.NOT_DETECTABLE, HudObservation.NOT_DETECTABLE, null)
 
+    private fun timePrefixScore(ink: Ink): Double {
+        val prefix = Glyphs.named("time")
+        val prefixW = (ink.height * prefix.width / prefix.height).coerceIn(1, ink.width - 1)
+        if (prefixW >= ink.width) return 0.0
+        val left = crop(ink, 0, prefixW)
+        return Glyphs.similarity(left.width, left.height, left.bits, prefix)
+    }
+
     private fun timeLeftSeconds(ink: Ink): Int? {
         val prefix = Glyphs.named("time")
         val prefixW = (ink.height * prefix.width / prefix.height).coerceIn(1, ink.width - 1)
         if (prefixW >= ink.width) return null
-        val left = crop(ink, 0, prefixW)
-        if (Glyphs.similarity(left.width, left.height, left.bits, prefix) < PHRASE_FLOOR) return null
         return trailingDigits(crop(ink, prefixW, ink.width))
     }
 

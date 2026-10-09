@@ -2,6 +2,8 @@ package com.match3vision.analyzer.input
 
 import com.google.common.truth.Truth.assertThat
 import com.match3vision.analyzer.capture.ContentRoi
+import com.match3vision.analyzer.hud.HudObservation
+import com.match3vision.analyzer.hud.TurnGate
 import com.match3vision.analyzer.capture.ScreenMeasurement
 import com.match3vision.analyzer.vision.CellVision
 import com.match3vision.analyzer.vision.GridGeometry
@@ -63,6 +65,25 @@ class FiveMoveDispatchTest {
         )
         assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(exec.dispatched).isEmpty()
+    }
+
+    @Test
+    fun unknownHud_andVisionPass_dispatchesAMove() {
+        val (ctrl, exec) = controllerWith(CompletingExecutor(complete = true))
+        assertThat(ctrl.armFiveMoveTest(0L, selfCheckThisSession = true)).isTrue()
+        val hud = HudObservation.UNKNOWN
+        assertThat(hud.hudState).isEqualTo("UNKNOWN")
+        assertThat(TurnGate.refusal(hud)).isNull()
+        ctrl.fiveMove.noteHud(hud.log())
+        val go = ctrl.fiveMove.requestDispatch(readyGates(1_000L))
+        assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
+        val permit = (go as FiveMoveSession.Decision.Go).permit
+        val cycle = ctrl.dispatchFiveMoveOnce(passVision(), context(a11yConnected = true), permit, hud)
+        val executed = cycle!!.executed as AutomaticInputEngine.ExecuteResult.Executed
+        assertThat(executed.verificationEligible).isTrue()
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.fiveMove.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(ctrl.fiveMove.report()).contains("hudState=UNKNOWN")
     }
 
     @Test

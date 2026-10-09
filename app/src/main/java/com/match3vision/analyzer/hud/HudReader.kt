@@ -20,6 +20,7 @@ object HudReader {
     const val ACTIVATE_BOTTOM = 970
 
     private val soloCircles = IntArray(10) { 390 + it * 64 }
+    private const val OPPONENT_RED_MIN = 12
 
     fun read(pixels: IntArray, width: Int, height: Int): HudObservation {
         if (width < 200 || height < 400 || pixels.size < width * height) {
@@ -27,7 +28,11 @@ object HudReader {
         }
         val turn = HudText.turn(pixels, width, height)
         val card = HudText.card(pixels, width, height)
-        val pvp = opponentGem(pixels, width, height) || turn.state == HudObservation.TURN_OPPONENT
+        val reds = opponentReds(pixels, width, height)
+        val activateSample = activateSample(pixels, width, height)
+        val circlesSample = circleSample(pixels, width, height)
+        val scores = formatScores(reds, turn, activateSample, circlesSample)
+        val pvp = reds >= OPPONENT_RED_MIN || turn.state == HudObservation.TURN_OPPONENT
         if (pvp) {
             val mult = HudText.multiplier(pixels, width, height)
             val player = turn.state == HudObservation.TURN_YOUR || turn.state == HudObservation.TURN_TIME
@@ -52,13 +57,23 @@ object HudReader {
                 timeLeftSeconds = turn.seconds,
                 multiplier = mult.value,
                 multiplierNote = mult.note,
+                hudState = HudObservation.hudStateFor(turn.state, soloLayout = false),
+                hudScores = scores,
             )
         }
-        val activate = activateBright(pixels, width, height) || card.activateWord
-        val circles = circleReport(pixels, width, height)
+        val activate = activateSample.bright || card.activateWord
+        val circles = circlesSample.report
         // A flat field is classifiable at every sample and is still not a circle row.
         val solo = activate || (circles != null && circleRowStructured(pixels, width, height))
-        if (!solo) return HudObservation.UNKNOWN
+        if (!solo) {
+            return HudObservation(
+                yourTurn = turn.label,
+                turnState = turn.state,
+                timeLeftSeconds = turn.seconds,
+                hudState = HudObservation.HUD_UNKNOWN,
+                hudScores = scores,
+            )
+        }
         val legend = HudText.legend(pixels, width, height)
         val fill = when {
             card.text == "ACTIVATE" || card.text == "FULL" || card.text == "7/7" || activate -> "full"
@@ -85,6 +100,8 @@ object HudReader {
             turnState = turn.state,
             timeLeftSeconds = turn.seconds,
             legendPoints = legend.second,
+            hudState = HudObservation.hudStateFor(turn.state, soloLayout = true),
+            hudScores = scores,
         )
     }
 
@@ -94,54 +111,83 @@ object HudReader {
         return x.toFloat() to y.toFloat()
     }
 
-    private fun opponentGem(pixels: IntArray, width: Int, height: Int): Boolean {
+    private fun opponentReds(pixels: IntArray, width: Int, height: Int): Int {
         var reds = 0
         for (y in 875..947) {
             val py = scaleY(y, height)
             for (x in 994..1063 step 2) {
-                val color = pixel(pixels, width, height, scaleX(x, width), py) ?: return false
+                val color = pixel(pixels, width, height, scaleX(x, width), py) ?: return reds
                 val r = (color shr 16) and 0xff
                 val g = (color shr 8) and 0xff
                 val b = color and 0xff
                 if (r > 110 && r > g + 40 && r > b + 30) reds++
             }
         }
-        return reds >= 12
+        return reds
     }
 
-    private fun activateBright(pixels: IntArray, width: Int, height: Int): Boolean {
+    private data class ActivateSample(val bright: Boolean, val mean: Int, val brightFraction: Double)
+
+    private fun activateSample(pixels: IntArray, width: Int, height: Int): ActivateSample {
         var sum = 0
         var bright = 0
         var n = 0
         for (y in ACTIVATE_TOP..ACTIVATE_BOTTOM step 4) {
             val py = scaleY(y, height)
             for (x in ACTIVATE_LEFT..ACTIVATE_RIGHT step 4) {
-                val color = pixel(pixels, width, height, scaleX(x, width), py) ?: return false
+                val color = pixel(pixels, width, height, scaleX(x, width), py) ?: return ActivateSample(false, 0, 0.0)
                 val luma = luma(color)
                 sum += luma
                 if (luma > 130) bright++
                 n++
             }
         }
-        if (n == 0) return false
-        return sum / n > 150 && bright * 2 >= n
+        if (n == 0) return ActivateSample(false, 0, 0.0)
+        val mean = sum / n
+        val fraction = bright.toDouble() / n
+        return ActivateSample(mean > 150 && bright * 2 >= n, mean, fraction)
     }
 
-    /** Null when the ten samples are not clearly empty or filled circles. */
-    private fun circleReport(pixels: IntArray, width: Int, height: Int): String? {
+    private data class CircleSample(val bright: Int, val dark: Int, val classifiable: Boolean, val report: String?)
+
+    /** Report is set only when every sample is a clear empty or filled circle. */
+    private fun circleSample(pixels: IntArray, width: Int, height: Int): CircleSample {
         var bright = 0
         var dark = 0
+        var mid = 0
+        var missing = false
         for (cx in soloCircles) {
             val mean = meanLuma(pixels, width, height, scaleX(cx, width), scaleY(930, height))
-                ?: return null
+            if (mean == null) {
+                missing = true
+                continue
+            }
             when {
                 mean > 90 -> bright++
                 mean < 45 -> dark++
-                else -> return null
+                else -> mid++
             }
         }
-        if (bright + dark < soloCircles.size) return null
-        return "bright=$bright/${soloCircles.size} dark=$dark/${soloCircles.size}"
+        val classifiable = !missing && mid == 0 && bright + dark == soloCircles.size
+        val report = if (classifiable) {
+            "bright=$bright/${soloCircles.size} dark=$dark/${soloCircles.size}"
+        } else {
+            null
+        }
+        return CircleSample(bright, dark, classifiable, report)
+    }
+
+    private fun formatScores(
+        reds: Int,
+        turn: HudText.Turn,
+        activate: ActivateSample,
+        circles: CircleSample,
+    ): String {
+        fun n(value: Double) = String.format(java.util.Locale.US, "%.2f", value)
+        return "opponentReds=$reds your=${n(turn.yourScore)} opponent=${n(turn.opponentScore)} " +
+            "time=${n(turn.timeScore)} activateLuma=${activate.mean} " +
+            "activateBright=${n(activate.brightFraction)} circlesBright=${circles.bright} " +
+            "circlesDark=${circles.dark} circlesClassifiable=${if (circles.classifiable) "yes" else "no"}"
     }
 
     /** True when circle centers differ from the gaps between them. */
