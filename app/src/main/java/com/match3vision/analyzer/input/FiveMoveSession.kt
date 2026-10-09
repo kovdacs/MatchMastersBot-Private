@@ -1,7 +1,14 @@
 package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.board.Board
+import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.moves.PlayMoveRanker
+import com.match3vision.analyzer.play.BoosterRegistry
+import com.match3vision.analyzer.play.ContinuousPlay
+import com.match3vision.analyzer.play.HelpPolicy
+import com.match3vision.analyzer.play.PlayFlags
+import com.match3vision.analyzer.play.PlayMode
+import com.match3vision.analyzer.play.TargetPicker
 import kotlin.math.hypot
 
 /**
@@ -187,6 +194,24 @@ class FiveMoveSession {
     private var lastBlockLogAtMs: Long = 0L
     private var previousPassLabel: Long? = null
 
+    /** Solo until [observeHud] reads a timer, a PvP turn, or an unknown layout. */
+    var screenMode: PlayMode = PlayMode.SOLO
+        private set
+
+    var timeLeftSeconds: Int? = null
+        private set
+
+    var multiplier: Int? = null
+        private set
+
+    private var opponentWait: Boolean = false
+    private var helpsUsedThisTurn: Int = 0
+    private var equippedBoosterId: String? = null
+    var boosterTargetNote: String = "booster target=unverified equipped=unknown"
+        private set
+    var helpNote: String = "helps unread"
+        private set
+
     /** Move 1 may dispatch before a saved calibration exists. */
     var autoProbe: Boolean = false
         private set
@@ -312,6 +337,10 @@ class FiveMoveSession {
             zeroCircleReads = 0
             return null
         }
+        if (!ContinuousPlay.stopOnZeroCircles(screenMode, timeLeftSeconds)) {
+            zeroCircleReads = 0
+            return null
+        }
         zeroCircleReads += 1
         if (zeroCircleReads < 2) return null
         return decided(stop(nowMs, "STOP — moves spent"), "circles")
@@ -323,13 +352,87 @@ class FiveMoveSession {
      * frame clears that streak. An unknown HUD is logged and play continues.
      * A dimmed transition is ignored. Solo never increments the unknown streak.
      */
+    /** Stores the mode used by the stop and wait rules. Does not stop the session. */
+    fun observeHud(hud: HudObservation) {
+        screenMode = if (PlayFlags.modeAdapt) PlayMode.classify(hud) else PlayMode.BASIC
+        timeLeftSeconds = hud.timeLeftSeconds
+        multiplier = hud.multiplier
+    }
+
+    /**
+     * The equipped booster is not read from the HUD. A missing id does not
+     * invent a second tap. A known target booster returns the simulator cell.
+     */
+    fun noteEquippedBooster(id: String?) {
+        equippedBoosterId = id?.takeIf { it.isNotBlank() }
+    }
+
+    fun planBoosterTarget(registry: BoosterRegistry, board: Board?): TargetPicker.Target? {
+        if (!PlayFlags.boosters || !PlayFlags.targetBoosters) {
+            boosterTargetNote = "booster target=off"
+            return null
+        }
+        val id = equippedBoosterId
+        if (id == null) {
+            boosterTargetNote = "booster target=unverified equipped=unknown"
+            return null
+        }
+        val entry = registry.get(id)
+        if (entry == null) {
+            boosterTargetNote = "booster target=unverified equipped=$id missing"
+            return null
+        }
+        if (!entry.needsTarget) {
+            boosterTargetNote = "booster target=none equipped=$id activation=${entry.activation}"
+            return null
+        }
+        if (board == null) {
+            boosterTargetNote = "booster target=pending equipped=$id type=${entry.targetType}"
+            return null
+        }
+        val target = TargetPicker().best(board, entry.targetType)
+        boosterTargetNote =
+            "booster target=${target.row},${target.col} type=${entry.targetType} " +
+                "blue=${target.blue} total=${target.total} equipped=$id activation=${entry.activation}"
+        return target
+    }
+
+    /** Live charges are unread, so this returns null and does not tap. */
+    fun considerHelp(hasLegalMove: Boolean, extraMoveAvailable: Boolean): HelpPolicy.Choice? {
+        val choice = HelpPolicy.choose(
+            hasLegalMove = hasLegalMove,
+            extraMoveAvailable = extraMoveAvailable,
+            charges = HelpPolicy.Charges(hammer = null, shuffle = null, geometryVerified = false),
+            usedThisTurn = helpsUsedThisTurn,
+        )
+        helpNote = when {
+            !PlayFlags.helps -> "helps off"
+            choice != null -> "helps choice=${choice.id} reason=${choice.reason}"
+            else -> "helps unread geometry=unverified used=$helpsUsedThisTurn"
+        }
+        return choice
+    }
+
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (ContinuousPlay.timeOut(screenMode, timeLeftSeconds)) {
+            return decided(abort("STOP — time out", nowMs), "hud")
+        }
         if (boosterWindowActive(nowMs) && (kind == PlayGate.MENU || kind == PlayGate.UNKNOWN)) {
             return decided(Decision.Hold("booster window"), "hud")
         }
         val decision: Decision? = when (kind) {
-            PlayGate.OPPONENT -> abort("STOP — Opponent's Turn", nowMs)
+            PlayGate.OPPONENT -> when (ContinuousPlay.opponentAction(screenMode)) {
+                ContinuousPlay.WAIT -> {
+                    opponentWait = true
+                    Decision.Hold("opponent turn")
+                }
+                ContinuousPlay.PLAY -> {
+                    opponentWait = false
+                    null
+                }
+                else -> abort("STOP — Opponent's Turn", nowMs)
+            }
             PlayGate.MENU -> {
                 if (menuStreak == 0) menuSinceMs = nowMs
                 menuStreak += 1
@@ -344,6 +447,8 @@ class FiveMoveSession {
             else -> {
                 unknownMoves = 0
                 if (kind == PlayGate.OURS) {
+                    if (opponentWait) helpsUsedThisTurn = 0
+                    opponentWait = false
                     menuStreak = 0
                     menuSinceMs = 0L
                 }
@@ -652,6 +757,10 @@ class FiveMoveSession {
         sessionLimit(gates.nowMs)?.let { return it }
         if (gates.nowMs < pauseUntilMs) return Decision.Hold("pause — outside touch")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
+        if (opponentWait) {
+            notePlayBlock(gates.nowMs, "opponent turn")
+            return Decision.Hold("opponent turn")
+        }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, safetyCapText())
         }
@@ -713,6 +822,7 @@ class FiveMoveSession {
         barFull: Boolean,
         canSendNow: Boolean,
     ): BoosterStep {
+        if (!PlayFlags.boosters) return BoosterStep.SWIPE
         if (phase != Phase.RUNNING) return BoosterStep.SWIPE
         val interested = !boosterLatched && !boosterGaveUp && (activateVisible || boosterAttempts > 0)
         if (interested && boosterHandlingStartedAt < 0L) {
@@ -1214,6 +1324,13 @@ class FiveMoveSession {
                 "A move counts only after a fresh stable PASS board differs from the pre-move board.",
         )
         appendLine("stop=${stopReason.ifBlank { "none" }}")
+        appendLine(
+            "playMode=$screenMode timeLeft=${timeLeftSeconds?.toString() ?: "none"} " +
+                "multiplier=${multiplier?.toString() ?: "none"}",
+        )
+        appendLine(PlayFlags.log())
+        appendLine(boosterTargetNote)
+        appendLine(helpNote)
         appendLine("--- BOOSTER ---")
         if (boosterAttemptLog.isEmpty()) appendLine("none")
         boosterAttemptLog.forEach { appendLine(it) }
@@ -1473,6 +1590,14 @@ class FiveMoveSession {
         extraFollowUpUntilMs = 0L
         swipeOverride = false
         decisionLog.clear()
+        screenMode = PlayMode.SOLO
+        timeLeftSeconds = null
+        multiplier = null
+        opponentWait = false
+        helpsUsedThisTurn = 0
+        equippedBoosterId = null
+        boosterTargetNote = "booster target=unverified equipped=unknown"
+        helpNote = "helps unread"
     }
 
     private fun closeOpen(open: OpenMove, sample: SettleSample, verification: String) {

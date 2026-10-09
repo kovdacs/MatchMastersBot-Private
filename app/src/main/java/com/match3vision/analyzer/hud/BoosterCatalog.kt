@@ -48,7 +48,7 @@ data class BoosterEntry(
 /**
  * Minimal JSON reader for [BoosterCatalog]. The unit-test classpath has no org.json.
  */
-internal object Json {
+object Json {
     fun parse(text: String): Value {
         val parser = Parser(text)
         val value = parser.parseValue()

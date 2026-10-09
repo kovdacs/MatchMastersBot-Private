@@ -126,7 +126,7 @@ class MoveAnalysisEngine(
             blocked = false,
             holdReason = null,
             topMoves = ranked,
-            play = PlayMoveRanker(moveGenerator).rankLookahead(board, hud = hud),
+            play = PlayMoveRanker(moveGenerator).rankForPlay(board, hud),
         )
     }
 

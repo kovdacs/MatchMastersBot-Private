@@ -3,6 +3,8 @@ package com.match3vision.analyzer.moves
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.hud.HudObservation
+import com.match3vision.analyzer.play.PlayFlags
+import com.match3vision.analyzer.play.SpecialLabels
 import com.match3vision.analyzer.rules.GravityEngine
 import com.match3vision.analyzer.rules.MatchDetector
 import com.match3vision.analyzer.vision.SpecialType
@@ -36,6 +38,8 @@ class PlayMoveRanker(
         val cascadeSteps: Int,
         val uncertain: Boolean,
         val specials: String,
+        /** Both swapped cells are specials. Preferred when [PlayFlags.specials] is on. */
+        val combo: Boolean = false,
         val lowerRow: Int,
         val redCleared: Int = 0,
         val specialSpawn: String = "none",
@@ -133,6 +137,17 @@ class PlayMoveRanker(
         }
     }
 
+    /**
+     * Live order. With [PlayFlags.specials] this is the lookahead that models
+     * arrows, bombs, and color bombs and prefers a two-special combo.
+     * With the flag off it is the plain [rank] that skips specials.
+     */
+    fun rankForPlay(board: Board, hud: HudObservation = HudObservation.UNKNOWN): Ranking {
+        if (!PlayFlags.specials) return rank(board)
+        val looked = rankLookahead(board, hud = hud)
+        return looked.copy(boardSpecials = looked.boardSpecials + " labels=" + specialLabels(board))
+    }
+
     /** 0.25.0 order: extra move, blue, total, lower row. No follow-up. */
     fun rank(board: Board): Ranking {
         val specials = boardSpecials(board)
@@ -225,6 +240,9 @@ class PlayMoveRanker(
         followPly: Boolean = false,
     ): Candidate {
         val resolved = solo.resolve(board, move)
+        val left = board.get(move.r1, move.c1).special
+        val right = board.get(move.r2, move.c2).special
+        val combo = left != SpecialType.NONE && right != SpecialType.NONE
         val gems = gemScore(resolved.counts, hud.legendPoints)
         val ply = plyPoints(
             extraMove = resolved.extraMove,
@@ -247,6 +265,7 @@ class PlayMoveRanker(
             cascadeSteps = resolved.steps,
             uncertain = resolved.uncertain,
             specials = specials,
+            combo = combo,
             specialSpawn = resolved.specialSpawn,
             blueFactor = hud.blueFactor,
             lowerRow = maxOf(move.r1, move.r2),
@@ -372,6 +391,16 @@ class PlayMoveRanker(
         return if (found.isEmpty()) "none" else found.joinToString(",")
     }
 
+    private fun specialLabels(board: Board): String {
+        val found = ArrayList<String>()
+        board.forEachTile { tile ->
+            if (tile.special != SpecialType.NONE) {
+                found += "${tile.row},${tile.col}:${SpecialLabels.label(tile.special, tile.starValue)}"
+            }
+        }
+        return if (found.isEmpty()) "none" else found.joinToString(",")
+    }
+
     companion object {
         const val EXTRA_MOVE_MIN = 4
         const val EXTRA_MOVE_RULE =
@@ -459,8 +488,20 @@ class PlayMoveRanker(
                 "and a measured self-check, on a positive solo layout or Your Turn."
 
         private val LOOKAHEAD_ORDER = Comparator<Candidate> { a, b ->
+            if (PlayFlags.specials && a.combo != b.combo) {
+                if (a.combo) -1 else 1
+            } else {
+                compareLookahead(a, b)
+            }
+        }
+
+        private fun compareLookahead(a: Candidate, b: Candidate): Int {
+            return compareLookaheadRest(a, b)
+        }
+
+        private fun compareLookaheadRest(a: Candidate, b: Candidate): Int {
             val now = extraFirst(a.extraMove, b.extraMove)
-            if (now != 0) {
+            return if (now != 0) {
                 now
             } else {
                 val extras = turnExtras(b) - turnExtras(a)

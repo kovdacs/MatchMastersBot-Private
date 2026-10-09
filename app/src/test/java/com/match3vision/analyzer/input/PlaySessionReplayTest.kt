@@ -330,6 +330,29 @@ class PlaySessionReplayTest {
     }
 
     @Test(timeout = 2_000)
+    fun live0278_passBoardsIdleFor100s_exportsTheReasonThenSwipes() {
+        val play = Play()
+        play.start(circles = 8)
+        play.swipe(nextHash = 30L, dropCircle = true)
+        var t = play.now
+        val end = t + 100_000L
+        while (t < end) {
+            t += 5_000L
+            val block = play.session.considerSwipeFrame(2_000L, 80_000L + t, t)
+            check(block != null) { "idle frame was swiped at $t" }
+        }
+        assertThat(play.session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        assertThat(play.session.report()).contains("idle reason=")
+        assertThat(play.session.report()).contains("swipe made during board motion")
+        val stable = 80_000L + t
+        assertThat(play.session.considerSwipeFrame(400L, stable, t + 100L)).isNull()
+        play.now = t + 300L
+        play.hash = stable
+        play.swipe(nextHash = stable + 1L, dropCircle = true)
+        play.expectStillPlaying("0.27.8 idle")
+    }
+
+    @Test(timeout = 2_000)
     fun extraMove_matchingLabels_swipeDespiteAStaleAge() {
         val play = Play()
         play.start(circles = 8)

@@ -31,6 +31,8 @@ import com.match3vision.analyzer.hud.HudReader
 import com.match3vision.analyzer.hud.HudText
 import com.match3vision.analyzer.hud.SoloBooster
 import com.match3vision.analyzer.moves.PlayMoveRanker
+import com.match3vision.analyzer.play.BoosterRegistry
+import com.match3vision.analyzer.play.ContinuousPlay
 import com.match3vision.analyzer.input.AutoCalibration
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.GestureSpec
@@ -1964,6 +1966,21 @@ class FloatingBubbleService : Service() {
         refreshBubbleUi()
     }
 
+    private var loadedBoosterRegistry: BoosterRegistry? = null
+
+    /** Asset catalog. An unknown equipped id still does not send a target tap. */
+    private fun sessionBoosterRegistry(): BoosterRegistry {
+        loadedBoosterRegistry?.let { return it }
+        val parsed = try {
+            BoosterRegistry.parse(assets.open(BoosterRegistry.ASSET).bufferedReader().use { it.readText() })
+        } catch (t: Throwable) {
+            Timber.w(t, "booster registry unread")
+            BoosterRegistry(emptyList())
+        }
+        loadedBoosterRegistry = parsed
+        return parsed
+    }
+
     private fun readHud(pixels: IntArray?, frame: CaptureFrame): HudObservation {
         if (pixels == null || frame.width <= 0 || frame.height <= 0) return hudPulse.apply(HudObservation.UNKNOWN)
         val raw = try {
@@ -2114,11 +2131,12 @@ class FloatingBubbleService : Service() {
             roiPlausible = roiLooksPlausible(vision),
             frameSequence = frame.sequence,
         )
-        if (session.phase == FiveMoveSession.Phase.RUNNING && !vision.validation.isPass) {
-            val early = readHud(pixels, frame)
-            val dimmed = dimmedFrame(pixels, frame, vision)
-            val kind = PlayGate.kind(early, visionPass = false, dimmed = dimmed)
-            when (val safety = session.notePlayHud(kind, now)) {
+        val hudNow = readHud(pixels, frame)
+        session.observeHud(hudNow)
+        val dimmed = dimmedFrame(pixels, frame, vision)
+        val hudKind = PlayGate.kind(hudNow, visionPass = vision.validation.isPass, dimmed = dimmed)
+        if (session.phase == FiveMoveSession.Phase.RUNNING) {
+            when (val safety = session.notePlayHud(hudKind, now)) {
                 is FiveMoveSession.Decision.Stop -> {
                     showChipNotice(session.stopReason)
                     flushFiveMoveReport(session)
@@ -2153,29 +2171,8 @@ class FloatingBubbleService : Service() {
                 return true
             }
             is FiveMoveSession.Decision.Go -> {
-                val hud = readHud(pixels, frame)
+                val hud = hudNow
                 session.noteHud(hud.log())
-                val dimmed = dimmedFrame(pixels, frame, vision)
-                val hudKind = PlayGate.kind(hud, visionPass = true, dimmed = dimmed)
-                when (val hudDecision = session.notePlayHud(hudKind, System.currentTimeMillis())) {
-                    is FiveMoveSession.Decision.Stop -> {
-                        session.releaseUnusedPermit()
-                        showChipNotice(session.stopReason)
-                        flushFiveMoveReport(session)
-                        return true
-                    }
-                    is FiveMoveSession.Decision.Hold -> {
-                        session.releaseUnusedPermit()
-                        AutoPlaySession.updateDiagnostics(
-                            phase = "TARTÁS",
-                            cycleReason = hudDecision.reason,
-                            gestureStatus = "NOT CREATED",
-                        )
-                        refreshBubbleUi()
-                        return false
-                    }
-                    else -> Unit
-                }
                 val spent = session.noteCircles(
                     classifiable = hud.circlesClassifiable,
                     bright = hud.circlesBright,
@@ -2190,7 +2187,9 @@ class FloatingBubbleService : Service() {
                     return true
                 }
                 val turnRefusal = com.match3vision.analyzer.hud.TurnGate.refusal(hud)
-                if (turnRefusal != null) {
+                if (turnRefusal != null &&
+                    ContinuousPlay.opponentAction(session.screenMode) == ContinuousPlay.STOP
+                ) {
                     session.abort(turnRefusal, System.currentTimeMillis())
                     showChipNotice(turnRefusal)
                     flushFiveMoveReport(session)
@@ -2214,6 +2213,7 @@ class FloatingBubbleService : Service() {
                     }
                 }
                 val boardNow = Board.fromVision(vision.board)
+                session.planBoosterTarget(sessionBoosterRegistry(), boardNow)
                 val motion = session.considerSwipeFrame(
                     frame.ageMs(),
                     boardNow.labelHash(),
@@ -2229,7 +2229,12 @@ class FloatingBubbleService : Service() {
                     refreshBubbleUi()
                     return false
                 }
-                val extraMove = PlayMoveRanker().rank(boardNow).ordered.any { it.extraMove }
+                val playRanking = PlayMoveRanker().rankForPlay(boardNow, hud)
+                session.considerHelp(
+                    hasLegalMove = playRanking.ordered.isNotEmpty(),
+                    extraMoveAvailable = playRanking.ordered.any { it.extraMove },
+                )
+                val extraMove = playRanking.ordered.any { it.extraMove }
                 val boosterStep = try {
                     val canSend = boosterCanSend(
                         session,
@@ -2285,7 +2290,7 @@ class FloatingBubbleService : Service() {
                         return false
                     }
                 }
-                val chosenMove = PlayMoveRanker().rank(boardNow).ordered
+                val chosenMove = playRanking.ordered
                     .drop(session.playSkip)
                     .firstOrNull()
                     ?.move

@@ -149,6 +149,7 @@ data class Board(
                         row = r, col = c,
                         color = v.color, shape = v.shape, special = v.special,
                         confidence = v.confidence, visible = !v.occluded, locked = false,
+                        starValue = v.specialAxis,
                     )
                 }
             }

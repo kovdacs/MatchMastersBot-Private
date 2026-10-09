@@ -77,6 +77,7 @@ class SpecialDetectorTest {
         val r = detector.detect(cell, w, h)
         if (r.confidence >= VisionThresholds.SPECIAL_MIN_CONFIDENCE) {
             assertThat(r.special).isEqualTo(SpecialType.TWO_WAY_ARROW)
+            assertThat(r.axis).isEqualTo(SpecialDetector.AXIS_ROW)
         } else {
             assertThat(r.special).isEqualTo(SpecialType.NONE)
         }

@@ -206,6 +206,7 @@ class VisionPipeline(
             shape = shape.shape,
             shapeConf = shape.confidence,
             special = special.special,
+            specialAxis = special.axis,
         )
         if (reconciled.isUnknown) {
             diag["unkReason_${row}_${col}"] = UnknownReason.diagnose(

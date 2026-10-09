@@ -1,0 +1,354 @@
+[
+  {
+    "id": "firecracker",
+    "name": "Firecracker",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "color_splash",
+    "name": "Color Splash",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "quack_attack",
+    "name": "Quack Attack",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "crazy_rocket",
+    "name": "Crazy Rocket",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "the_jelly",
+    "name": "The Jelly",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "TAP_THEN_PIECE"
+  },
+  {
+    "id": "mystery_hat",
+    "name": "Mystery Hat",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "laser_beam",
+    "name": "Laser Beam",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "TAP_THEN_PIECE"
+  },
+  {
+    "id": "lil_dragon",
+    "name": "Lil' Dragon",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "mastermind",
+    "name": "Mastermind",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "magic_wand",
+    "name": "Magic Wand",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "TAP_THEN_COLOR"
+  },
+  {
+    "id": "sweep_it",
+    "name": "Sweep It!",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "balloon_blast",
+    "name": "Balloon Blast",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "high_voltage",
+    "name": "High Voltage",
+    "needsTarget": true,
+    "targetType": "col",
+    "activation": "ACTIVATE tap",
+    "category": "TAP_THEN_PIECE"
+  },
+  {
+    "id": "crazy_clovers",
+    "name": "Crazy Clovers",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "mr_appleberry",
+    "name": "Mr. Appleberry",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "colonel_mcquack",
+    "name": "Colonel McQuack",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "all_aboard",
+    "name": "All Aboard",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "foxy_roxy",
+    "name": "Foxy Roxy",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "butler_bot",
+    "name": "Butler Bot",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "ufo",
+    "name": "UFO",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "queen_cobra",
+    "name": "Queen Cobra",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "woolly_workout",
+    "name": "Woolly Workout",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "TAP_THEN_COLOR"
+  },
+  {
+    "id": "doctor_color",
+    "name": "Doctor Color",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "el_magneto",
+    "name": "El Magneto",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "vinnie_valentine",
+    "name": "Vinnie Valentine",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "checkmate_charles",
+    "name": "Checkmate Charles",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "froggy_fu",
+    "name": "Froggy Fu",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "monkey_joojoo",
+    "name": "Monkey Joojoo",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "billie_boom",
+    "name": "Billie Boom",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "brocco_boogie",
+    "name": "Brocco Boogie",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "DRAG"
+  },
+  {
+    "id": "cleo_cadabra",
+    "name": "Cleo Cadabra",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "DRAG"
+  },
+  {
+    "id": "mixy_meow",
+    "name": "Mixy Meow",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "el_magneto_se",
+    "name": "El Magneto SE",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "doctor_color_se",
+    "name": "Doctor Color SE",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "all_aboard_se",
+    "name": "All Aboard SE",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "ufo_se",
+    "name": "UFO SE",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "vinnie_valentine_se",
+    "name": "Vinnie Valentine SE",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "foxy_roxy_se",
+    "name": "Foxy Roxy SE",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "DRAG"
+  },
+  {
+    "id": "sweep_it_se",
+    "name": "Sweep It SE",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "DRAG"
+  },
+  {
+    "id": "jelly_se",
+    "name": "Jelly SE",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "billie_boom_powered_up",
+    "name": "Billie Boom (Powered Up)",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
+    "id": "vinnie_valentine_se_powered_up",
+    "name": "Vinnie Valentine SE (Powered Up)",
+    "needsTarget": true,
+    "targetType": "color",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "ufo_se_powered_up",
+    "name": "UFO SE (Powered Up)",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "FOLLOW_UP_MATCH"
+  },
+  {
+    "id": "foxy_roxy_se_powered_up",
+    "name": "Foxy Roxy SE (Powered Up)",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "ACTIVATE tap",
+    "category": "DRAG"
+  }
+]
