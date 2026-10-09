@@ -35,7 +35,12 @@ import com.match3vision.analyzer.input.FiveMoveStart
 import com.match3vision.analyzer.input.LiveFrameFilter
 import com.match3vision.analyzer.input.CaptureOverlayTrace
 import com.match3vision.analyzer.input.DiagnosticAnalysisGate
+import com.match3vision.analyzer.input.CalibrationLibrary
+import com.match3vision.analyzer.input.CalibrationReuse
 import com.match3vision.analyzer.input.CoordinateSelfCheck
+import com.match3vision.analyzer.input.GameMoveLog
+import com.match3vision.analyzer.input.SavedCalibration
+import com.match3vision.analyzer.input.ScreenKey
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.BotLoopOutcome
 import com.match3vision.analyzer.input.GestureFailSafe
@@ -97,6 +102,8 @@ class FloatingBubbleService : Service() {
     private var startBtn: Button? = null
     private var fiveMoveBtn: Button? = null
     private var serviceWallMs: Long = 0L
+    private var calibrationLibrary = CalibrationLibrary()
+    private var activeSaved: SavedCalibration? = null
     private var captureStartWallMs: Long = 0L
     private var pauseBtn: Button? = null
     private var touchTestBtn: Button? = null
@@ -124,6 +131,7 @@ class FloatingBubbleService : Service() {
             com.match3vision.analyzer.BuildConfig.VERSION_CODE,
         )
         showBubble()
+        loadSavedCalibration()
         AutoPlaySession.beginNewSession()
         AutoPlaySession.publish(bubbleVisible = true)
         refreshBubbleUi()
@@ -373,6 +381,30 @@ class FloatingBubbleService : Service() {
                 { startLoopFromBubbleAttempt(attempt + 1, gen) },
                 CAPTURE_START_RETRY_MS,
             )
+            return
+        }
+        if (a11y && captureOk && overlayOk && selfCheckThisSession()) {
+            val ready = AutoPlaySession.controller.prepareScoredSession(
+                a11yConnected = a11y,
+                captureReady = captureOk,
+                overlayReady = overlayOk,
+            )
+            if (!ready) {
+                val reason = AutoPlaySession.controller.lastReason
+                AutoPlaySession.publish(statusText = reason, a11yReady = a11y)
+                AutoPlaySession.updateDiagnostics(a11yConnected = a11y, stopReason = reason)
+                refreshBubbleUi()
+                Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
+                return
+            }
+            AutoPlaySession.syncFrameGateFromMode()
+            AutoPlaySession.refreshFromController("fut")
+            AutoPlaySession.updateDiagnostics(a11yConnected = a11y, clearStopReason = true)
+            collapseBubbleForCapture()
+            refreshBubbleUi()
+            sendBroadcast(Intent(ACTION_MINIMIZE_ANALYZER).setPackage(packageName))
+            ensureLoopRunning()
+            startFiveSeekAfterLoopReady()
             return
         }
         val play = AutoPlaySession.controller.onBubbleStart(
@@ -675,6 +707,7 @@ class FloatingBubbleService : Service() {
         }
         view?.showResult(toast)
         if (rec.status == CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE) {
+            rememberCalibration(rec)
             view?.scheduleAutoDismiss { dismissCalibrationOverlay() }
             showChipNotice("KALIBRÁCIÓ OK")
         } else {
@@ -1571,6 +1604,13 @@ class FloatingBubbleService : Service() {
             collapseBubbleForCapture()
             ensureLoopRunning()
         }
+        startFiveSeekAfterLoopReady()
+    }
+
+    /** Arms the 10-move seek once the loop is already RUNNING with input off. */
+    private fun startFiveSeekAfterLoopReady() {
+        val ctrl = AutoPlaySession.controller
+        val now = System.currentTimeMillis()
         val refusal = ctrl.fiveMoveRefusal(
             selfCheckThisSession = selfCheckThisSession(),
             a11yConnected = MatchMastersAccessibilityService.isConnected(),
@@ -1669,6 +1709,8 @@ class FloatingBubbleService : Service() {
                     return
                 }
                 ctrl.fiveMove.noteStartExport(offer.report.export)
+                val savedLine = savedCalibrationLine()
+                if (savedLine.isNotBlank()) ctrl.fiveMove.noteCalibration(savedLine)
                 fiveSeek = null
                 chipNotice = ""
                 refreshBubbleUi()
@@ -1691,12 +1733,88 @@ class FloatingBubbleService : Service() {
         refreshBubbleUi()
     }
 
-    private fun selfCheckThisSession(): Boolean {
-        val rec = CoordinateSelfCheck.current() ?: return false
-        return rec.status == CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE &&
-            serviceWallMs > 0L &&
-            rec.recordedAtMs >= serviceWallMs
+    private fun calibrationFile() = java.io.File(filesDir, "calibration-library.txt")
+
+    private fun currentScreenKey(): ScreenKey {
+        val (width, height) = screenSizePx()
+        val screen = ProductionLiveReaders.screenSource.measure()
+        val dpi = if (screen.densityDpi > 0) screen.densityDpi else resources.displayMetrics.densityDpi
+        return ScreenKey(
+            screenWidth = width,
+            screenHeight = height,
+            rotation = screen.rotation,
+            densityDpi = dpi,
+            versionCode = com.match3vision.analyzer.BuildConfig.VERSION_CODE,
+        )
     }
+
+    private fun loadSavedCalibration() {
+        try {
+            calibrationLibrary = CalibrationLibrary.read(calibrationFile())
+            val saved = calibrationLibrary.find(currentScreenKey()) ?: return
+            CoordinateSelfCheck.restore(saved.record)
+            activeSaved = saved
+            if (chipNotice.isBlank()) chipNotice = saved.chip()
+        } catch (t: Throwable) {
+            Timber.w(t, "saved calibration was not restored")
+        }
+    }
+
+    private fun rememberCalibration(record: CoordinateSelfCheck.Record) {
+        if (record.status != CoordinateSelfCheck.STATUS_MEASURED_WITHIN_TOLERANCE) return
+        try {
+            val saved = SavedCalibration(currentScreenKey(), record)
+            calibrationLibrary.put(saved)
+            calibrationLibrary.write(calibrationFile())
+            activeSaved = saved
+        } catch (t: Throwable) {
+            Timber.w(t, "calibration was not saved")
+        }
+    }
+
+    /** Mentett line only when this process reused an older hit. */
+    private fun savedCalibrationLine(): String {
+        if (!selfCheckThisSession()) return ""
+        val saved = activeSaved ?: return ""
+        val record = CoordinateSelfCheck.current() ?: return ""
+        if (serviceWallMs > 0L && record.recordedAtMs >= serviceWallMs) return ""
+        return saved.chip()
+    }
+
+    private fun calibrationNotice(): String {
+        val saved = savedCalibrationLine()
+        return when {
+            chipNotice.isBlank() -> saved
+            saved.isBlank() || chipNotice.contains(saved) -> chipNotice
+            else -> chipNotice + "\n" + saved
+        }
+    }
+
+    private fun closeGameLog(
+        session: FiveMoveSession,
+        after: GameMoveLog.BoardView?,
+        verification: String,
+        settleMs: Long = 0L,
+        elapsedMs: Long = 0L,
+        userInterference: Boolean = false,
+    ) {
+        val reason = if (session.phase == FiveMoveSession.Phase.STOPPED) session.stopReason else ""
+        session.finishGameLog(
+            after = after,
+            verification = verification.ifBlank { session.stopReason },
+            settleMs = settleMs,
+            elapsedMs = elapsedMs,
+            stopReason = reason,
+            userInterference = userInterference,
+        )
+    }
+
+    private fun selfCheckThisSession(): Boolean = CalibrationReuse.accepts(
+        record = CoordinateSelfCheck.current(),
+        serviceWallMs = serviceWallMs,
+        saved = activeSaved,
+        now = currentScreenKey(),
+    )
 
     private fun endFiveMoveInLoop(ctrl: AutoPlayController, reason: String) {
         flushFiveMoveReport(ctrl.fiveMove)
@@ -1709,6 +1827,11 @@ class FloatingBubbleService : Service() {
         if (session.phase == FiveMoveSession.Phase.IDLE && session.startedAtMs == 0L) return
         try {
             DiagnosticHistoryStore.setFiveMoveReport(session.report())
+            val log = session.gameLogText()
+            val dir = DiagnosticHistoryStore.directory()
+            if (log.isNotBlank() && dir != null) {
+                java.io.File(dir, "game-log.jsonl").writeText(log)
+            }
         } catch (t: Throwable) {
             Timber.w(t, "five-move report write failed")
         }
@@ -1726,6 +1849,12 @@ class FloatingBubbleService : Service() {
         val decision = session.noteOutsideTouch(System.currentTimeMillis()) ?: return
         Timber.i("fiveMoveSession: user interference %s", decision)
         if (fiveSettleInProgress) return
+        closeGameLog(
+            session = session,
+            after = null,
+            verification = session.stopReason,
+            userInterference = true,
+        )
         flushFiveMoveReport(session)
         ctrl.finishFiveMoveKeepCapture(session.stopReason)
         refreshBubbleUi()
@@ -1816,6 +1945,23 @@ class FloatingBubbleService : Service() {
                     return false
                 }
                 val move = executed.move.move
+                val ranking = ctrl.inputLoop().lastPlayRanking
+                val chosen = ranking?.ordered?.firstOrNull()
+                session.beginGameLog(
+                    GameMoveLog.Pending(
+                        moveNumber = decision.permit.moveNumber,
+                        sessionStartedAtMs = session.startedAtMs,
+                        before = GameMoveLog.view(
+                            board = Board.fromVision(vision.board),
+                            timestampMs = started,
+                            gridConfidence = vision.gridConfidence,
+                            boardConfidence = vision.boardConfidence,
+                            unknownCount = vision.unknownCount,
+                        ),
+                        candidates = ranking?.ordered ?: emptyList(),
+                        selected = move.toString(),
+                    ),
+                )
                 val noted = session.noteGesture(
                     FiveMoveSession.GestureFact(
                         startedAtMs = started,
@@ -1829,11 +1975,18 @@ class FloatingBubbleService : Service() {
                         toY = executed.gesture.endY,
                         beforeHash = executed.beforeBoardHash,
                         beforeUnknown = vision.unknownCount,
+                        playExport = ranking?.export().orEmpty(),
+                        matchLen = chosen?.matchLen ?: 0,
+                        extraMove = chosen?.extraMove == true,
+                        blueCleared = chosen?.blueCleared ?: 0,
+                        totalCleared = chosen?.totalCleared ?: 0,
+                        playUncertain = chosen?.uncertain == true,
                     ),
                 )
                 session.suppressOutsideTouchUntil(System.currentTimeMillis() + 400L)
                 refreshBubbleUi()
                 if (noted is FiveMoveSession.Decision.Stop) {
+                    closeGameLog(session, after = null, verification = session.stopReason)
                     flushFiveMoveReport(session)
                     return true
                 }
@@ -1988,6 +2141,26 @@ class FloatingBubbleService : Service() {
         val number = session.gesturesDispatched.coerceAtLeast(1)
         val shot = afterFrame
         val seen = afterVision
+        val record = session.movesSnapshot().lastOrNull()
+        val afterView = if (seen != null) {
+            GameMoveLog.view(
+                board = Board.fromVision(seen.board),
+                timestampMs = shot?.timestampMs ?: System.currentTimeMillis(),
+                gridConfidence = seen.gridConfidence,
+                boardConfidence = seen.boardConfidence,
+                unknownCount = seen.unknownCount,
+            )
+        } else {
+            null
+        }
+        closeGameLog(
+            session = session,
+            after = afterView,
+            verification = record?.verification ?: session.stopReason,
+            settleMs = record?.durationMs ?: 0L,
+            elapsedMs = record?.let { (it.finishedAtMs - session.startedAtMs).coerceAtLeast(0L) } ?: 0L,
+            userInterference = record?.userInterference == true,
+        )
         if (shot != null) {
             writeMoveFrame(number, "after", afterPixels, shot, seen)
         }
@@ -2338,7 +2511,7 @@ class FloatingBubbleService : Service() {
             statusView?.text = BubbleModeCaption.collapsedStatus(
                 fiveActive = five.isActive,
                 fiveLabel = five.label(),
-                chipNotice = chipNotice,
+                chipNotice = calibrationNotice(),
                 fallback = modeTitle,
             )
         } else {
@@ -2347,7 +2520,8 @@ class FloatingBubbleService : Service() {
             statusView?.maxLines = 32
             statusView?.textSize = 8.5f
             val warning = if (five.isActive) FiveMoveArm.DO_NOT_TOUCH + ".\n" else ""
-            val notice = if (chipNotice.isBlank()) "" else chipNotice + "\n"
+            val noticeText = calibrationNotice()
+            val notice = if (noticeText.isBlank()) "" else noticeText + "\n"
             statusView?.text = warning + notice + diag.bubbleLines(compact = true) +
                 "\nEGY LÉPÉS: ${ctrl.singleMove.label()}"
         }
