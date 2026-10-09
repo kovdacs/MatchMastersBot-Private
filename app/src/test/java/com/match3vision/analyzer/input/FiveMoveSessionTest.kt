@@ -99,7 +99,7 @@ class FiveMoveSessionTest {
             .isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat(session.gesturesDispatched).isEqualTo(FiveMoveSession.MAX_MOVES)
         val report = session.report()
-        assertThat(report).contains("sessionLimitMs=120000")
+        assertThat(report).contains("sessionLimitMs=300000")
         assertThat(report).contains("perMoveBudgetMs=20000")
         assertThat(report).contains("measuredSessionMs=")
         assertThat(session.movesSnapshot()).hasSize(FiveMoveSession.MAX_MOVES)
@@ -113,8 +113,20 @@ class FiveMoveSessionTest {
         session.arm(0L)
         val decision = session.requestDispatch(gates(nowMs = FiveMoveSession.SESSION_LIMIT_MS))
         assertThat(decision).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat((decision as FiveMoveSession.Decision.Stop).reason).contains("120s")
+        assertThat((decision as FiveMoveSession.Decision.Stop).reason).contains("300s")
         assertThat(session.gesturesDispatched).isEqualTo(0)
+    }
+
+    @Test
+    fun movesRemaining_stopsOnlyWhenTheCircleRowReadsZero() {
+        val running = FiveMoveSession()
+        running.arm(0L)
+        assertThat(running.movesRemainingStop(null, 10L)).isNull()
+        assertThat(running.movesRemainingStop(3, 10L)).isNull()
+        assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        val stopped = running.movesRemainingStop(0, 20L) as FiveMoveSession.Decision.Stop
+        assertThat(stopped.reason).contains("no moves left")
+        assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
     }
 
     @Test

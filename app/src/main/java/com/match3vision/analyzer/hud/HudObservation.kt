@@ -6,10 +6,12 @@ import com.match3vision.analyzer.vision.TileColor
 /**
  * One frame's HUD reading.
  *
- * [soloLayout] is the only gate for lookahead, legend weights, specials, and
- * ACTIVATE. Move counts, legend digits, and the timer are logged and are not
- * assumed. An empty [legendPoints] map means the digits were not read, so the
- * ranker uses the official default (logged as legend default).
+ * A classifiable row of bright move circles is the solo signal, even when the
+ * opponent-gem counter is high. An uncertain frame is still [soloLayout] so
+ * lookahead and ACTIVATE can run; the session stops only on a positive
+ * Opponent's Turn. [movesRemaining] is the bright-circle count when that row
+ * is trusted, and null when the row was not read. An empty [legendPoints] map
+ * means the digits were not read, so the ranker uses the official default.
  */
 data class HudObservation(
     val timer: String = TurnClock.NOT_DETECTABLE,
@@ -25,6 +27,11 @@ data class HudObservation(
     val legend: String = NOT_DETECTABLE,
     val yourTurn: String = NOT_DETECTABLE,
     val movesRemaining: Int? = null,
+    /** Bright move circles when the row was classifiable. Null when it was not. */
+    val circlesBright: Int? = null,
+    val circlesClassifiable: Boolean = false,
+    /** True only when the left-card glyph is the word ACTIVATE. A bright rect is not enough. */
+    val activateWord: Boolean = false,
     val legendPoints: Map<TileColor, Int> = emptyMap(),
     /** your-turn, time-left, opponent-turn, or not detectable. */
     val turnState: String = NOT_DETECTABLE,
@@ -54,6 +61,9 @@ data class HudObservation(
             "turnState=$turnState timeLeft=${timeLeftSeconds?.toString() ?: NOT_DETECTABLE} " +
             "multiplier=$multiplierNote " +
             "movesRemaining=${movesRemaining?.toString() ?: NOT_DETECTABLE} " +
+            "circlesBright=${circlesBright?.toString() ?: NOT_DETECTABLE} " +
+            "circlesClassifiable=${if (circlesClassifiable) "yes" else "no"} " +
+            "activateWord=${if (activateWord) "yes" else "no"} " +
             "hudState=$hudState hudScores=$hudScores"
 
     companion object {
@@ -77,18 +87,25 @@ data class HudObservation(
         }
 
         /** Recognized solo frame. Legend digits are not invented. */
-        fun solo(activateVisible: Boolean = false, movesRemaining: Int? = null): HudObservation {
-            val full = activateVisible
+        fun solo(
+            activateVisible: Boolean = false,
+            movesRemaining: Int? = null,
+            activateWord: Boolean = false,
+        ): HudObservation {
+            val full = activateVisible || activateWord
             return HudObservation(
                 mode = "solo",
                 soloLayout = true,
-                boosterFill = if (full) "full" else "unknown",
+                boosterFill = if (activateWord) "ACTIVATE" else if (full) "full" else "unknown",
                 boosterPhase = if (full) BoosterMonitor.READY else BoosterMonitor.UNKNOWN,
                 activate = if (full) "yes" else "no",
-                boosterTarget = if (full) "none" else "unknown",
+                boosterTarget = if (activateWord) "none" else "unknown",
                 blueFactor = if (full) com.match3vision.analyzer.moves.PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
                 legend = "legend default",
                 movesRemaining = movesRemaining,
+                circlesBright = movesRemaining,
+                circlesClassifiable = movesRemaining != null,
+                activateWord = activateWord,
                 hudState = HUD_SOLO,
             )
         }
@@ -118,6 +135,7 @@ data class HudObservation(
                 boosterPhase = if (activateWord) BoosterMonitor.READY else BoosterMonitor.UNKNOWN,
                 activate = if (activateWord && player) "yes" else "no",
                 boosterTarget = if (activateWord && player) "none" else "unknown",
+                activateWord = activateWord,
                 yourTurn = label,
                 turnState = turnState,
                 timeLeftSeconds = timeLeftSeconds,

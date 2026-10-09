@@ -27,6 +27,7 @@ import com.match3vision.analyzer.hud.BoosterControl
 import com.match3vision.analyzer.hud.HudObservation
 import com.match3vision.analyzer.hud.HudReader
 import com.match3vision.analyzer.hud.SoloBooster
+import com.match3vision.analyzer.moves.PlayMoveRanker
 import com.match3vision.analyzer.input.AutoCalibration
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.GestureSpec
@@ -1885,18 +1886,28 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * One ACTIVATE tap when the toggle is on and this frame is the solo layout
-     * with the button visible. A miss does not stop gem play. Returns true when
-     * a tap was sent, so the caller must not also swipe on this stale frame.
+     * One left-card ACTIVATE tap when the word is read, the toggle is on, the
+     * turn is ours, and no extra-move swap is available. A miss or a booster
+     * that needs a target latches for this session and does not tap the board.
+     * Returns true when a tap was sent, so the caller must not also swipe on
+     * this stale frame.
      */
     private suspend fun trySoloBooster(
         session: FiveMoveSession,
         hud: HudObservation,
         frame: CaptureFrame,
         vision: com.match3vision.analyzer.vision.VisionResult,
+        extraMoveAvailable: Boolean,
+        boosterDecision: String,
     ): Boolean {
         if (session.boosterLatched || session.phase != FiveMoveSession.Phase.RUNNING) return false
-        val tap = SoloBooster.plan(hud, frame.width, frame.height, BoosterControl.enabled) ?: return false
+        val tap = SoloBooster.plan(
+            hud,
+            frame.width,
+            frame.height,
+            BoosterControl.enabled,
+            extraMoveAvailable,
+        ) ?: return false
         val executor = AccessibilityGestureExecutor()
         if (!executor.isReady()) return false
         val started = System.currentTimeMillis()
@@ -1909,6 +1920,7 @@ class FloatingBubbleService : Service() {
         var changed = false
         var stable = false
         var countChange = true
+        var hudChanged = false
         var lastHash: Long? = null
         val deadline = started + BOOSTER_SETTLE_MS
         while (System.currentTimeMillis() < deadline && session.phase == FiveMoveSession.Phase.RUNNING) {
@@ -1919,6 +1931,9 @@ class FloatingBubbleService : Service() {
             val nextVision = analyzed.vision ?: continue
             if (!nextVision.validation.isPass) continue
             val hudNow = readHud(analyzed.pixels, next)
+            if (hudNow.activateWord != hud.activateWord || hudNow.boosterFill != hud.boosterFill) {
+                hudChanged = true
+            }
             if (!com.match3vision.analyzer.hud.TurnGate.allowsVerification(hudNow)) countChange = false
             val hash = Board.fromVision(nextVision.board).contentHash()
             if (hash != beforeHash) changed = true
@@ -1928,6 +1943,7 @@ class FloatingBubbleService : Service() {
             }
             lastHash = hash
         }
+        val needsTarget = callback && countChange && !changed && hudChanged
         session.recordBooster(
             changed = changed,
             stable = stable,
@@ -1935,10 +1951,17 @@ class FloatingBubbleService : Service() {
             x = tap.x,
             y = tap.y,
             nowMs = System.currentTimeMillis(),
-            playExport = hud.log(),
+            playExport = moveTrace(hud, boosterDecision, hud.log()),
             countChange = countChange,
+            needsTarget = needsTarget,
         )
         return true
+    }
+
+    private fun moveTrace(hud: HudObservation, boosterDecision: String, body: String): String {
+        val bright = hud.circlesBright?.toString() ?: "none"
+        val classifiable = if (hud.circlesClassifiable) "yes" else "no"
+        return "circlesBright=$bright circlesClassifiable=$classifiable boosterDecision=$boosterDecision\n$body"
     }
 
     private suspend fun runFiveMoveTick(
@@ -2006,7 +2029,21 @@ class FloatingBubbleService : Service() {
                         return true
                     }
                 }
-                if (trySoloBooster(session, hud, frame, vision)) {
+                val noMoves = session.movesRemainingStop(hud.movesRemaining, System.currentTimeMillis())
+                if (noMoves != null) {
+                    showChipNotice(session.stopReason)
+                    flushFiveMoveReport(session)
+                    return true
+                }
+                val extraMove = PlayMoveRanker().rank(Board.fromVision(vision.board)).ordered.any { it.extraMove }
+                val boosterDecision = SoloBooster.decision(
+                    hud,
+                    BoosterControl.enabled,
+                    extraMove,
+                    session.boosterLatched,
+                )
+                session.noteHud(moveTrace(hud, boosterDecision, hud.log()))
+                if (trySoloBooster(session, hud, frame, vision, extraMove, boosterDecision)) {
                     session.releaseUnusedPermit()
                     if (session.phase == FiveMoveSession.Phase.STOPPED) {
                         flushFiveMoveReport(session)
@@ -2090,7 +2127,7 @@ class FloatingBubbleService : Service() {
                         toY = executed.gesture.endY,
                         beforeHash = executed.beforeBoardHash,
                         beforeUnknown = vision.unknownCount,
-                        playExport = ranking?.export().orEmpty(),
+                        playExport = moveTrace(hud, boosterDecision, ranking?.export().orEmpty()),
                         matchLen = chosen?.matchLen ?: 0,
                         extraMove = chosen?.extraMove == true,
                         blueCleared = chosen?.blueCleared ?: 0,
@@ -2645,7 +2682,7 @@ class FloatingBubbleService : Service() {
         } else {
             BubbleModeCaption.title(
                 fiveActive = five.isActive,
-                fiveLabel = BubbleModeCaption.fiveLabel(five.verifiedCount, FiveMoveSession.MAX_MOVES),
+                fiveLabel = "10 LÉPÉS ${five.verifiedCount}",
                 selfCheckOk = selfCheckThisSession(),
             )
         }

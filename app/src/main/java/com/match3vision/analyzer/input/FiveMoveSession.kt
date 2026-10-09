@@ -3,11 +3,12 @@ package com.match3vision.analyzer.input
 import com.match3vision.analyzer.moves.PlayMoveRanker
 
 /**
- * Controlled phone test: at most ten real moves, then stop.
+ * Plays while bright move circles remain. A hard cap stops the session at
+ * [MAX_MOVES] gestures or [SESSION_LIMIT_MS].
  *
  * Move 1 is a probe. Later moves are issued only after the previous one verifies.
  * The same checks apply to every move. A failed check stops the session.
- * The same move is not retried. Ten gestures is the maximum.
+ * The same move is not retried.
  *
  * The clock starts at [arm] (the 10 LÉPÉS TESZT press, after the self-check).
  * All verified moves must finish inside [SESSION_LIMIT_MS].
@@ -196,7 +197,17 @@ class FiveMoveSession {
     val isActive: Boolean
         get() = phase == Phase.RUNNING || phase == Phase.SETTLING
 
-    fun label(): String = "10 LÉPÉS TESZT: $verifiedCount/$MAX_MOVES"
+    fun label(): String = "10 LÉPÉS TESZT: $verifiedCount"
+
+    /**
+     * Stops only when the circle row was trusted and it shows zero moves left.
+     * Null means the row was not read, so play continues.
+     */
+    fun movesRemainingStop(remaining: Int?, nowMs: Long): Decision? {
+        if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
+        if (remaining == null || remaining > 0) return null
+        return stop(nowMs, "STOP — no moves left")
+    }
 
     fun movesSnapshot(): List<MoveRecord> = moves.toList()
 
@@ -341,7 +352,7 @@ class FiveMoveSession {
         if (!a11yConnected) return abort("STOP — accessibility lost", nowMs)
         if (outsideTouches > 0) return abort("STOP — user interference", nowMs)
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return abort("STOP — 120s session limit", nowMs)
+            return abort("STOP — 300s session limit", nowMs)
         }
         return null
     }
@@ -354,7 +365,7 @@ class FiveMoveSession {
         if (outsideTouches > 0) return stop(gates.nowMs, "STOP — user interference")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
-            return stop(gates.nowMs, "STOP — 10 moves complete")
+            return stop(gates.nowMs, "STOP — 40 gesture safety cap")
         }
         if (outstanding != null) return Decision.Hold("dispatch permit already issued")
         val hold = holdReason(gates)
@@ -391,6 +402,7 @@ class FiveMoveSession {
         nowMs: Long,
         playExport: String,
         countChange: Boolean = true,
+        needsTarget: Boolean = false,
     ): String {
         boosterLatched = true
         if (phase != Phase.RUNNING) return "not running"
@@ -398,6 +410,7 @@ class FiveMoveSession {
         gesturesDispatched += 1
         val verification = when {
             !countChange -> "FAILED — board changed during the opponent's turn"
+            needsTarget -> "HOLD — booster needs a target; no target tap"
             !callbackCompleted -> "FAILED — booster tap callback was not completed"
             changed && stable -> "PASS — booster ACTIVATE, board changed, stable"
             changed -> "FAILED — booster board changed but did not settle"
@@ -421,7 +434,7 @@ class FiveMoveSession {
         if (countChange && changed && stable && callbackCompleted) {
             verifiedCount += 1
             if (verifiedCount >= MAX_MOVES) {
-                stop(nowMs, "STOP — 10 moves verified")
+                stop(nowMs, "STOP — 40 gesture safety cap")
             }
         }
         return verification
@@ -431,7 +444,7 @@ class FiveMoveSession {
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
         sessionLimit(fact.nowMs)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES) {
-            return stop(fact.nowMs, "STOP — max 10 gestures")
+            return stop(fact.nowMs, "STOP — 40 gesture safety cap")
         }
         gesturesDispatched += 1
         val callback = when {
@@ -497,8 +510,8 @@ class FiveMoveSession {
             return stop(sample.nowMs, "STOP — user interference")
         }
         if (sample.nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            closeOpen(open, sample, "FAILED — 120s session limit")
-            return stop(sample.nowMs, "STOP — 120s session limit")
+            closeOpen(open, sample, "FAILED — 300s session limit")
+            return stop(sample.nowMs, "STOP — 300s session limit")
         }
         if (!sample.countBoardChange) {
             val changed = sample.boardHash != open.beforeHash
@@ -558,7 +571,7 @@ class FiveMoveSession {
         }
         openMove = null
         if (verifiedCount >= MAX_MOVES) {
-            return stop(sample.nowMs, "STOP — 10 moves verified")
+            return stop(sample.nowMs, "STOP — 40 gesture safety cap")
         }
         phase = Phase.RUNNING
         return Decision.Hold("move $verifiedCount verified")
@@ -610,8 +623,9 @@ class FiveMoveSession {
         appendLine("stableFraction<=$STABLE_FRACTION")
         appendLine("unchangedMinMs=$UNCHANGED_MIN_MS")
         appendLine(
-            "expected: up to $MAX_MOVES verified moves, each within " +
-                "${PER_MOVE_BUDGET_MS}ms, all inside ${SESSION_LIMIT_MS}ms from the button press",
+            "expected: play while bright move circles remain and the turn is ours; " +
+                "safety cap $MAX_MOVES gestures and ${SESSION_LIMIT_MS}ms; " +
+                "each move within ${PER_MOVE_BUDGET_MS}ms",
         )
         appendLine(
             "settle: consecutive coarse ROI samples whose changed fraction is " +
@@ -625,7 +639,7 @@ class FiveMoveSession {
         }
         val measured = if (phase == Phase.IDLE) 0L else (end - startedAtMs).coerceAtLeast(0L)
         appendLine("measuredSessionMs=$measured")
-        appendLine("verified=$verifiedCount/$MAX_MOVES gestures=$gesturesDispatched")
+        appendLine("verified=$verifiedCount gestures=$gesturesDispatched safetyCap=$MAX_MOVES")
         appendLine(PlayMoveRanker.EXTRA_MOVE_RULE)
         if (calibrationLine.isNotBlank()) appendLine(calibrationLine)
         appendLine("predictedExtraMoveMatches=${moves.count { it.extraMove }}")
@@ -697,7 +711,7 @@ class FiveMoveSession {
     private fun sessionLimit(nowMs: Long): Decision.Stop? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return stop(nowMs, "STOP — 120s session limit")
+            return stop(nowMs, "STOP — 300s session limit")
         }
         return null
     }
@@ -831,8 +845,8 @@ class FiveMoveSession {
     }
 
     companion object {
-        const val MAX_MOVES = 10
-        const val SESSION_LIMIT_MS = 120_000L
+        const val MAX_MOVES = 40
+        const val SESSION_LIMIT_MS = 300_000L
         const val PER_MOVE_BUDGET_MS = 20_000L
         const val POLL_STEP_MS = 80L
         const val UNCHANGED_MIN_MS = 1_500L

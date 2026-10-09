@@ -3,12 +3,14 @@ package com.match3vision.analyzer.hud
 import com.match3vision.analyzer.moves.PlayMoveRanker
 
 /**
- * Decides whether a frame is the solo layout from the owner's recording
- * (booster card on the left, move circles to its right, no opponent red gem).
+ * Reads the HUD. Ten classifiable bright move circles are the solo signal and
+ * override a high opponent-red count. A positive Opponent's Turn with no circle
+ * row stays PvP. Your Turn or Time Left plus that red gem, and no circle row,
+ * stays PvP. Anything else is treated as solo so lookahead and the booster can
+ * run; the session still stops only on a positively read Opponent's Turn.
  *
- * Digits are not read. A bright ACTIVATE button is the recognized no-target
- * ready state for that solo layout. A red gem on the right is PvP: this reader
- * does not apply solo geometry there.
+ * A flat dark field is classifiable and is not a circle row, so moves remaining
+ * stays unread. The ACTIVATE tap requires the left-card word, not a bright rect.
  */
 object HudReader {
     private const val REF_W = 1080
@@ -32,78 +34,114 @@ object HudReader {
         val activateSample = activateSample(pixels, width, height)
         val circlesSample = circleSample(pixels, width, height)
         val scores = formatScores(reds, turn, activateSample, circlesSample)
-        val pvp = reds >= OPPONENT_RED_MIN || turn.state == HudObservation.TURN_OPPONENT
-        if (pvp) {
-            val mult = HudText.multiplier(pixels, width, height)
-            val player = turn.state == HudObservation.TURN_YOUR || turn.state == HudObservation.TURN_TIME
-            val activateWord = card.activateWord && player
-            val full = card.text == "FULL" || card.text == "7/7" || activateWord
-            return HudObservation(
-                timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
-                moves = HudObservation.NOT_DETECTABLE,
-                mode = "pvp",
-                boosterFill = card.text,
-                boosterPhase = when {
-                    activateWord || full -> BoosterMonitor.READY
-                    card.text.endsWith("/7") -> BoosterMonitor.CHARGING
-                    else -> BoosterMonitor.UNKNOWN
-                },
-                blueFactor = if (full) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
-                soloLayout = false,
-                activate = if (activateWord) "yes" else "no",
-                boosterTarget = if (activateWord) "none" else "unknown",
-                yourTurn = turn.label,
-                turnState = turn.state,
-                timeLeftSeconds = turn.seconds,
-                multiplier = mult.value,
-                multiplierNote = mult.note,
-                hudState = HudObservation.hudStateFor(turn.state, soloLayout = false),
-                hudScores = scores,
-            )
-        }
-        val activate = activateSample.bright || card.activateWord
-        val circles = circlesSample.report
+        val structured = circleRowStructured(pixels, width, height)
         // A flat field is classifiable at every sample and is still not a circle row.
-        val solo = activate || (circles != null && circleRowStructured(pixels, width, height))
-        if (!solo) {
-            return HudObservation(
-                yourTurn = turn.label,
-                turnState = turn.state,
-                timeLeftSeconds = turn.seconds,
-                hudState = HudObservation.HUD_UNKNOWN,
-                hudScores = scores,
+        val circleSignal = circlesSample.classifiable && (circlesSample.bright > 0 || structured)
+        val movesRemaining = if (circleSignal) circlesSample.bright else null
+        val word = card.activateWord
+        val player = turn.state == HudObservation.TURN_YOUR || turn.state == HudObservation.TURN_TIME
+        val opponent = turn.state == HudObservation.TURN_OPPONENT
+        val redPvp = reds >= OPPONENT_RED_MIN && player
+        if ((opponent || redPvp) && !circleSignal) {
+            val mult = HudText.multiplier(pixels, width, height)
+            val ready = word && player
+            val full = card.text == "FULL" || card.text == "7/7" || ready
+            return withCircles(
+                HudObservation(
+                    timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
+                    moves = circlesSample.report ?: HudObservation.NOT_DETECTABLE,
+                    mode = "pvp",
+                    boosterFill = card.text,
+                    boosterPhase = when {
+                        ready || full -> BoosterMonitor.READY
+                        card.text.endsWith("/7") -> BoosterMonitor.CHARGING
+                        else -> BoosterMonitor.UNKNOWN
+                    },
+                    blueFactor = if (full) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+                    soloLayout = false,
+                    activate = if (ready) "yes" else "no",
+                    boosterTarget = if (ready) "none" else "unknown",
+                    yourTurn = turn.label,
+                    turnState = turn.state,
+                    timeLeftSeconds = turn.seconds,
+                    multiplier = mult.value,
+                    multiplierNote = mult.note,
+                    hudState = HudObservation.hudStateFor(turn.state, soloLayout = false),
+                    hudScores = scores,
+                ),
+                movesRemaining,
+                circlesSample,
+                word,
             )
         }
+        val knownSolo = circleSignal || ((activateSample.bright || word) && reds < OPPONENT_RED_MIN)
+        if (!knownSolo) {
+            return withCircles(
+                HudObservation(
+                    timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
+                    moves = HudObservation.NOT_DETECTABLE,
+                    mode = "solo",
+                    soloLayout = true,
+                    yourTurn = turn.label,
+                    turnState = turn.state,
+                    timeLeftSeconds = turn.seconds,
+                    hudState = HudObservation.HUD_UNKNOWN,
+                    hudScores = scores,
+                ),
+                movesRemaining = null,
+                circlesSample,
+                word,
+            )
+        }
+        val activate = activateSample.bright || word
         val legend = HudText.legend(pixels, width, height)
         val fill = when {
-            card.text == "ACTIVATE" || card.text == "FULL" || card.text == "7/7" || activate -> "full"
+            card.text == "ACTIVATE" || word -> "ACTIVATE"
+            card.text == "FULL" || card.text == "7/7" || activate -> "full"
             card.text.endsWith("/7") -> card.text
             else -> "unknown"
         }
-        return HudObservation(
-            timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
-            moves = circles ?: HudObservation.NOT_DETECTABLE,
-            rounds = HudObservation.NOT_DETECTABLE,
-            mode = "solo",
-            boosterFill = fill,
-            boosterPhase = when {
-                activate || fill == "full" -> BoosterMonitor.READY
-                fill.endsWith("/7") -> BoosterMonitor.CHARGING
-                else -> BoosterMonitor.phase(fill)
-            },
-            blueFactor = if (activate || fill == "full") PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
-            soloLayout = true,
-            activate = if (activate) "yes" else "no",
-            boosterTarget = if (activate) "none" else "unknown",
-            legend = legend.first,
-            yourTurn = turn.label,
-            turnState = turn.state,
-            timeLeftSeconds = turn.seconds,
-            legendPoints = legend.second,
-            hudState = HudObservation.hudStateFor(turn.state, soloLayout = true),
-            hudScores = scores,
+        return withCircles(
+            HudObservation(
+                timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
+                moves = circlesSample.report ?: HudObservation.NOT_DETECTABLE,
+                rounds = HudObservation.NOT_DETECTABLE,
+                mode = "solo",
+                boosterFill = fill,
+                boosterPhase = when {
+                    activate || fill == "full" || fill == "ACTIVATE" -> BoosterMonitor.READY
+                    fill.endsWith("/7") -> BoosterMonitor.CHARGING
+                    else -> BoosterMonitor.phase(fill)
+                },
+                blueFactor = if (activate || fill == "full") PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+                soloLayout = true,
+                activate = if (activate) "yes" else "no",
+                boosterTarget = if (word) "none" else if (activate) "none" else "unknown",
+                legend = legend.first,
+                yourTurn = turn.label,
+                turnState = turn.state,
+                timeLeftSeconds = turn.seconds,
+                legendPoints = legend.second,
+                hudState = HudObservation.hudStateFor(turn.state, soloLayout = true),
+                hudScores = scores,
+            ),
+            movesRemaining,
+            circlesSample,
+            word,
         )
     }
+
+    private fun withCircles(
+        hud: HudObservation,
+        movesRemaining: Int?,
+        circles: CircleSample,
+        activateWord: Boolean,
+    ): HudObservation = hud.copy(
+        movesRemaining = movesRemaining,
+        circlesBright = if (circles.classifiable) circles.bright else null,
+        circlesClassifiable = circles.classifiable,
+        activateWord = activateWord,
+    )
 
     fun activateCenter(width: Int, height: Int): Pair<Float, Float> {
         val x = (ACTIVATE_LEFT + ACTIVATE_RIGHT) / 2.0 * width / REF_W
@@ -234,12 +272,33 @@ object HudReader {
     fun argb(r: Int, g: Int, b: Int): Int = (0xff shl 24) or (r shl 16) or (g shl 8) or b
 }
 
-/** Tap point for a recognized solo ACTIVATE button. Null means do not tap. */
+/** Tap point for a left-card ACTIVATE word. Null means do not tap. */
 object SoloBooster {
     data class Tap(val x: Float, val y: Float)
 
-    fun plan(hud: HudObservation, width: Int, height: Int, controlEnabled: Boolean): Tap? {
-        if (!BoosterMonitor.mayTap(hud.soloLayout, hud.activate == "yes", controlEnabled)) return null
+    fun decision(
+        hud: HudObservation,
+        controlEnabled: Boolean,
+        extraMoveAvailable: Boolean,
+        latched: Boolean,
+    ): String = when {
+        latched -> "latched"
+        !controlEnabled -> "toggle-off"
+        hud.turnState == HudObservation.TURN_OPPONENT -> "opponent"
+        !hud.activateWord -> "no-activate-word"
+        extraMoveAvailable -> "wait-extra"
+        else -> "tap"
+    }
+
+    fun plan(
+        hud: HudObservation,
+        width: Int,
+        height: Int,
+        controlEnabled: Boolean,
+        extraMoveAvailable: Boolean = false,
+    ): Tap? {
+        val ourTurn = hud.turnState != HudObservation.TURN_OPPONENT
+        if (!BoosterMonitor.mayTap(controlEnabled, hud.activateWord, ourTurn, extraMoveAvailable)) return null
         val (x, y) = HudReader.activateCenter(width, height)
         if (x < 0f || y < 0f) return null
         return Tap(x, y)

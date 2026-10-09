@@ -1,8 +1,9 @@
 package com.match3vision.analyzer.hud
 
 /**
- * ACTIVATE is tapped only for the recognized solo layout, and only when the
- * bubble toggle is on. The toggle defaults off. Any other HUD is log-only.
+ * The left-card ACTIVATE word is tapped when the bubble toggle is on, the
+ * turn is not the opponent's, and no extra-move swap is available. The toggle
+ * defaults on. A bright rectangle without the word is not a tap.
  */
 object BoosterMonitor {
     const val CONTROL_OFF = "off"
@@ -16,14 +17,18 @@ object BoosterMonitor {
         else -> UNKNOWN
     }
 
-    fun mayTap(soloLayout: Boolean, activateVisible: Boolean, controlEnabled: Boolean): Boolean =
-        soloLayout && activateVisible && controlEnabled
+    fun mayTap(
+        controlEnabled: Boolean,
+        activateWord: Boolean,
+        ourTurn: Boolean,
+        extraMoveAvailable: Boolean,
+    ): Boolean = controlEnabled && activateWord && ourTurn && !extraMoveAvailable
 }
 
-/** Bubble toggle. Default off, so a session never taps ACTIVATE unless the owner turns it on. */
+/** Bubble toggle. Default on for solo and PvP. The owner can turn it off. */
 object BoosterControl {
     @Volatile
-    var enabled: Boolean = false
+    var enabled: Boolean = true
 
     fun label(): String = if (enabled) "BOOSTER: BE" else "BOOSTER: KI"
 }

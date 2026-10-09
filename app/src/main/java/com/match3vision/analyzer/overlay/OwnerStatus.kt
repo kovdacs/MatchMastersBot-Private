@@ -15,6 +15,9 @@ object OwnerStatus {
             key.contains("auto-calibration: board change") -> "A lépés nem a várt helyen történt – leálltam"
             key.contains("auto-calibration: screen") -> "A képernyő mérete nem egyezik – leálltam"
             key.contains("10 moves verified") || key.contains("10 moves complete") -> "Kész: 10 lépés megtörtént"
+            key.contains("40 gesture") -> "Elértem a biztonsági lépéshatárt – leálltam"
+            key.contains("no moves left") -> "Nincs több lépés – leálltam"
+            key.contains("300s") -> "Lejárt az 5 perc – leálltam"
             key.contains("120s") -> "Lejárt a 2 perc – leálltam"
             key.contains("user interference") -> "Hozzáértél a képernyőhöz – leálltam"
             key.contains("board unchanged") ||

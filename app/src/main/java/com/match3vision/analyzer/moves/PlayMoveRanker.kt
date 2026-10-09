@@ -146,8 +146,9 @@ class PlayMoveRanker(
     }
 
     /**
-     * Solo two-ply. Other HUDs keep the 0.25.0 order ([lookahead] `skipped-mode`).
-     * Past [DECISION_BUDGET_MS], that same order is returned as `fallback-budget`.
+     * Two-ply on every HUD once vision has passed. Time Left of 0..3 keeps the
+     * fast order ([lookahead] `skipped-low-time`). Past [DECISION_BUDGET_MS],
+     * that same order is returned as `fallback-budget`.
      */
     fun rankLookahead(
         board: Board,
@@ -161,16 +162,7 @@ class PlayMoveRanker(
         val greedy = greedyCandidates(board, specials)
         val greedyMove = greedy.firstOrNull()?.move?.toString() ?: "none"
         val timer = hud.timer
-        if (greedy.isEmpty() && !hud.soloLayout) {
-            return Ranking(emptyList(), specials, elapsedMs(), "greedy", greedyMove, timer, hud.log())
-        }
-        val lowTime = TurnClock.skipLookahead(timer)
-        val pvpThink = hud.mode == "pvp" && hud.playerTurn() && hud.multiplier != null && !lowTime
-        if (!hud.soloLayout && !pvpThink) {
-            val why = if (hud.mode == "pvp" && hud.playerTurn() && lowTime) "skipped-low-time" else "skipped-mode"
-            return Ranking(greedy, specials, elapsedMs(), why, greedyMove, timer, hud.log())
-        }
-        if (lowTime) {
+        if (TurnClock.skipLookahead(timer)) {
             return Ranking(greedy, specials, elapsedMs(), "skipped-low-time", greedyMove, timer, hud.log())
         }
         val solo = SoloSwap(generator, detector, gravity)
@@ -454,10 +446,10 @@ class PlayMoveRanker(
                 "4-line leaves an arrow, 5-line a color bomb, 5-L/T a bomb; unknown refills are never matches."
 
         const val MODE_GATE =
-            "modeGate=solo lookahead runs on the solo layout. PvP lookahead runs on Your Turn or Time Left. " +
-                "The session stops only on a positively read Opponent's Turn. An unrecognized HUD is " +
-                "hudState=UNKNOWN and play continues. " +
-                "ACTIVATE stays on the solo layout only, and only when the debug toggle is on."
+            "modeGate=lookahead runs on vision PASS regardless of mode. " +
+                "The session stops only on a positively read Opponent's Turn. " +
+                "An unrecognized HUD is treated as solo. " +
+                "ACTIVATE word on the left card taps when the toggle is on and no extra move is available."
 
         private val LOOKAHEAD_ORDER = compareByDescending<Candidate> { it.totalScore }
             .then(ORDER)

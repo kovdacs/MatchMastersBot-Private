@@ -62,7 +62,8 @@ class HudSafetyTest {
         paint(pixels, 1000, 1050, 890, 940, 180, 30, 40)
         paint(pixels, HudReader.ACTIVATE_LEFT, HudReader.ACTIVATE_RIGHT, HudReader.ACTIVATE_TOP, HudReader.ACTIVATE_BOTTOM, 80, 180, 255)
         val hud = HudReader.read(pixels, 1080, 2400)
-        assertThat(hud.mode).isEqualTo("pvp")
+        assertThat(hud.mode).isEqualTo("solo")
+        assertThat(hud.soloLayout).isTrue()
         assertThat(hud.playerTurn()).isFalse()
         assertThat(hud.hudState).isEqualTo(HudObservation.HUD_UNKNOWN)
         assertThat(TurnGate.refusal(hud)).isNull()
@@ -70,6 +71,7 @@ class HudSafetyTest {
         assertThat(hud.log()).contains("opponentReds=")
         assertThat(hud.hudScores).contains("your=")
         assertThat(hud.hudScores).contains("opponent=")
+        assertThat(hud.activateWord).isFalse()
         assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)).isNull()
     }
 
@@ -83,8 +85,11 @@ class HudSafetyTest {
         val hud = HudReader.read(pixels, 1080, 2400)
         assertThat(hud.playerTurn()).isTrue()
         assertThat(hud.activate).isEqualTo("yes")
+        assertThat(hud.activateWord).isTrue()
         assertThat(hud.boosterFill).isEqualTo("ACTIVATE")
-        assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)).isNull()
+        val tap = SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)
+        assertThat(tap).isNotNull()
+        assertThat(tap!!.x).isLessThan(400f)
     }
 
     @Test
@@ -143,7 +148,7 @@ class HudSafetyTest {
         )
         assertThat(thinking.lookahead).isEqualTo("used")
         val unread = ranker.rankLookahead(board, hud = HudObservation.pvp(turnState = HudObservation.TURN_YOUR))
-        assertThat(unread.lookahead).isEqualTo("skipped-mode")
+        assertThat(unread.lookahead).isEqualTo("used")
     }
 
     @Test

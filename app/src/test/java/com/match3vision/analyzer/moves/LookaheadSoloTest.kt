@@ -12,8 +12,8 @@ import com.match3vision.analyzer.vision.TileColor
 import org.junit.Test
 
 /**
- * Solo Perfect Heist lookahead. A HUD that is not the solo layout keeps the
- * 0.25.0 order and never plans an ACTIVATE tap.
+ * Two-ply lookahead runs on a vision PASS for every HUD. ACTIVATE taps only
+ * when the left-card word is read and no extra move is available.
  */
 class LookaheadSoloTest {
     private val ranker = PlayMoveRanker()
@@ -68,17 +68,32 @@ class LookaheadSoloTest {
     }
 
     @Test
-    fun nonSoloHud_keepsTheGreedyOrder_andDoesNotTap() {
+    fun nonSoloHud_runsLookahead() {
         val board = trap()
-        val greedy = ranker.rank(board)
         val looked = ranker.rankLookahead(board, hud = HudObservation.UNKNOWN)
-        assertThat(looked.lookahead).isEqualTo("skipped-mode")
-        assertThat(looked.ordered.map { it.move.toString() })
-            .isEqualTo(greedy.ordered.map { it.move.toString() })
+        val solo = ranker.rankLookahead(board, hud = HudObservation.solo())
+        assertThat(looked.lookahead).isEqualTo("used")
+        assertThat(looked.ordered.first().move).isEqualTo(solo.ordered.first().move)
         assertThat(looked.export()).contains("modeGate=")
         BoosterControl.enabled = false
-        assertThat(SoloBooster.plan(HudObservation.solo(activateVisible = true), 1080, 2400, false)).isNull()
-        assertThat(BoosterMonitor.mayTap(false, true, true)).isFalse()
+        assertThat(SoloBooster.plan(HudObservation.solo(activateWord = true), 1080, 2400, false)).isNull()
+        assertThat(
+            BoosterMonitor.mayTap(
+                controlEnabled = true,
+                activateWord = true,
+                ourTurn = true,
+                extraMoveAvailable = false,
+            ),
+        ).isTrue()
+        assertThat(
+            BoosterMonitor.mayTap(
+                controlEnabled = true,
+                activateWord = true,
+                ourTurn = true,
+                extraMoveAvailable = true,
+            ),
+        ).isFalse()
+        BoosterControl.enabled = true
     }
 
     @Test
@@ -208,15 +223,22 @@ class LookaheadSoloTest {
     }
 
     @Test
-    fun activateToggle_tapsOnlyTheRecognizedSoloButton() {
-        val hud = HudObservation.solo(activateVisible = true)
+    fun activateToggle_tapsOnlyTheLeftCardWord_whenNoExtraMove() {
+        val bright = HudObservation.solo(activateVisible = true)
+        assertThat(bright.activateWord).isFalse()
+        assertThat(SoloBooster.plan(bright, 1080, 2400, controlEnabled = true)).isNull()
+        val hud = HudObservation.solo(activateWord = true)
         assertThat(hud.boosterTarget).isEqualTo("none")
         assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = false)).isNull()
-        val tap = SoloBooster.plan(hud, 1080, 2400, controlEnabled = true)
+        val tap = SoloBooster.plan(hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = false)
         assertThat(tap).isNotNull()
         assertThat(tap!!.x).isGreaterThan(40f)
         assertThat(tap.y).isGreaterThan(800f)
+        assertThat(SoloBooster.plan(hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = true)).isNull()
         val pvp = HudObservation(mode = "pvp", soloLayout = false, activate = "yes")
+        assertThat(pvp.activateWord).isFalse()
         assertThat(SoloBooster.plan(pvp, 1080, 2400, controlEnabled = true)).isNull()
+        val pvpWord = HudObservation.pvp(turnState = HudObservation.TURN_YOUR, activateWord = true)
+        assertThat(SoloBooster.plan(pvpWord, 1080, 2400, controlEnabled = true, extraMoveAvailable = false)).isNotNull()
     }
 }
