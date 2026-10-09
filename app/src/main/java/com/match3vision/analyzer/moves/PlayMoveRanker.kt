@@ -164,10 +164,13 @@ class PlayMoveRanker(
         if (greedy.isEmpty() && !hud.soloLayout) {
             return Ranking(emptyList(), specials, elapsedMs(), "greedy", greedyMove, timer, hud.log())
         }
-        if (!hud.soloLayout) {
-            return Ranking(greedy, specials, elapsedMs(), "skipped-mode", greedyMove, timer, hud.log())
+        val lowTime = TurnClock.skipLookahead(timer)
+        val pvpThink = hud.mode == "pvp" && hud.playerTurn() && hud.multiplier != null && !lowTime
+        if (!hud.soloLayout && !pvpThink) {
+            val why = if (hud.mode == "pvp" && hud.playerTurn() && lowTime) "skipped-low-time" else "skipped-mode"
+            return Ranking(greedy, specials, elapsedMs(), why, greedyMove, timer, hud.log())
         }
-        if (TurnClock.skipLookahead(timer)) {
+        if (lowTime) {
             return Ranking(greedy, specials, elapsedMs(), "skipped-low-time", greedyMove, timer, hud.log())
         }
         val solo = SoloSwap(generator, detector, gravity)
@@ -238,6 +241,7 @@ class PlayMoveRanker(
             uncertain = resolved.uncertain,
             blueFactor = hud.blueFactor,
             gemScore = gems,
+            blueMultiplier = hud.blueMultiplier(),
         )
         return Candidate(
             move = move,
@@ -384,15 +388,49 @@ class PlayMoveRanker(
 
         private const val MAX_STEPS = 32
         private val ORTHOGONAL = listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)
-        private val ORDER = compareByDescending<Candidate> { it.extraMove }
-            .thenByDescending { it.blueCleared }
-            .thenByDescending { it.totalCleared }
-            .thenByDescending { it.lowerRow }
-            .thenBy { it.move.toString() }
+        /**
+         * Extras first, and among extras the higher one (smaller row) first,
+         * because a lower swap shifts the pieces above it. Other ties keep
+         * blue, then total, then the lower row.
+         */
+        private val ORDER = Comparator<Candidate> { a, b ->
+            if (a.extraMove != b.extraMove) {
+                if (a.extraMove) -1 else 1
+            } else if (a.extraMove && a.lowerRow != b.lowerRow) {
+                a.lowerRow.compareTo(b.lowerRow)
+            } else {
+                val blue = b.blueCleared.compareTo(a.blueCleared)
+                if (blue != 0) {
+                    blue
+                } else {
+                    val total = b.totalCleared.compareTo(a.totalCleared)
+                    if (total != 0) {
+                        total
+                    } else if (!a.extraMove && a.lowerRow != b.lowerRow) {
+                        b.lowerRow.compareTo(a.lowerRow)
+                    } else {
+                        a.move.toString().compareTo(b.move.toString())
+                    }
+                }
+            }
+        }
 
         const val EXTRA_MOVE_POINTS = 1_000_000
         const val BLUE_POINTS = 1_000
-        /** One gem when the score legend is absent or its digits were not read. */
+        /**
+         * Official Froggy Fu defaults, used when that color's legend digit was not read.
+         * Blue 1, red 1, green 2, orange 3, purple 4, yellow 5.
+         */
+        val DEFAULT_LEGEND: Map<TileColor, Int> = mapOf(
+            TileColor.B to 1,
+            TileColor.R to 1,
+            TileColor.G to 2,
+            TileColor.O to 3,
+            TileColor.P to 4,
+            TileColor.Y to 5,
+        )
+
+        /** Scale of one unread gem before the legend table replaced it. */
         const val GEM_POINTS = 10
         const val ROW_POINTS = 1
         const val UNCERTAIN_PENALTY = 500
@@ -405,16 +443,20 @@ class PlayMoveRanker(
 
         const val SCORE_FORMULA =
             "scoreFormula=solo ply = extra*1000000 + blue*1000*blueFactor + gemScore + lowerRow - uncertain*500; " +
-                "gemScore = legendWeight*100 per gem when that color's legend digit was read, otherwise 10 " +
-                "(1 point per gem); blueFactor=0.15 when ACTIVATE is visible, else 1; " +
+                "gemScore = legendWeight*100 per gem when that color was read, otherwise the official " +
+                "default (blue 1, red 1, green 2, orange 3, purple 4, yellow 5), logged as legend default; " +
+                "among extra moves the higher one is played first; " +
+                "blueFactor=0.15 when ACTIVATE or FULL is visible, else 1; " +
+                "when a multiplier xN was read, the blue term is multiplied by N; " +
                 "chosen = ply(now) + weight * ply(followUp); weight=1 when this ply is an extra move or the " +
                 "move counter shows more than 1 left, weight=0 on a detected last move, otherwise 0.7; " +
                 "the weight scales the follow-up only; an extra move is always 1000000 inside a ply; " +
                 "4-line leaves an arrow, 5-line a color bomb, 5-L/T a bomb; unknown refills are never matches."
 
         const val MODE_GATE =
-            "modeGate=lookahead, legend weights, specials, and ACTIVATE run only when the HUD matches the " +
-                "solo layout. Any other HUD, including PvP, uses the 0.25.0 order and is not tapped."
+            "modeGate=solo lookahead runs on the solo layout. PvP is dispatched only when the turn bar reads " +
+                "Your Turn or Time Left. Opponent's Turn and an unrecognized PvP HUD stop the session. " +
+                "ACTIVATE stays on the solo layout only, and only when the debug toggle is on."
 
         private val LOOKAHEAD_ORDER = compareByDescending<Candidate> { it.totalScore }
             .then(ORDER)
@@ -427,12 +469,11 @@ class PlayMoveRanker(
         }
 
         fun gemScore(counts: Map<TileColor, Int>, weights: Map<TileColor, Int>): Int {
-            if (weights.isEmpty()) return counts.values.sum() * GEM_POINTS
             var score = 0
             for ((color, count) in counts) {
                 if (count == 0 || color == TileColor.UNKNOWN) continue
-                val weight = weights[color]
-                score += if (weight != null) count * weight * LEGEND_SCALE else count * GEM_POINTS
+                val weight = weights[color] ?: DEFAULT_LEGEND[color] ?: 1
+                score += count * weight * LEGEND_SCALE
             }
             return score
         }
@@ -445,8 +486,10 @@ class PlayMoveRanker(
             uncertain: Boolean,
             blueFactor: Double = 1.0,
             gemScore: Int = total * GEM_POINTS,
+            blueMultiplier: Int = 1,
         ): Int {
-            val blueTerm = (blue * BLUE_POINTS * blueFactor).roundToInt()
+            val scale = blueMultiplier.coerceAtLeast(1)
+            val blueTerm = (blue * BLUE_POINTS * blueFactor * scale).roundToInt()
             val penalty = if (uncertain) UNCERTAIN_PENALTY else 0
             val extra = if (extraMove) EXTRA_MOVE_POINTS else 0
             return extra + blueTerm + gemScore + lowerRow * ROW_POINTS - penalty

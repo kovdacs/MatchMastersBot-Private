@@ -74,6 +74,13 @@ class FiveMoveSession {
         val overlayOutside: Boolean = true,
         val capturedAfterGesture: Boolean = true,
         val frameSequence: Long = 0L,
+        /** False when this frame is the opponent's turn. That change is not verified. */
+        val countBoardChange: Boolean = true,
+        /**
+         * Move 1 of an auto-calibration probe. False means the changed cells
+         * missed the swapped rows and columns.
+         */
+        val swapOverlaps: Boolean = true,
     )
 
     data class MoveRecord(
@@ -121,6 +128,12 @@ class FiveMoveSession {
     /** One ACTIVATE attempt per session. A miss does not stop gem play. */
     var boosterLatched: Boolean = false
         private set
+
+    /** Move 1 may dispatch before a saved calibration exists. */
+    var autoProbe: Boolean = false
+        private set
+
+    private var pendingAutoSave: Boolean = false
 
     var stopReason: String = ""
         private set
@@ -211,8 +224,21 @@ class FiveMoveSession {
         gameLines.clear()
         pendingGameLog = null
         boosterLatched = false
+        autoProbe = false
+        pendingAutoSave = false
         return true
     }
+
+    /** Allow move 1 without a saved TESZT ÉRINTÉS hit. Later moves still need it. */
+    fun enableAutoProbe() {
+        if (phase == Phase.RUNNING && gesturesDispatched == 0) autoProbe = true
+    }
+
+    fun needsGeometryCheck(): Boolean = autoProbe && gesturesDispatched == 0
+
+    fun openCells(): String? = openMove?.cells
+
+    fun takeAutoSave(): Boolean = pendingAutoSave.also { pendingAutoSave = false }
 
     fun noteStartExport(text: String) {
         startExport = text.trim()
@@ -273,6 +299,8 @@ class FiveMoveSession {
         gameLines.clear()
         pendingGameLog = null
         boosterLatched = false
+        autoProbe = false
+        pendingAutoSave = false
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -352,12 +380,14 @@ class FiveMoveSession {
         y: Float,
         nowMs: Long,
         playExport: String,
+        countChange: Boolean = true,
     ): String {
         boosterLatched = true
         if (phase != Phase.RUNNING) return "not running"
         if (gesturesDispatched >= MAX_MOVES) return "cap"
         gesturesDispatched += 1
         val verification = when {
+            !countChange -> "FAILED — board changed during the opponent's turn"
             !callbackCompleted -> "FAILED — booster tap callback was not completed"
             changed && stable -> "PASS — booster ACTIVATE, board changed, stable"
             changed -> "FAILED — booster board changed but did not settle"
@@ -378,7 +408,7 @@ class FiveMoveSession {
             finishedAtMs = nowMs,
             playExport = playExport,
         )
-        if (changed && stable && callbackCompleted) {
+        if (countChange && changed && stable && callbackCompleted) {
             verifiedCount += 1
             if (verifiedCount >= MAX_MOVES) {
                 stop(nowMs, "STOP — 10 moves verified")
@@ -460,6 +490,16 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — 120s session limit")
             return stop(sample.nowMs, "STOP — 120s session limit")
         }
+        if (!sample.countBoardChange) {
+            val changed = sample.boardHash != open.beforeHash
+            val verification = if (changed) {
+                "FAILED — board changed during the opponent's turn"
+            } else {
+                "FAILED — opponent turn before the move was verified"
+            }
+            closeOpen(open, sample, verification)
+            return stop(sample.nowMs, "STOP — opponent turn during verification")
+        }
         if (sample.diffFraction != null && sample.diffFraction > STABLE_FRACTION) {
             open.sawBoardChange = true
         }
@@ -488,6 +528,10 @@ class FiveMoveSession {
             closeOpen(open, sample, "FAILED — board unchanged")
             return stop(sample.nowMs, "STOP — board unchanged after move ${open.number}")
         }
+        if (autoProbe && open.number == 1 && !sample.swapOverlaps) {
+            closeOpen(open, sample, "FAILED — auto-calibration missed the swapped cells")
+            return stop(sample.nowMs, AutoCalibration.STOP_MISSED)
+        }
         if (sample.frameSequence > lastSettledFrameSequence) {
             lastSettledFrameSequence = sample.frameSequence
         }
@@ -497,6 +541,11 @@ class FiveMoveSession {
             "PASS — callback completed, board changed, stable, fresh, ROI plausible, vision PASS",
         )
         verifiedCount += 1
+        if (autoProbe && open.number == 1) {
+            autoProbe = false
+            pendingAutoSave = true
+            if (calibrationLine.isBlank()) calibrationLine = AutoCalibration.NOTE
+        }
         openMove = null
         if (verifiedCount >= MAX_MOVES) {
             return stop(sample.nowMs, "STOP — 10 moves verified")
@@ -620,7 +669,7 @@ class FiveMoveSession {
     }
 
     private fun holdReason(gates: Gates): String? = when {
-        !gates.selfCheckMeasured ->
+        !gates.selfCheckMeasured && !autoProbeOpen() ->
             "HOLD — self-check is not MEASURED_WITHIN_TOLERANCE"
         !gates.overlayCollapsed -> "HOLD — overlay is not collapsed"
         !gates.overlayOutsideRoi -> "HOLD — overlay intersects ROI"
@@ -651,6 +700,8 @@ class FiveMoveSession {
         !a11yConnected -> stop(nowMs, "STOP — accessibility lost")
         else -> null
     }
+
+    private fun autoProbeOpen(): Boolean = autoProbe && gesturesDispatched == 0
 
     private fun qualifiesAsPass(sample: SettleSample): Boolean =
         sample.capturedAfterGesture &&

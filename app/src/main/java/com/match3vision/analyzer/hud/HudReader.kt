@@ -25,28 +25,66 @@ object HudReader {
         if (width < 200 || height < 400 || pixels.size < width * height) {
             return HudObservation.UNKNOWN
         }
-        if (opponentGem(pixels, width, height)) {
-            return HudObservation(mode = "pvp", soloLayout = false)
+        val turn = HudText.turn(pixels, width, height)
+        val card = HudText.card(pixels, width, height)
+        val pvp = opponentGem(pixels, width, height) || turn.state == HudObservation.TURN_OPPONENT
+        if (pvp) {
+            val mult = HudText.multiplier(pixels, width, height)
+            val player = turn.state == HudObservation.TURN_YOUR || turn.state == HudObservation.TURN_TIME
+            val activateWord = card.activateWord && player
+            val full = card.text == "FULL" || card.text == "7/7" || activateWord
+            return HudObservation(
+                timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
+                moves = HudObservation.NOT_DETECTABLE,
+                mode = "pvp",
+                boosterFill = card.text,
+                boosterPhase = when {
+                    activateWord || full -> BoosterMonitor.READY
+                    card.text.endsWith("/7") -> BoosterMonitor.CHARGING
+                    else -> BoosterMonitor.UNKNOWN
+                },
+                blueFactor = if (full) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+                soloLayout = false,
+                activate = if (activateWord) "yes" else "no",
+                boosterTarget = if (activateWord) "none" else "unknown",
+                yourTurn = turn.label,
+                turnState = turn.state,
+                timeLeftSeconds = turn.seconds,
+                multiplier = mult.value,
+                multiplierNote = mult.note,
+            )
         }
-        val activate = activateBright(pixels, width, height)
+        val activate = activateBright(pixels, width, height) || card.activateWord
         val circles = circleReport(pixels, width, height)
         // A flat field is classifiable at every sample and is still not a circle row.
         val solo = activate || (circles != null && circleRowStructured(pixels, width, height))
         if (!solo) return HudObservation.UNKNOWN
-        val fill = if (activate) "full" else "unknown"
+        val legend = HudText.legend(pixels, width, height)
+        val fill = when {
+            card.text == "ACTIVATE" || card.text == "FULL" || card.text == "7/7" || activate -> "full"
+            card.text.endsWith("/7") -> card.text
+            else -> "unknown"
+        }
         return HudObservation(
-            timer = HudObservation.NOT_DETECTABLE,
+            timer = if (turn.seconds != null) "Time Left: ${turn.seconds}" else HudObservation.NOT_DETECTABLE,
             moves = circles ?: HudObservation.NOT_DETECTABLE,
             rounds = HudObservation.NOT_DETECTABLE,
             mode = "solo",
             boosterFill = fill,
-            boosterPhase = BoosterMonitor.phase(fill),
-            blueFactor = if (activate) PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
+            boosterPhase = when {
+                activate || fill == "full" -> BoosterMonitor.READY
+                fill.endsWith("/7") -> BoosterMonitor.CHARGING
+                else -> BoosterMonitor.phase(fill)
+            },
+            blueFactor = if (activate || fill == "full") PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
             soloLayout = true,
             activate = if (activate) "yes" else "no",
             boosterTarget = if (activate) "none" else "unknown",
-            legend = legendReport(pixels, width, height),
-            yourTurn = HudObservation.NOT_DETECTABLE,
+            legend = legend.first,
+            yourTurn = turn.label,
+            turnState = turn.state,
+            timeLeftSeconds = turn.seconds,
+            legendPoints = legend.second,
         )
     }
 
@@ -117,44 +155,6 @@ object HudReader {
             if (kotlin.math.abs(center - gap) >= 40) contrast++
         }
         return contrast >= 4
-    }
-
-    private fun legendReport(pixels: IntArray, width: Int, height: Int): String {
-        val hits = IntArray(6)
-        var samples = 0
-        for (y in 2180..2320 step 6) {
-            val py = scaleY(y, height)
-            for (x in 180..900 step 8) {
-                val color = pixel(pixels, width, height, scaleX(x, width), py) ?: continue
-                val bucket = hueBucket(color) ?: continue
-                hits[bucket]++
-                samples++
-            }
-        }
-        val kinds = hits.count { it > 8 }
-        return if (kinds >= 3 && samples > 20) {
-            "present values=not detectable; gemScore=1 per gem"
-        } else {
-            "not detectable; gemScore=1 per gem"
-        }
-    }
-
-    private fun hueBucket(color: Int): Int? {
-        val r = (color shr 16) and 0xff
-        val g = (color shr 8) and 0xff
-        val b = color and 0xff
-        val max = maxOf(r, g, b)
-        val min = minOf(r, g, b)
-        if (max < 90 || max - min < 50) return null
-        return when {
-            r > 170 && g > 170 && b < 120 -> 0
-            r > g && r > b && g > 90 -> 1
-            g > r + 20 && g > b -> 2
-            b > r && b > g && r > 80 -> 3
-            r > 150 && r > g + 40 && r > b + 40 -> 4
-            b > r + 20 && b > g -> 5
-            else -> null
-        }
     }
 
     private fun meanLuma(pixels: IntArray, width: Int, height: Int, cx: Int, cy: Int): Int? {

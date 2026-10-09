@@ -9,7 +9,7 @@ import com.match3vision.analyzer.vision.TileColor
  * [soloLayout] is the only gate for lookahead, legend weights, specials, and
  * ACTIVATE. Move counts, legend digits, and the timer are logged and are not
  * assumed. An empty [legendPoints] map means the digits were not read, so the
- * ranker scores 1 point per gem.
+ * ranker uses the official default (logged as legend default).
  */
 data class HudObservation(
     val timer: String = TurnClock.NOT_DETECTABLE,
@@ -26,17 +26,33 @@ data class HudObservation(
     val yourTurn: String = NOT_DETECTABLE,
     val movesRemaining: Int? = null,
     val legendPoints: Map<TileColor, Int> = emptyMap(),
+    /** your-turn, time-left, opponent-turn, or not detectable. */
+    val turnState: String = NOT_DETECTABLE,
+    val timeLeftSeconds: Int? = null,
+    /** Read xN. Null means the bonus is not applied. */
+    val multiplier: Int? = null,
+    val multiplierNote: String = NOT_DETECTABLE,
 ) {
+    fun playerTurn(): Boolean = turnState == TURN_YOUR || turnState == TURN_TIME
+
+    /** Blue term scale. 1 when the multiplier was not read. */
+    fun blueMultiplier(): Int = multiplier ?: 1
+
     fun log(): String =
         "timer=$timer moves=$moves rounds=$rounds mode=$mode solo=${if (soloLayout) "yes" else "no"} " +
             "boosterFill=$boosterFill boosterPhase=$boosterPhase activate=$activate " +
             "boosterTarget=$boosterTarget boosterControl=${if (BoosterControl.enabled) "on" else BoosterMonitor.CONTROL_OFF} " +
             "blueFactor=$blueFactor legend=$legend yourTurn=$yourTurn " +
+            "turnState=$turnState timeLeft=${timeLeftSeconds?.toString() ?: NOT_DETECTABLE} " +
+            "multiplier=$multiplierNote " +
             "movesRemaining=${movesRemaining?.toString() ?: NOT_DETECTABLE}"
 
     companion object {
         const val NOT_DETECTABLE = "not detectable"
         const val MODE_UNKNOWN = "mode unknown"
+        const val TURN_YOUR = "your-turn"
+        const val TURN_OPPONENT = "opponent-turn"
+        const val TURN_TIME = "time-left"
 
         /** Recognized solo frame. Legend digits are not invented. */
         fun solo(activateVisible: Boolean = false, movesRemaining: Int? = null): HudObservation {
@@ -49,8 +65,41 @@ data class HudObservation(
                 activate = if (full) "yes" else "no",
                 boosterTarget = if (full) "none" else "unknown",
                 blueFactor = if (full) com.match3vision.analyzer.moves.PlayMoveRanker.FULL_BAR_BLUE_FACTOR else 1.0,
-                legend = "not detectable; gemScore=1 per gem",
+                legend = "legend default",
                 movesRemaining = movesRemaining,
+            )
+        }
+
+        fun pvp(
+            turnState: String = NOT_DETECTABLE,
+            timeLeftSeconds: Int? = null,
+            multiplier: Int? = null,
+            activateWord: Boolean = false,
+        ): HudObservation {
+            val player = turnState == TURN_YOUR || turnState == TURN_TIME
+            val label = when (turnState) {
+                TURN_YOUR -> "Your Turn"
+                TURN_OPPONENT -> "Opponent's Turn"
+                TURN_TIME -> "Time Left: ${timeLeftSeconds ?: ""}".trim()
+                else -> NOT_DETECTABLE
+            }
+            return HudObservation(
+                timer = if (turnState == TURN_TIME && timeLeftSeconds != null) {
+                    "Time Left: $timeLeftSeconds"
+                } else {
+                    TurnClock.NOT_DETECTABLE
+                },
+                mode = "pvp",
+                soloLayout = false,
+                boosterFill = if (activateWord) "ACTIVATE" else "unknown",
+                boosterPhase = if (activateWord) BoosterMonitor.READY else BoosterMonitor.UNKNOWN,
+                activate = if (activateWord && player) "yes" else "no",
+                boosterTarget = if (activateWord && player) "none" else "unknown",
+                yourTurn = label,
+                turnState = turnState,
+                timeLeftSeconds = timeLeftSeconds,
+                multiplier = multiplier,
+                multiplierNote = if (multiplier != null) "x$multiplier" else NOT_DETECTABLE,
             )
         }
 

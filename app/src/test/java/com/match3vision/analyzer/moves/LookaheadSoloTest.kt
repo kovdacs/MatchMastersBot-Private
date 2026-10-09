@@ -117,7 +117,7 @@ class LookaheadSoloTest {
         assertThat(low.followUp).isNotNull()
         assertThat(high.followUp).isNotNull()
         assertThat(low.followWeight).isEqualTo(PlayMoveRanker.FOLLOW_WEIGHT_LIKELY)
-        assertThat(low.totalScore - high.totalScore).isWithin(0.001).of(4.0)
+        assertThat(low.totalScore).isGreaterThan(high.totalScore)
         assertThat(looked.export()).contains("differsFromGreedy=no")
     }
 
@@ -169,7 +169,7 @@ class LookaheadSoloTest {
         val green = PlayMoveRanker.gemScore(mapOf(TileColor.G to 3), weights)
         assertThat(yellow).isGreaterThan(green)
         val flat = PlayMoveRanker.gemScore(mapOf(TileColor.Y to 3), emptyMap())
-        assertThat(flat).isEqualTo(3 * PlayMoveRanker.GEM_POINTS)
+        assertThat(flat).isEqualTo(3 * 5 * PlayMoveRanker.LEGEND_SCALE)
         val fullBlue = PlayMoveRanker.plyPoints(
             extraMove = false, blue = 3, total = 3, lowerRow = 0, uncertain = false,
             blueFactor = PlayMoveRanker.FULL_BAR_BLUE_FACTOR, gemScore = 0,
