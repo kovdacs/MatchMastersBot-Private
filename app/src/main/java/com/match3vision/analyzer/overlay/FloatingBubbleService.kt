@@ -308,7 +308,7 @@ class FloatingBubbleService : Service() {
         attachDrag(title, root, params)
         root.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                onOutsideTouch()
+                onOutsideTouch(event)
                 true
             } else {
                 false
@@ -1848,14 +1848,19 @@ class FloatingBubbleService : Service() {
 
     /**
      * ACTION_OUTSIDE on the bubble means a finger hit the glass somewhere else.
-     * Our own swipe is suppressed for a short window around the callback.
-     * A counted touch stops the session: the board diff is not our proof.
+     * Our own swipe and ACTIVATE tap are not a finger: they are ignored from
+     * dispatch until 1500 ms after the callback, and again when the event
+     * lands within 60 px of that path. A counted touch stops the session.
      */
-    private fun onOutsideTouch() {
+    private fun onOutsideTouch(event: MotionEvent) {
         val ctrl = AutoPlaySession.controller ?: return
         val session = ctrl.fiveMove
         if (!session.isActive) return
-        val decision = session.noteOutsideTouch(System.currentTimeMillis()) ?: return
+        val decision = session.noteOutsideTouch(
+            System.currentTimeMillis(),
+            event.rawX,
+            event.rawY,
+        ) ?: return
         Timber.i("fiveMoveSession: user interference %s", decision)
         if (fiveSettleInProgress) return
         closeGameLog(
@@ -1931,8 +1936,13 @@ class FloatingBubbleService : Service() {
         if (!executor.isReady()) return false
         val started = System.currentTimeMillis()
         val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = 80L)
-        val dispatched = withContext(Dispatchers.Default) {
-            executor.dispatchRecognizedTap(gesture)
+        session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y)
+        val dispatched = try {
+            withContext(Dispatchers.Default) {
+                executor.dispatchRecognizedTap(gesture)
+            }
+        } finally {
+            session.finishOwnGesture(System.currentTimeMillis())
         }
         val callback = dispatched is InputDispatchResult.Dispatched && dispatched.callbackCompleted
         var changed = false
@@ -2152,7 +2162,7 @@ class FloatingBubbleService : Service() {
                 } else {
                     null
                 }
-                session.suppressOutsideTouchUntil(started + 800L)
+                session.beginOwnGesture()
                 setBubbleTouchable(false)
                 val cycle = try {
                     withContext(Dispatchers.Default) {
@@ -2164,6 +2174,16 @@ class FloatingBubbleService : Service() {
                 } finally {
                     setBubbleTouchable(true)
                 }
+                val dispatchedGesture = (cycle?.executed as? AutomaticInputEngine.ExecuteResult.Executed)?.gesture
+                if (dispatchedGesture != null) {
+                    session.rememberOwnPath(
+                        dispatchedGesture.startX,
+                        dispatchedGesture.startY,
+                        dispatchedGesture.endX,
+                        dispatchedGesture.endY,
+                    )
+                }
+                session.finishOwnGesture(System.currentTimeMillis())
                 if (session.phase == FiveMoveSession.Phase.STOPPED) {
                     flushFiveMoveReport(session)
                     return true
@@ -2242,7 +2262,6 @@ class FloatingBubbleService : Service() {
                         longSettle = (chosen?.matchLen ?: 0) >= 4 || chosen?.extraMove == true || touchesSpecial,
                     ),
                 )
-                session.suppressOutsideTouchUntil(System.currentTimeMillis() + 400L)
                 refreshBubbleUi()
                 if (noted is FiveMoveSession.Decision.Stop) {
                     closeGameLog(session, after = null, verification = session.stopReason)

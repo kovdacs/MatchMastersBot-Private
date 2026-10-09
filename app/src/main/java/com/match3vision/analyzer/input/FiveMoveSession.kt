@@ -2,6 +2,7 @@ package com.match3vision.analyzer.input
 
 import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.moves.PlayMoveRanker
+import kotlin.math.hypot
 
 /**
  * Plays while bright move circles remain. A hard cap stops the session at
@@ -190,6 +191,8 @@ class FiveMoveSession {
         private set
 
     private var suppressOutsideUntilMs: Long = 0L
+    private var ownGestureOpen: Boolean = false
+    private var ownPath: OwnPath? = null
 
     /** Sequence of the frame that verified the previous move. 0 until then. */
     private var lastSettledFrameSequence: Long = 0L
@@ -439,16 +442,62 @@ class FiveMoveSession {
     }
 
     /**
+     * Our swipe or ACTIVATE tap is in flight. Outside events are ours until
+     * [finishOwnGesture]. [x1]..[y2] is the tap point or the swipe segment.
+     */
+    fun beginOwnGesture() {
+        ownGestureOpen = true
+    }
+
+    fun beginOwnGesture(x1: Float, y1: Float, x2: Float, y2: Float) {
+        if (x1.isFinite() && y1.isFinite() && x2.isFinite() && y2.isFinite()) {
+            ownPath = OwnPath(x1, y1, x2, y2)
+        }
+        ownGestureOpen = true
+    }
+
+    /** Coordinates learned when the swipe gesture comes back from dispatch. */
+    fun rememberOwnPath(x1: Float, y1: Float, x2: Float, y2: Float) {
+        if (x1.isFinite() && y1.isFinite() && x2.isFinite() && y2.isFinite()) {
+            ownPath = OwnPath(x1, y1, x2, y2)
+        }
+    }
+
+    /** Callback returned. Keep ignoring outside events for [OWN_GESTURE_AFTER_MS]. */
+    fun finishOwnGesture(nowMs: Long) {
+        ownGestureOpen = false
+        suppressOutsideTouchUntil(nowMs + OWN_GESTURE_AFTER_MS)
+    }
+
+    /**
      * A finger landed outside the bubble while this session was running.
      * Board-diff verification cannot tell that finger from our gesture, so the
-     * open move is not counted.
+     * open move is not counted. Our own tap and swipe are not a finger.
      */
-    fun noteOutsideTouch(nowMs: Long): Decision? {
+    fun noteOutsideTouch(nowMs: Long, x: Float = Float.NaN, y: Float = Float.NaN): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
-        if (nowMs < suppressOutsideUntilMs) return null
+        if (ownGestureOpen || nowMs < suppressOutsideUntilMs) return null
+        if (nearOwnGesture(x, y)) return null
         outsideTouches += 1
         openMove?.let { it.outsideTouches += 1 }
         return abort("STOP — user interference", nowMs)
+    }
+
+    private fun nearOwnGesture(x: Float, y: Float): Boolean {
+        val path = ownPath ?: return false
+        if (!x.isFinite() || !y.isFinite()) return false
+        return path.distanceTo(x, y) <= OWN_GESTURE_RADIUS_PX
+    }
+
+    private data class OwnPath(val x1: Float, val y1: Float, val x2: Float, val y2: Float) {
+        fun distanceTo(x: Float, y: Float): Float {
+            val dx = x2 - x1
+            val dy = y2 - y1
+            val len2 = dx * dx + dy * dy
+            if (len2 <= 1f) return hypot(x - x1, y - y1)
+            val t = (((x - x1) * dx + (y - y1) * dy) / len2).coerceIn(0f, 1f)
+            return hypot(x - (x1 + t * dx), y - (y1 + t * dy))
+        }
     }
 
     /**
@@ -999,6 +1048,8 @@ class FiveMoveSession {
         zeroCircleReads = 0
         lastCircleSequence = -1L
         unchangedRetries = 0
+        ownGestureOpen = false
+        ownPath = null
         decisionLog.clear()
     }
 
@@ -1117,6 +1168,8 @@ class FiveMoveSession {
             val factor = (cadenceMs.toDouble() / NOMINAL_FRAME_MS.toDouble()).coerceAtMost(2.0)
             return (baseMs * factor).toLong().coerceAtLeast(baseMs)
         }
+        const val OWN_GESTURE_AFTER_MS = 1_500L
+        const val OWN_GESTURE_RADIUS_PX = 60f
         const val MIN_POST_COLLAPSE_MS = 2_000L
         const val MAX_UNKNOWN = 1
         private const val MAX_IGNORED_LINES = 200
