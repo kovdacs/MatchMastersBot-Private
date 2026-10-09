@@ -150,7 +150,10 @@ data class GridGeometry(
             return variance / (mean * mean)
         }
 
-        /** Build EVEN_SPLIT geometry over [boardRoi]. */
+        /**
+         * Build EVEN_SPLIT geometry over [boardRoi] in full-frame pixels.
+         * [boardRoi.left] and [boardRoi.top] are added here. Centres are not ROI-relative.
+         */
         fun evenSplit(boardRoi: ContentRoi, confidence: Float = 0.70f): GridGeometry {
             val x = FloatArray(BOUNDARY_COUNT) { i ->
                 boardRoi.left + i * boardRoi.width().toFloat() / GRID_SIZE

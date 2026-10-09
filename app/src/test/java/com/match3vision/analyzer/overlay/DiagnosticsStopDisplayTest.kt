@@ -76,6 +76,7 @@ class DiagnosticsStopDisplayTest {
     fun successfulStart_clearsLastStopReason() {
         AutoPlayTrace.markStop("ACCESSIBILITY: DISCONNECTED")
         val ctrl = AutoPlayController()
+        com.match3vision.analyzer.input.PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(
                 a11yConnected = true,

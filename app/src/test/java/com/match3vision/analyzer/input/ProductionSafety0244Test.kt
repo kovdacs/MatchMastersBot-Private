@@ -465,6 +465,7 @@ class ProductionSafety0244Test {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = exec),
             ),
         )
+        PlayPermit.allowContinuousStart()
         check(ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true))
         val before = passVision()
         val cycle = ctrl.runCycleIfActive(before)!!

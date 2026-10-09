@@ -23,6 +23,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Owns [ImageReader] + [VirtualDisplay] for MediaProjection screen capture.
  *
  * Emits the latest [CaptureFrame] on [latestFrame]. Analyzer-only: no input injection.
+ *
+ * The virtual display uses [CaptureDisplaySize] (maximum window bounds on API 30+,
+ * real metrics on API 29) and [DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR].
+ * That is a request for the full display pixel grid, including the area of the
+ * status bar, navigation bar, and cutout, when the system grants entire-display
+ * capture. API 34+ consent can still be a single app. Inclusion of those bars
+ * on API 29–35 is not proven without a device.
  */
 class ScreenCaptureManager(
     private val context: Context,
@@ -164,6 +171,10 @@ class ScreenCaptureManager(
             image = reader.acquireLatestImage() ?: return
             val now = System.currentTimeMillis()
             val elapsed = com.match3vision.analyzer.input.FrameClock.tryElapsed()
+            // 5 fps is a ceiling. VirtualDisplay delivers a buffer when the
+            // screen changes, and a busy process stretches that gap. The phone
+            // session measured a median near 1024 ms. This check does not
+            // invent frames and does not change the freshness gate.
             val interval = config.frameIntervalMs
             if (now - lastEmitMs < interval) {
                 return

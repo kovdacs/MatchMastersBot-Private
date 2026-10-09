@@ -4,6 +4,8 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.match3vision.analyzer.input.DiagnosticHistoryStore
+import com.match3vision.analyzer.input.DiagnosticShare
 import com.match3vision.analyzer.capture.CaptureFrame
 import com.match3vision.analyzer.capture.CaptureService
 import com.match3vision.analyzer.capture.ContentRoi
@@ -72,7 +74,7 @@ data class AnalyzerUiState(
     val analysisFrameFrozen: Boolean = true,
 ) {
     companion object {
-        const val SUBTITLE = "Auto — egy INDÍTÁS: engedélyek → rögzítés → buborék → auto kör (a11y CONNECTED kell)"
+        const val SUBTITLE = "Auto — egy INDÍTÁS: engedélyek → rögzítés → buborék → auto kör (a11y CONNECTED kell). Diagnosztika: kisegítő maradhat KI."
     }
 }
 
@@ -450,6 +452,24 @@ class AnalyzerViewModel @JvmOverloads constructor(
         if (roi == null) return "teljes kép"
         return "LTRB(${roi.left}, ${roi.top}, ${roi.right}, ${roi.bottom}) " +
             "${roi.width()}×${roi.height()}"
+    }
+
+    fun shareDiagnostics() {
+        val dir = java.io.File(getApplication<Application>().filesDir, "diagnostics")
+        DiagnosticHistoryStore.install(dir)
+        DiagnosticShare.share(getApplication(), dir, DiagnosticHistoryStore.exportText())
+    }
+
+    fun copyDiagnostics(): Boolean {
+        val dir = java.io.File(getApplication<Application>().filesDir, "diagnostics")
+        DiagnosticHistoryStore.install(dir)
+        return DiagnosticShare.copyToClipboard(getApplication(), DiagnosticHistoryStore.exportText())
+    }
+
+    fun clearDiagnostics() {
+        val dir = java.io.File(getApplication<Application>().filesDir, "diagnostics")
+        DiagnosticHistoryStore.install(dir)
+        DiagnosticHistoryStore.clear()
     }
 
     override fun onCleared() {

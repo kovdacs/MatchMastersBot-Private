@@ -41,6 +41,8 @@ class InputLoopController(
         val simulated: Boolean = false,
         val gestureAttemptFailed: Boolean = false,
         val coordinateBlocked: Boolean = false,
+        /** Gesture callback fact. Not a copy of [lastDispatch] and not VERIFY SUCCESS. */
+        val callbackOutcome: String = "not dispatched",
     )
 
     fun inputEngine(): AutomaticInputEngine = inputEngine
@@ -190,6 +192,11 @@ class InputLoopController(
                     gestureStatus = "CREATED",
                     moveCandidates = candidateCount,
                     simulated = context?.simulated == true,
+                    callbackOutcome = if (exec.verificationEligible) {
+                        "onCompleted — callback completed; not VERIFY SUCCESS"
+                    } else {
+                        "callback not completed — not eligible for verification"
+                    },
                 )
             is AutomaticInputEngine.ExecuteResult.Held -> {
                 AutoPlayTrace.log("HOLD", exec.reason)
@@ -206,6 +213,7 @@ class InputLoopController(
                     moveCandidates = candidateCount,
                     inputBlockReason = exec.reason,
                     simulated = context?.simulated == true,
+                    callbackOutcome = "not dispatched",
                 )
             }
             is AutomaticInputEngine.ExecuteResult.Stopped -> {
@@ -213,9 +221,13 @@ class InputLoopController(
                 val notCreated = exec.reason.contains("NOT CREATED", ignoreCase = true)
                 val dispatchFailed = exec.reason.contains("dispatch failed", ignoreCase = true)
                 val coordBlocked = exec.reason.contains("off-screen", ignoreCase = true) ||
+                    exec.reason.contains("outside frame", ignoreCase = true) ||
                     exec.reason.contains("bounds unknown", ignoreCase = true) ||
                     exec.reason.contains("non-finite", ignoreCase = true) ||
-                    exec.reason.contains("frame/screen", ignoreCase = true)
+                    exec.reason.contains("frame/screen", ignoreCase = true) ||
+                    exec.reason.contains("refusing to shift", ignoreCase = true) ||
+                    exec.reason.contains("silent shift", ignoreCase = true) ||
+                    exec.reason.contains("rotation", ignoreCase = true)
                 CycleResult(
                     sm.state, BotLoopOutcome.STOP, exec.reason,
                     executed = exec,
@@ -235,6 +247,7 @@ class InputLoopController(
                     moveCandidates = candidateCount,
                     inputBlockReason = exec.reason,
                     simulated = context?.simulated == true,
+                    callbackOutcome = "dispatch failed — no onCompleted",
                 )
             }
         }

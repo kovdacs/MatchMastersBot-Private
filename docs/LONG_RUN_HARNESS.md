@@ -9,12 +9,12 @@
 
 | Test | Moves | Asserts |
 |------|-------|---------|
-| `continuous_1_move` | 1 | dispatch + VERIFY SUCCESS + still RUNNING |
-| `continuous_5_moves` | 5 | 5 dispatches, no freeze |
-| `continuous_10_moves` | 10 | same |
-| `continuous_20_moves` | 20 | same |
+| `continuous_1_move` | 1 | dispatch + MOVE UNCONFIRMED + still RUNNING |
+| `continuous_unconfirmedCap_allowsTwoThenPauses_noThirdDispatch` | 2 | third dispatch does not happen; PAUSE |
 | `verifyUnchanged_stops_noBlindRetry` | 1 | FAILED → PAUSE, no 2nd dispatch |
 | `holdDoesNotFreezeModeRunning` | — | soft HOLD then PASS continues |
+
+Continuous mode pauses after 2 consecutive `BOARD CHANGED — MOVE UNCONFIRMED` results. That label is not VERIFY SUCCESS.
 
 ## Live operator (when phone available)
 

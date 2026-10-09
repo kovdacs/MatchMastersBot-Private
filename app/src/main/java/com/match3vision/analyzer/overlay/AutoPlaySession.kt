@@ -2,6 +2,8 @@ package com.match3vision.analyzer.overlay
 
 import com.match3vision.analyzer.capture.AnalysisFrameGate
 import com.match3vision.analyzer.input.AutoPlayController
+import com.match3vision.analyzer.input.DiagnosticHistoryStore
+import com.match3vision.analyzer.input.CaptureOverlayTrace
 import com.match3vision.analyzer.input.AutoPlayTrace
 import com.match3vision.analyzer.input.AutomaticInputEngine
 import com.match3vision.analyzer.input.AutomaticTouchTest
@@ -255,6 +257,12 @@ object AutoPlaySession {
             val nextRoi = boardRoi
                 ?: boardDetection
                 ?: cur.diagnostics.boardRoi
+            noteFrameSizeRetention(
+                incomingWidth = frameWidth,
+                incomingHeight = frameHeight,
+                previousWidth = cur.diagnostics.frameWidth,
+                previousHeight = cur.diagnostics.frameHeight,
+            )
             val diag = rebuildDiagnostics(
                 base = cur.diagnostics.copy(
                     frame = frameReceived?.let { if (it) "received" else "no frame" }
@@ -277,8 +285,8 @@ object AutoPlaySession {
                     heartbeatMs = heartbeatMs ?: System.currentTimeMillis(),
                     gestureStatus = gestureStatus ?: cur.diagnostics.gestureStatus,
                     frameTimestampMs = frameTimestampMs ?: cur.diagnostics.frameTimestampMs,
-                    frameWidth = frameWidth ?: cur.diagnostics.frameWidth,
-                    frameHeight = frameHeight ?: cur.diagnostics.frameHeight,
+                    frameWidth = retainPositive(frameWidth, cur.diagnostics.frameWidth),
+                    frameHeight = retainPositive(frameHeight, cur.diagnostics.frameHeight),
                     frameFreshness = frameFreshness ?: cur.diagnostics.frameFreshness,
                     moveCandidates = moveCandidates ?: cur.diagnostics.moveCandidates,
                     inputBlockReason = when (inputBlockReason) {
@@ -309,6 +317,31 @@ object AutoPlaySession {
         }
     }
 
+    /** A 0×0 update after pause must not erase a frame that was already measured. */
+    private fun retainPositive(incoming: Int?, previous: Int): Int {
+        if (incoming == null) return previous
+        if (incoming > 0) return incoming
+        return if (previous > 0) previous else incoming
+    }
+
+    /**
+     * Null sizes do not flip the flag. A dropped non-positive size sets it.
+     * A positive size that is stored clears it.
+     */
+    private fun noteFrameSizeRetention(
+        incomingWidth: Int?,
+        incomingHeight: Int?,
+        previousWidth: Int,
+        previousHeight: Int,
+    ) {
+        if (incomingWidth == null && incomingHeight == null) return
+        val dropped = (incomingWidth != null && incomingWidth <= 0 && previousWidth > 0) ||
+            (incomingHeight != null && incomingHeight <= 0 && previousHeight > 0)
+        val applied = (incomingWidth != null && incomingWidth > 0) ||
+            (incomingHeight != null && incomingHeight > 0)
+        CaptureOverlayTrace.frameSizeRetained = dropped && !applied
+    }
+
     private fun rebuildDiagnostics(
         base: Diagnostics,
         a11yConnected: Boolean,
@@ -325,8 +358,9 @@ object AutoPlaySession {
             inputSwitchEnabled = inputEnabled,
         )
         val modeLabel = when (controller.mode) {
+            AutoPlayController.Mode.RUNNING ->
+                if (controller.analysisOnly) "ANALYSIS_ONLY" else "RUNNING"
             AutoPlayController.Mode.IDLE -> "IDLE"
-            AutoPlayController.Mode.RUNNING -> "RUNNING"
             AutoPlayController.Mode.PAUSED -> "PAUSED"
             AutoPlayController.Mode.STOPPED -> "STOPPED"
         }
@@ -425,6 +459,7 @@ object AutoPlaySession {
 
     fun beginNewSession() {
         controller.resetForNewSession()
+        DiagnosticHistoryStore.clearPinForNewSession()
         frameGate.setBubbleLoopRunning(false)
         frameSequenceGate.reset()
         AutoPlayTrace.clearLastStop()
@@ -434,6 +469,25 @@ object AutoPlaySession {
         publish(
             statusText = "Kész — fő INDÍTÁS indítja a kört (buborék kontroll)",
             bubbleVisible = true,
+        )
+    }
+
+    /**
+     * STOP has released capture. The bubble must not keep a live FRESH frame
+     * or CAPTURE: ON from the last cycle.
+     */
+    fun publishStoppedCapture() {
+        publish(captureReady = false, statusText = "Leállítva")
+        updateDiagnostics(
+            phase = "LEÁLLÍTVA",
+            captureStatus = "OFF",
+            frameFreshness = "NONE",
+            frameAgeMs = -1L,
+            hasFrameFlag = false,
+            frameReceived = false,
+            stopReason = "leállítva",
+            visionPassFlag = false,
+            gestureStatus = "NOT CREATED",
         )
     }
 

@@ -9,8 +9,20 @@ class SpecialDetector {
 
     data class Result(val special: SpecialType, val confidence: Float)
 
-    fun detect(cellPixels: IntArray, cellWidth: Int, cellHeight: Int): Result {
+    fun detect(
+        cellPixels: IntArray,
+        cellWidth: Int,
+        cellHeight: Int,
+        source: String = "unspecified",
+    ): Result {
+        SpecialCropAudit.observe(source, cellWidth, cellHeight, cellPixels.size)
         if (cellPixels.isEmpty() || cellWidth < 4 || cellHeight < 4) {
+            return none()
+        }
+        // A tall cell can be smaller than width*height only when the buffer was
+        // truncated. The 131×339 case (length 44409) is a full buffer whose
+        // arrow band still indexes x = -2. Both are refused without throwing.
+        if (cellWidth.toLong() * cellHeight.toLong() > cellPixels.size.toLong()) {
             return none()
         }
 
@@ -71,14 +83,24 @@ class SpecialDetector {
         var maxRow = 0f
         for (y in 0 until h) {
             var b = 0
-            for (x in 0 until w) if (PixelMath.luma(pixels[y * w + x]) >= 200) b++
-            maxRow = maxOf(maxRow, b.toFloat() / w)
+            var n = 0
+            for (x in 0 until w) {
+                val p = pixelOrNull(pixels, w, h, x, y) ?: continue
+                n++
+                if (PixelMath.luma(p) >= 200) b++
+            }
+            if (n > 0) maxRow = maxOf(maxRow, b.toFloat() / n)
         }
         var maxCol = 0f
         for (x in 0 until w) {
             var b = 0
-            for (y in 0 until h) if (PixelMath.luma(pixels[y * w + x]) >= 200) b++
-            maxCol = maxOf(maxCol, b.toFloat() / h)
+            var n = 0
+            for (y in 0 until h) {
+                val p = pixelOrNull(pixels, w, h, x, y) ?: continue
+                n++
+                if (PixelMath.luma(p) >= 200) b++
+            }
+            if (n > 0) maxCol = maxOf(maxCol, b.toFloat() / n)
         }
         val dominant = maxOf(maxRow, maxCol)
         val other = minOf(maxRow, maxCol)
@@ -90,11 +112,17 @@ class SpecialDetector {
         val midX = w / 2
         val band = (h / 5).coerceAtLeast(1)
         fun regionBright(x0: Int, x1: Int, y0: Int, y1: Int): Float {
+            val xa = x0.coerceAtLeast(0)
+            val xb = x1.coerceAtMost(w)
+            val ya = y0.coerceAtLeast(0)
+            val yb = y1.coerceAtMost(h)
+            if (xa >= xb || ya >= yb) return 0f
             var b = 0
             var n = 0
-            for (y in y0 until y1) {
-                for (x in x0 until x1) {
-                    if (PixelMath.luma(pixels[y * w + x]) >= 190) b++
+            for (y in ya until yb) {
+                for (x in xa until xb) {
+                    val p = pixelOrNull(pixels, w, h, x, y) ?: continue
+                    if (PixelMath.luma(p) >= 190) b++
                     n++
                 }
             }
@@ -107,5 +135,25 @@ class SpecialDetector {
         val horiz = minOf(left, right) * 2f
         val vert = minOf(top, bottom) * 2f
         return maxOf(horiz, vert).coerceIn(0f, 1f)
+    }
+
+    private fun pixelOrNull(pixels: IntArray, w: Int, h: Int, x: Int, y: Int): Int? {
+        if (x < 0 || y < 0 || x >= w || y >= h) return null
+        val i = y * w + x
+        if (i < 0 || i >= pixels.size) return null
+        return pixels[i]
+    }
+
+    companion object {
+        /**
+         * First x of the unguarded top arrow band at y = 0.
+         * For 131×339 this is -2, and 131*339 = 44409, which is the device
+         * `length=44409; index=-2` throw. Detection must not use this index.
+         */
+        internal fun unguardedArrowIndex(cellWidth: Int, cellHeight: Int): Int {
+            val midX = cellWidth / 2
+            val band = (cellHeight / 5).coerceAtLeast(1)
+            return midX - band
+        }
     }
 }

@@ -95,6 +95,7 @@ class FixtureToGestureEndToEndTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = executor),
             ),
         )
+        PlayPermit.allowContinuousStart()
         assertThat(
             ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true),
         ).isTrue()
@@ -127,21 +128,47 @@ class FixtureToGestureEndToEndTest {
         assertThat(gesture).isEqualTo(executed.gesture)
         val move = executed.move.move
         val grid = vision.grid
-        val expectedStartX = (grid.xBoundaries[move.c1] + grid.xBoundaries[move.c1 + 1]) * 0.5f
-        val expectedStartY = (grid.yBoundaries[move.r1] + grid.yBoundaries[move.r1 + 1]) * 0.5f
-        val expectedEndX = (grid.xBoundaries[move.c2] + grid.xBoundaries[move.c2 + 1]) * 0.5f
-        val expectedEndY = (grid.yBoundaries[move.r2] + grid.yBoundaries[move.r2 + 1]) * 0.5f
-        assertThat(gesture.startX).isWithin(0.05f).of(expectedStartX)
-        assertThat(gesture.startY).isWithin(0.05f).of(expectedStartY)
-        assertThat(gesture.endX).isWithin(0.05f).of(expectedEndX)
-        assertThat(gesture.endY).isWithin(0.05f).of(expectedEndY)
+        val handStartX = HandMeasuredPvpCenters.columnCenterX[move.c1]
+        val handStartY = HandMeasuredPvpCenters.rowCenterY[move.r1]
+        val handEndX = HandMeasuredPvpCenters.columnCenterX[move.c2]
+        val handEndY = HandMeasuredPvpCenters.rowCenterY[move.r2]
+        assertThat(gesture.startX).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handStartX)
+        assertThat(gesture.startY).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handStartY)
+        assertThat(gesture.endX).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handEndX)
+        assertThat(gesture.endY).isWithin(HandMeasuredPvpCenters.TOLERANCE_PX).of(handEndY)
+        var maxDx = 0f
+        var maxDy = 0f
+        for (r in 0 until 7) {
+            for (c in 0 until 7) {
+                val box = grid.cellBox(r, c)
+                val dx = kotlin.math.abs(box.centerX() - HandMeasuredPvpCenters.columnCenterX[c])
+                val dy = kotlin.math.abs(box.centerY() - HandMeasuredPvpCenters.rowCenterY[r])
+                if (dx > maxDx) maxDx = dx
+                if (dy > maxDy) maxDy = dy
+                assertThat(box.centerX())
+                    .isWithin(HandMeasuredPvpCenters.TOLERANCE_PX)
+                    .of(HandMeasuredPvpCenters.columnCenterX[c])
+                assertThat(box.centerY())
+                    .isWithin(HandMeasuredPvpCenters.TOLERANCE_PX)
+                    .of(HandMeasuredPvpCenters.rowCenterY[r])
+            }
+        }
         assertThat(gesture.durationMs).isEqualTo(InputThresholds.SWIPE_DURATION_MS)
         assertThat(cycle.verifyStatus).isEqualTo(VerificationPolicy.PENDING)
         assertThat(cycle.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+        val row2Detected = grid.cellBox(2, 0).centerY()
+        val row2Err = kotlin.math.abs(row2Detected - HandMeasuredPvpCenters.rowCenterY[2])
+        println(
+            "ORACLE row2 hand=${HandMeasuredPvpCenters.rowCenterY[2]} detected=$row2Detected " +
+                "absErr=$row2Err tolerance=${HandMeasuredPvpCenters.TOLERANCE_PX} " +
+                "(min column pitch / 5, not this error) row6Hand=${HandMeasuredPvpCenters.rowCenterY[6]}",
+        )
         println(
             "E2E_FIXTURE SIMULATION move=${move.r1},${move.c1}->${move.r2},${move.c2} " +
-                "expected=(${expectedStartX},${expectedStartY})->(${expectedEndX},${expectedEndY}) " +
+                "hand=(${handStartX},${handStartY})->(${handEndX},${handEndY}) " +
                 "actual=(${gesture.startX},${gesture.startY})->(${gesture.endX},${gesture.endY}) " +
+                "tolerancePx=${HandMeasuredPvpCenters.TOLERANCE_PX} " +
+                "maxAbsDx=$maxDx maxAbsDy=$maxDy " +
                 "channelCalls=${channel.dispatchGestureCalls} " +
                 "alignmentProven=${ctx.coordinateAlignmentProven}",
         )
@@ -242,6 +269,7 @@ class FixtureToGestureEndToEndTest {
                 inputEngine = AutomaticInputEngine(enableSwitch = sw, executor = executor),
             ),
         )
+        PlayPermit.allowContinuousStart()
         check(ctrl.onStartRequested(a11yConnected = true, captureReady = true, overlayReady = true))
         return ctrl
     }

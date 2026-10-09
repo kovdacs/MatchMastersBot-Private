@@ -46,6 +46,13 @@ data class RuntimeCycleContext(
     val coordinateAlignmentProven: Boolean = false,
     /** Capture sequence of the frame this plan was built from. -1 if unknown. */
     val frameSequence: Long = -1L,
+    /**
+     * Extra origin shift a caller asks to apply on top of full-frame pixels.
+     * Non-zero is an inset/offset mismatch. [DisplayInsetPolicy] refuses it.
+     * Production passes 0. These values are not added to the gesture.
+     */
+    val originOffsetX: Int = 0,
+    val originOffsetY: Int = 0,
 ) {
     init {
         require(!coordinateAlignmentProven) {
@@ -250,6 +257,7 @@ object RuntimeLabels {
         "RUNNING" -> "RUNNING"
         "PAUSED" -> "PAUSED"
         "STOPPED" -> "STOPPED"
+        "ANALYSIS_ONLY" -> "ELEMZÉS – NINCS ÉRINTÉS"
         else -> "IDLE"
     }
 

@@ -151,6 +151,8 @@ object ProductionCycleContext {
             screenRotation = screen.rotation,
             coordinateAlignmentProven = false,
             frameSequence = frameSequence,
+            originOffsetX = 0,
+            originOffsetY = 0,
         )
     }
 }

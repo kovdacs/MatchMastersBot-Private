@@ -87,8 +87,9 @@ fun AnalyzerScreen(
                 "1. INDÍTÁS → engedélyek\n" +
                     "2. Buborék megjelenik\n" +
                     "3. Nyisd meg a Match Masters-t\n" +
-                    "4. Buborék: INDÍTÁS → auto húzás\n" +
-                    "5. SZÜNET vagy STOP",
+                    "4. Diagnosztika: a kisegítő szolgáltatás maradhat KI\n" +
+                    "5. Buborék: INDÍTÁS → auto húzás (ehhez a kisegítő kell)\n" +
+                    "6. SZÜNET vagy STOP",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
             )
@@ -117,6 +118,27 @@ fun AnalyzerScreen(
                 onClick = onStopCapture,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("STOP — buborék + rögzítés leállítása") }
+
+            Section("DIAGNOSZTIKA — HOLD") {
+                Text(
+                    "Az első HOLD megmarad, amíg a DIAG TÖRLÉS nem törli. " +
+                        "Megosztás és másolás ADB nélkül. A diagnosztika nem ad PASS-t. " +
+                        "TESZT ÉRINTÉS külön van az EGY LÉPÉS gyártási húzástól.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = { viewModel.shareDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Diagnosztika megosztása") }
+                OutlinedButton(
+                    onClick = { viewModel.copyDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Diagnosztika másolása") }
+                OutlinedButton(
+                    onClick = { viewModel.clearDiagnostics() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Első HOLD törlése") }
+            }
 
             PermissionStatusCard(
                 overlayReady = auto.overlayReady,

@@ -53,6 +53,7 @@ class RestartCycleTest {
 
     @Test
     fun startStopStart_clearsStaleState() {
+        PlayPermit.allowContinuousStart()
         val exec = RecordingInputGestureExecutor(ready = true)
         val sw = InputEnableSwitch.disabledByDefault()
         val eng = AutomaticInputEngine(enableSwitch = sw, executor = exec)
@@ -91,6 +92,7 @@ class RestartCycleTest {
     }
     @Test
     fun a11yDisconnect_blocksStart_reconnectAllowsStart() {
+        PlayPermit.allowContinuousStart()
         val exec = RecordingInputGestureExecutor(ready = true)
         val sw = InputEnableSwitch.disabledByDefault()
         val eng = AutomaticInputEngine(enableSwitch = sw, executor = exec)

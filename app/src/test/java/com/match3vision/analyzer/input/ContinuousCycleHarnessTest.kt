@@ -73,6 +73,7 @@ class ContinuousCycleHarnessTest {
         val eng = AutomaticInputEngine(enableSwitch = sw, executor = exec)
         val loop = InputLoopController(inputEngine = eng)
         val ctrl = AutoPlayController(enableSwitch = sw, inputLoop = loop)
+        PlayPermit.allowContinuousStart()
         return Triple(ctrl, exec, FrameSequenceGate())
     }
 
@@ -142,9 +143,50 @@ class ContinuousCycleHarnessTest {
     }
 
     @Test fun continuous_1_move() = runNMoves(1)
-    @Test fun continuous_5_moves() = runNMoves(5)
-    @Test fun continuous_10_moves() = runNMoves(10)
-    @Test fun continuous_20_moves() = runNMoves(20)
+
+    @Test
+    fun continuous_unconfirmedCap_allowsTwoThenPauses_noThirdDispatch() {
+        val (ctrl, exec, seq) = harness()
+        assertThat(ctrl.onStartRequested()).isTrue()
+        var frameSeq = 1L
+        for (i in 0 until AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED) {
+            val before = visionPass(seed = i)
+            val frameId = FrameSequenceGate.FrameId(frameSeq, identity = 1000L + i, timestampMs = 1_000L + i)
+            assertThat(seq.evaluate(frameId).allow).isTrue()
+            val cycle = ctrl.runCycleIfActive(before)!!
+            val executed = cycle.executed as AutomaticInputEngine.ExecuteResult.Executed
+            seq.markGestureDispatched(frameId)
+            frameSeq += 1
+            val after = afterBoard(before, seed = i)
+            val fb = ctrl.completeFeedback(
+                executed.beforeBoardHash,
+                after,
+                VerifyObservation(
+                    newFrameAccepted = true,
+                    frameFresh = true,
+                    gestureEligible = true,
+                    frameElapsedMs = 5_000L + i,
+                    dispatchCompletedElapsedMs = 4_000L + i,
+                    preDispatchSequence = frameSeq - 1,
+                    afterSequence = frameSeq,
+                ),
+            )!!
+            assertThat(fb.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+            assertThat(fb.verifyStatus).isNotEqualTo(VerificationPolicy.SUCCESS)
+            if (i + 1 < AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED) {
+                assertThat(fb.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
+                assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+            } else {
+                assertThat(fb.outcome).isEqualTo(BotLoopOutcome.HOLD)
+                assertThat(fb.reason).contains("capped at 2")
+                assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)
+                assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+            }
+        }
+        assertThat(ctrl.runCycleIfActive(visionPass(99))).isNull()
+        assertThat(exec.dispatched).hasSize(AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED)
+        assertThat(ctrl.moveCount).isEqualTo(AutoPlayController.MAX_CONSECUTIVE_UNCONFIRMED)
+    }
 
     @Test
     fun verifyUnchanged_stops_noBlindRetry() {
@@ -191,4 +233,103 @@ class ContinuousCycleHarnessTest {
         assertThat(ok).isNotNull()
         assertThat(ok!!.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
     }
+
+    @Test
+    fun unconfirmed_firstContinues_secondStops_thirdCannotDispatch() {
+        val (ctrl, exec, _) = harness()
+        assertThat(ctrl.onStartRequested()).isTrue()
+        val first = oneUnconfirmed(ctrl, 0)
+        assertThat(first.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(first.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(ctrl.enableSwitch().isEnabled()).isTrue()
+        assertThat(exec.dispatched).hasSize(1)
+        val second = oneUnconfirmed(ctrl, 1)
+        assertThat(second.verifyStatus).isEqualTo(VerificationPolicy.BOARD_CHANGED_UNCONFIRMED)
+        assertThat(second.outcome).isEqualTo(BotLoopOutcome.HOLD)
+        assertThat(second.reason).contains("capped at 2")
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)
+        assertThat(ctrl.enableSwitch().isEnabled()).isFalse()
+        assertThat(ctrl.unconfirmedCapLatched).isTrue()
+        assertThat(ctrl.runCycleIfActive(visionPass(2))).isNull()
+        assertThat(exec.dispatched).hasSize(2)
+        assertThat(ctrl.moveCount).isEqualTo(2)
+    }
+
+    @Test
+    fun repeatedStart_reset_andDelayedFeedback_cannotBypassCap() {
+        val (ctrl, exec, _) = harness()
+        assertThat(ctrl.onStartRequested()).isTrue()
+        val before = visionPass(0)
+        val cycle = ctrl.runCycleIfActive(before)!!
+        val executed = cycle.executed as AutomaticInputEngine.ExecuteResult.Executed
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.runCycleIfActive(visionPass(50))).isNull()
+        assertThat(exec.dispatched).hasSize(1)
+        assertThat(ctrl.onStartRequested()).isTrue()
+        assertThat(ctrl.runCycleIfActive(visionPass(51))).isNull()
+        assertThat(ctrl.onBubbleStart()).isTrue()
+        assertThat(ctrl.runCycleIfActive(visionPass(52))).isNull()
+        assertThat(exec.dispatched).hasSize(1)
+        val first = ctrl.completeFeedback(
+            executed.beforeBoardHash,
+            afterBoard(before, 0),
+            unconfirmedObservation(0),
+        )!!
+        assertThat(first.outcome).isEqualTo(BotLoopOutcome.CONTINUE)
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.RUNNING)
+        assertThat(ctrl.consecutiveUnconfirmed).isEqualTo(1)
+        val secondCycle = ctrl.runCycleIfActive(visionPass(1))!!
+        val secondExec = secondCycle.executed as AutomaticInputEngine.ExecuteResult.Executed
+        assertThat(exec.dispatched).hasSize(2)
+        assertThat(ctrl.runCycleIfActive(visionPass(53))).isNull()
+        assertThat(exec.dispatched).hasSize(2)
+        val second = ctrl.completeFeedback(
+            secondExec.beforeBoardHash,
+            afterBoard(visionPass(1), 1),
+            unconfirmedObservation(1),
+        )!!
+        assertThat(second.outcome).isEqualTo(BotLoopOutcome.HOLD)
+        assertThat(ctrl.unconfirmedCapLatched).isTrue()
+        assertThat(ctrl.mode).isEqualTo(AutoPlayController.Mode.PAUSED)
+        assertThat(ctrl.onStartRequested()).isFalse()
+        assertThat(ctrl.onBubbleStart()).isFalse()
+        assertThat(ctrl.lastReason).contains("cap latched")
+        assertThat(ctrl.runCycleIfActive(visionPass(3))).isNull()
+        assertThat(exec.dispatched).hasSize(2)
+        ctrl.onBubbleStop()
+        ctrl.resetForNewSession()
+        assertThat(ctrl.unconfirmedCapLatched).isTrue()
+        assertThat(ctrl.onStartRequested()).isFalse()
+        assertThat(ctrl.armSingleMove()).isFalse()
+        assertThat(ctrl.lastReason).contains("cap")
+        assertThat(ctrl.runCycleIfActive(visionPass(4))).isNull()
+        assertThat(exec.dispatched).hasSize(2)
+        val (fresh, freshExec, _) = harness()
+        assertThat(fresh.unconfirmedCapLatched).isFalse()
+        assertThat(fresh.onStartRequested()).isTrue()
+        assertThat(fresh.runCycleIfActive(visionPass(0))).isNotNull()
+        assertThat(freshExec.dispatched).hasSize(1)
+    }
+
+    private fun oneUnconfirmed(ctrl: AutoPlayController, seed: Int): InputLoopController.CycleResult {
+        val before = visionPass(seed)
+        val cycle = ctrl.runCycleIfActive(before)!!
+        val executed = cycle.executed as AutomaticInputEngine.ExecuteResult.Executed
+        return ctrl.completeFeedback(
+            executed.beforeBoardHash,
+            afterBoard(before, seed),
+            unconfirmedObservation(seed),
+        )!!
+    }
+
+    private fun unconfirmedObservation(seed: Int) = VerifyObservation(
+        newFrameAccepted = true,
+        frameFresh = true,
+        gestureEligible = true,
+        frameElapsedMs = 5_000L + seed,
+        dispatchCompletedElapsedMs = 4_000L + seed,
+        preDispatchSequence = seed.toLong(),
+        afterSequence = seed.toLong() + 1,
+    )
 }

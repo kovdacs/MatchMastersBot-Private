@@ -1,6 +1,7 @@
 package com.match3vision.analyzer
 
 import android.app.Application
+import com.match3vision.analyzer.input.DiagnosticHistoryStore
 import java.io.File
 import timber.log.Timber
 
@@ -15,6 +16,9 @@ class Match3AnalyzerApp : Application() {
             Timber.plant(Timber.DebugTree())
         }
         installCrashLogger()
+        val diagnostics = File(filesDir, "diagnostics")
+        DiagnosticHistoryStore.install(diagnostics, BuildConfig.VERSION_CODE)
+        DiagnosticHistoryStore.clearPinForNewSession()
         Timber.i("Match3 Vision Analyzer starting (UI only; input DEFAULT DISABLED)")
     }
 
