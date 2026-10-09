@@ -61,10 +61,7 @@ class AutoCalibrationTest {
         val permit = (session.requestDispatch(gates(selfCheck = false)) as FiveMoveSession.Decision.Go).permit
         session.consumePermit(permit)
         session.noteGesture(gesture())
-        var held: FiveMoveSession.Decision = FiveMoveSession.Decision.Hold("none")
-        repeat(3) { step ->
-            held = session.onSettle(passSample(hash = 99L, overlaps = true, nowMs = 2_000L + step * 300L))
-        }
+        val held = session.onSettle(passSample(hash = 99L, overlaps = true))
         assertThat(held).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.takeAutoSave()).isTrue()
@@ -104,8 +101,8 @@ class AutoCalibrationTest {
         beforeUnknown = 0,
     )
 
-    private fun passSample(hash: Long, overlaps: Boolean, nowMs: Long = 2_000L) = FiveMoveSession.SettleSample(
-        nowMs = nowMs,
+    private fun passSample(hash: Long, overlaps: Boolean) = FiveMoveSession.SettleSample(
+        nowMs = 2_000L,
         boardHash = hash,
         diffFraction = 0f,
         frameFresh = true,

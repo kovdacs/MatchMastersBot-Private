@@ -58,51 +58,19 @@ class FiveMoveReplayTest {
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(0)
         if (pass.hash == animation.hash) {
-            val retry = session.onSettle(sampleFrom(pass, nowMs = 1_000L + FiveMoveSession.UNCHANGED_MIN_MS, diffFraction = 0.01f))
-            assertThat(retry).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-            assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-            session.noteGesture(
-                com.match3vision.analyzer.input.FiveMoveSession.GestureFact(
-                    startedAtMs = 3_000L,
-                    nowMs = 3_100L,
-                    callbackCompleted = true,
-                    cancelled = false,
-                    cells = "(0,4)↔(1,4)",
-                    fromX = 1f,
-                    fromY = 1f,
-                    toX = 1f,
-                    toY = 2f,
-                    beforeHash = pass.hash,
-                    beforeUnknown = 0,
-                ),
-            )
-            val unchanged = session.onSettle(
-                sampleFrom(pass, nowMs = 3_000L + FiveMoveSession.UNCHANGED_MIN_MS, diffFraction = 0.01f),
-            )
+            val unchanged = session.onSettle(sampleFrom(pass, nowMs = 1_000L + FiveMoveSession.UNCHANGED_MIN_MS, diffFraction = 0.01f))
             assertThat(unchanged).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
             assertThat(session.verifiedCount).isEqualTo(0)
             return
         }
-        var verified: FiveMoveSession.Decision = FiveMoveSession.Decision.Hold("none")
-        repeat(3) { step ->
-            verified = session.onSettle(
-                sampleFrom(
-                    pass,
-                    nowMs = 2_000L + step * 300L,
-                    diffFraction = 0.01f,
-                    frameSequence = if (step == 2) 8L else 0L,
-                ),
-            )
-        }
+        val verified = session.onSettle(sampleFrom(pass, nowMs = 2_000L, diffFraction = 0.01f, frameSequence = 8L))
         assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         assertThat(session.movesSnapshot().single().ignoredTransient).isAtLeast(1)
-        session.noteFreshBoard(pass.hash, fresh = true, pass = true)
-        session.noteFreshBoard(pass.hash, fresh = true, pass = true)
-        assertThat(session.requestDispatch(gates(nowMs = 3_100L, frameSequence = 8L)))
+        assertThat(session.requestDispatch(gates(nowMs = 2_100L, frameSequence = 8L)))
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        val next = session.requestDispatch(gates(nowMs = 3_200L, frameSequence = 9L))
+        val next = session.requestDispatch(gates(nowMs = 2_200L, frameSequence = 9L))
         assertThat(next).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         assertThat((next as FiveMoveSession.Decision.Go).permit.moveNumber).isEqualTo(2)
     }

@@ -125,8 +125,6 @@ class FloatingBubbleService : Service() {
     private var collapsedForCapture = false
     private var fiveSettleInProgress = false
     private val hudPulse = HudPulse()
-    private var fiveBoardHash: Long? = null
-    private var fiveBoardStableSinceMs: Long = 0L
     private var collapseWallMs = 0L
     private var savedGravity = Gravity.TOP or Gravity.END
     private var savedX = 0
@@ -1718,8 +1716,6 @@ class FloatingBubbleService : Service() {
                     return
                 }
                 hudPulse.clear()
-                fiveBoardHash = null
-                fiveBoardStableSinceMs = 0L
                 ctrl.fiveMove.noteStartExport(offer.report.export)
                 val savedLine = savedCalibrationLine()
                 if (savedLine.isNotBlank()) ctrl.fiveMove.noteCalibration(savedLine)
@@ -1897,10 +1893,11 @@ class FloatingBubbleService : Service() {
 
     /**
      * One left-card ACTIVATE tap when the word is read, the toggle is on, the
-     * turn is ours, and no extra-move swap is available. A miss or a booster
-     * that needs a target latches for this session and does not tap the board.
-     * Returns true when a tap was sent, so the caller must not also swipe on
-     * this stale frame.
+     * turn is ours, a swipe has already verified, and no extra-move swap is
+     * available. ACTIVATE is read again on the latest frame before the tap.
+     * A booster that needs a target stops the session. A miss latches and
+     * does not tap the board. Returns true when a tap was sent, so the caller
+     * must not also swipe on this stale frame.
      */
     private suspend fun trySoloBooster(
         session: FiveMoveSession,
@@ -1965,8 +1962,7 @@ class FloatingBubbleService : Service() {
         }
         val needsTarget = callback && countChange && !changed && hudChanged
         if (needsTarget) {
-            session.beginBoosterTargetHold(System.currentTimeMillis())
-            session.noteHud(moveTrace(hud, boosterDecision, hud.log()) + "\nboosterHold=target")
+            session.abort("STOP — booster needs a target", System.currentTimeMillis())
             return true
         }
         session.recordBooster(
@@ -1999,65 +1995,14 @@ class FloatingBubbleService : Service() {
     ): Boolean {
         val session = ctrl.fiveMove
         val now = System.currentTimeMillis()
-        val frameFresh = frame.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS
-        val hud = readHud(pixels, frame)
-        session.noteHud(hud.log())
-        val pass = vision.validation.isPass
-        if (pass) {
-            val hash = Board.fromVision(vision.board).contentHash()
-            if (hash != fiveBoardHash) {
-                fiveBoardHash = hash
-                fiveBoardStableSinceMs = now
-            }
-            if (frameFresh) session.noteFreshBoard(hash, fresh = true, pass = true)
-        }
-        val stableMs = if (fiveBoardStableSinceMs > 0L) now - fiveBoardStableSinceMs else 0L
-        val noMoves = session.noteMovesRemaining(
-            remaining = hud.movesRemaining,
-            nowMs = now,
-            frameFresh = frameFresh && pass,
-            boardStableMs = stableMs,
-        )
-        if (noMoves != null) {
-            showChipNotice(session.stopReason)
-            flushFiveMoveReport(session)
-            return true
-        }
-        val turnRefusal = com.match3vision.analyzer.hud.TurnGate.refusal(hud)
-        if (turnRefusal != null) {
-            session.abort(turnRefusal, System.currentTimeMillis())
-            showChipNotice(turnRefusal)
-            flushFiveMoveReport(session)
-            return true
-        }
-        val boosterPoll = session.pollBoosterTarget(
-            nowMs = now,
-            activateWord = hud.activateWord,
-            stablePass = pass && frameFresh && stableMs >= FiveMoveSession.STABLE_SPAN_MS,
-        )
-        if (boosterPoll is FiveMoveSession.Decision.Stop) {
-            showChipNotice(session.stopReason)
-            flushFiveMoveReport(session)
-            return true
-        }
-        if (boosterPoll is FiveMoveSession.Decision.Hold) {
-            AutoPlaySession.updateDiagnostics(
-                phase = "TARTÁS",
-                cycleReason = boosterPoll.reason,
-                gestureStatus = "NOT CREATED",
-                inputBlockReason = boosterPoll.reason,
-            )
-            refreshBubbleUi()
-            return false
-        }
         val gates = FiveMoveSession.Gates(
             nowMs = now,
             a11yConnected = MatchMastersAccessibilityService.isConnected(),
             selfCheckMeasured = selfCheckThisSession(),
             overlayCollapsed = collapsedForCapture,
             overlayOutsideRoi = overlayAllows,
-            visionPass = pass,
-            frameFresh = frameFresh,
+            visionPass = vision.validation.isPass,
+            frameFresh = frame.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS,
             ownUi = AutoPlaySession.frameGate.analyzerUiForeground,
             msSinceCollapse = if (collapseWallMs > 0L) frame.timestampMs - collapseWallMs else -1L,
             roiPlausible = roiLooksPlausible(vision),
@@ -2079,6 +2024,15 @@ class FloatingBubbleService : Service() {
                 return true
             }
             is FiveMoveSession.Decision.Go -> {
+                val hud = readHud(pixels, frame)
+                session.noteHud(hud.log())
+                val turnRefusal = com.match3vision.analyzer.hud.TurnGate.refusal(hud)
+                if (turnRefusal != null) {
+                    session.abort(turnRefusal, System.currentTimeMillis())
+                    showChipNotice(turnRefusal)
+                    flushFiveMoveReport(session)
+                    return true
+                }
                 if (session.needsGeometryCheck()) {
                     val (screenW, screenH) = screenSizePx()
                     val rotation = ProductionLiveReaders.screenSource.measure().rotation
@@ -2096,12 +2050,18 @@ class FloatingBubbleService : Service() {
                         return true
                     }
                 }
+                val noMoves = session.movesRemainingStop(hud.movesRemaining, System.currentTimeMillis())
+                if (noMoves != null) {
+                    showChipNotice(session.stopReason)
+                    flushFiveMoveReport(session)
+                    return true
+                }
                 val extraMove = PlayMoveRanker().rank(Board.fromVision(vision.board)).ordered.any { it.extraMove }
                 val boosterDecision = SoloBooster.decision(
                     hud,
                     BoosterControl.enabled,
                     extraMove,
-                    session.boosterLatched || session.boosterHolding,
+                    session.boosterLatched,
                     swipesVerified = session.verifiedCount,
                     selfCheckMeasured = gates.selfCheckMeasured,
                 )
@@ -2151,13 +2111,6 @@ class FloatingBubbleService : Service() {
                         flushFiveMoveReport(session)
                         return true
                     }
-                    if (reason.contains("no legal") || reason == AutomaticInputEngine.HOLD_NO_LEGAL_MOVE) {
-                        val missed = session.noteNoLegalMove(System.currentTimeMillis())
-                        if (missed is FiveMoveSession.Decision.Stop) {
-                            flushFiveMoveReport(session)
-                            return true
-                        }
-                    }
                     AutoPlaySession.updateDiagnostics(
                         phase = "TARTÁS",
                         cycleReason = reason,
@@ -2168,7 +2121,7 @@ class FloatingBubbleService : Service() {
                 }
                 val move = executed.move.move
                 val ranking = ctrl.inputLoop().lastPlayRanking
-                val chosen = ranking?.ordered?.drop(session.playSkip.coerceAtLeast(0))?.firstOrNull()
+                val chosen = ranking?.ordered?.firstOrNull()
                 session.beginGameLog(
                     GameMoveLog.Pending(
                         moveNumber = decision.permit.moveNumber,
@@ -2201,7 +2154,6 @@ class FloatingBubbleService : Service() {
                         toX = executed.gesture.endX,
                         toY = executed.gesture.endY,
                         beforeHash = executed.beforeBoardHash,
-                        beforeLabelHash = Board.fromVision(vision.board).labelHash(),
                         beforeUnknown = vision.unknownCount,
                         playExport = moveTrace(hud, boosterDecision, ranking?.export().orEmpty()) +
                             (activateCrop?.let { "\nactivateCrop=$it" } ?: ""),
@@ -2231,8 +2183,6 @@ class FloatingBubbleService : Service() {
         beforeHash: Long,
     ): Boolean {
         var previous: IntArray? = null
-        var labelBoard = Board.fromVision(beforeVision.board)
-        var labelHash = labelBoard.labelHash()
         var afterPixels: IntArray? = null
         var afterFrame: CaptureFrame? = null
         var afterVision: com.match3vision.analyzer.vision.VisionResult? = null
@@ -2338,16 +2288,10 @@ class FloatingBubbleService : Service() {
             afterFrame = next
             afterVision = nextVision
             val hudNow = readHud(analyzed.pixels, next)
-            val seenBoard = Board.fromVision(nextVision.board)
-            if (nextVision.validation.isPass) {
-                if (!labelBoard.labelsAgree(seenBoard)) labelHash = seenBoard.labelHash()
-                labelBoard = seenBoard
-            }
             val settled = session.onSettle(
                 FiveMoveSession.SettleSample(
                     nowMs = System.currentTimeMillis(),
-                    boardHash = seenBoard.contentHash(),
-                    labelHash = labelHash,
+                    boardHash = Board.fromVision(nextVision.board).contentHash(),
                     diffFraction = fraction,
                     frameFresh = next.ageMs() <= GestureFailSafe.MAX_FRAME_AGE_MS,
                     roiPlausible = roiLooksPlausible(nextVision),
@@ -2360,9 +2304,6 @@ class FloatingBubbleService : Service() {
                     frameSequence = next.sequence,
                     countBoardChange = com.match3vision.analyzer.hud.TurnGate.allowsVerification(hudNow),
                     swapOverlaps = swapOverlapsProbe(session, beforeVision, nextVision),
-                    turnState = hudNow.turnState,
-                    soloPositive = hudNow.soloPositive,
-                    swapSupported = swapSupportedProbe(session, beforeVision, nextVision),
                 ),
             )
             if (settled is FiveMoveSession.Decision.Hold) {
@@ -2432,19 +2373,6 @@ class FloatingBubbleService : Service() {
             Board.fromVision(afterVision.board),
         )
         return AutoCalibration.overlaps(changed, parsed[0], parsed[1], parsed[2], parsed[3])
-    }
-
-    private fun swapSupportedProbe(
-        session: FiveMoveSession,
-        beforeVision: com.match3vision.analyzer.vision.VisionResult,
-        afterVision: com.match3vision.analyzer.vision.VisionResult,
-    ): Boolean {
-        val parsed = AutoCalibration.parseMove(session.openCells() ?: return true) ?: return true
-        val changed = AutoCalibration.changedCells(
-            Board.fromVision(beforeVision.board),
-            Board.fromVision(afterVision.board),
-        )
-        return AutoCalibration.supports(changed, parsed[0], parsed[1], parsed[2], parsed[3])
     }
 
     private fun writeMoveFrame(

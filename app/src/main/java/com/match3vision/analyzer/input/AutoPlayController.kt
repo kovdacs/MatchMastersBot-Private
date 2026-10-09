@@ -687,7 +687,6 @@ class AutoPlayController(
             lastReason = fiveMove.stopReason
             return null
         }
-        inputLoop.playSkip = fiveMove.playSkip
         inputLoop.inputEngine().stateMachine().reset()
         enableSwitch.setEnabled(true)
         return try {

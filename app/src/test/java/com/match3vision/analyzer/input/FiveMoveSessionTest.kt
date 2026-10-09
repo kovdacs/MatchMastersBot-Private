@@ -28,36 +28,20 @@ class FiveMoveSessionTest {
         assertThat(session.consumePermit(permit)).isFalse()
         val noted = session.noteGesture(gesture(startedAtMs = 1_000L, nowMs = 1_200L, beforeHash = 11L))
         assertThat(noted).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        val retry = session.onSettle(
+        val failed = session.onSettle(
             sample(
                 nowMs = 1_000L + FiveMoveSession.UNCHANGED_MIN_MS,
                 boardHash = 11L,
                 diffFraction = 0f,
             ),
         )
-        assertThat(retry).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        assertThat(session.playSkip).isEqualTo(1)
-        assertThat(session.verifiedCount).isEqualTo(0)
-        session.noteFreshBoard(11L, fresh = true, pass = true)
-        session.noteFreshBoard(11L, fresh = true, pass = true)
-        val again = session.requestDispatch(gates(nowMs = 3_000L)) as FiveMoveSession.Decision.Go
-        assertThat(session.consumePermit(again.permit)).isTrue()
-        session.noteGesture(gesture(startedAtMs = 3_000L, nowMs = 3_100L, beforeHash = 11L))
-        val failed = session.onSettle(
-            sample(
-                nowMs = 3_000L + FiveMoveSession.UNCHANGED_MIN_MS,
-                boardHash = 11L,
-                diffFraction = 0f,
-            ),
-        )
         assertThat(failed).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat(session.verifiedCount).isEqualTo(0)
-        assertThat(session.gesturesDispatched).isEqualTo(2)
+        assertThat(session.gesturesDispatched).isEqualTo(1)
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
-        val blocked = session.requestDispatch(gates(nowMs = 6_000L))
+        val blocked = session.requestDispatch(gates(nowMs = 4_000L))
         assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
-        assertThat(session.gesturesDispatched).isEqualTo(2)
+        assertThat(session.gesturesDispatched).isEqualTo(1)
         assertThat(session.report()).contains("board unchanged")
         assertThat(session.report()).contains("measuredSessionMs=")
         assertThat(session.report()).contains("durationMs=")
@@ -85,24 +69,16 @@ class FiveMoveSessionTest {
         session.arm(0L)
         repeat(FiveMoveSession.MAX_MOVES) { index ->
             val start = 1_000L + index * 2_000L
-            if (index > 0) {
-                val settled = 100L + index - 1
-                session.noteFreshBoard(settled, fresh = true, pass = true)
-                session.noteFreshBoard(settled, fresh = true, pass = true)
-            }
             val go = session.requestDispatch(gates(nowMs = start))
             assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
             val permit = (go as FiveMoveSession.Decision.Go).permit
             assertThat(permit.moveNumber).isEqualTo(index + 1)
             assertThat(session.consumePermit(permit)).isTrue()
             session.noteGesture(gesture(startedAtMs = start, nowMs = start + 100L, beforeHash = index.toLong()))
-            val hash = 100L + index
-            session.onSettle(sample(nowMs = start + 200L, boardHash = hash, diffFraction = 0f, unknownCount = 0))
-            session.onSettle(sample(nowMs = start + 500L, boardHash = hash, diffFraction = 0f, unknownCount = 0))
             val done = session.onSettle(
                 sample(
                     nowMs = start + 800L,
-                    boardHash = hash,
+                    boardHash = 100L + index,
                     diffFraction = 0f,
                     unknownCount = 0,
                     frameSequence = (index + 1).toLong(),
@@ -145,15 +121,10 @@ class FiveMoveSessionTest {
     fun movesRemaining_stopsOnlyWhenTheCircleRowReadsZero() {
         val running = FiveMoveSession()
         running.arm(0L)
-        assertThat(running.noteMovesRemaining(null, 10L, frameFresh = true, boardStableMs = 2_000L)).isNull()
-        assertThat(running.noteMovesRemaining(3, 10L, frameFresh = true, boardStableMs = 2_000L)).isNull()
-        assertThat(running.noteMovesRemaining(0, 20L, frameFresh = true, boardStableMs = 2_000L)).isNull()
-        assertThat(running.noteMovesRemaining(0, 30L, frameFresh = false, boardStableMs = 2_000L)).isNull()
-        assertThat(running.noteMovesRemaining(0, 40L, frameFresh = true, boardStableMs = 2_000L)).isNull()
-        assertThat(running.noteMovesRemaining(0, 50L, frameFresh = true, boardStableMs = 500L)).isNull()
+        assertThat(running.movesRemainingStop(null, 10L)).isNull()
+        assertThat(running.movesRemainingStop(3, 10L)).isNull()
         assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        val stopped = running.noteMovesRemaining(0, 60L, frameFresh = true, boardStableMs = 1_000L)
-            as FiveMoveSession.Decision.Stop
+        val stopped = running.movesRemainingStop(0, 20L) as FiveMoveSession.Decision.Stop
         assertThat(stopped.reason).contains("no moves left")
         assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
     }
@@ -226,12 +197,8 @@ class FiveMoveSessionTest {
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.onSettle(sample(nowMs = 2_500L, boardHash = 8L, diffFraction = 0.5f)))
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        assertThat(session.onSettle(sample(nowMs = 2_700L, boardHash = 8L, diffFraction = 0.01f, unknownCount = 1)))
-            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        assertThat(session.onSettle(sample(nowMs = 3_000L, boardHash = 8L, diffFraction = 0.01f, unknownCount = 1)))
-            .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         val pass = session.onSettle(
-            sample(nowMs = 3_300L, boardHash = 8L, diffFraction = 0.01f, unknownCount = 1),
+            sample(nowMs = 2_700L, boardHash = 8L, diffFraction = 0.01f, unknownCount = 1),
         )
         assertThat(pass).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
@@ -241,7 +208,7 @@ class FiveMoveSessionTest {
         assertThat(move.callback).isEqualTo("onCompleted")
         assertThat(move.beforeUnknown).isEqualTo(0)
         assertThat(move.afterUnknown).isEqualTo(1)
-        assertThat(move.durationMs).isEqualTo(1_200L)
+        assertThat(move.durationMs).isEqualTo(600L)
         assertThat(move.fromX).isEqualTo(10f)
         assertThat(move.toX).isEqualTo(40f)
     }
@@ -279,20 +246,14 @@ class FiveMoveSessionTest {
                 ),
             ),
         ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        assertThat(
-            session.onSettle(
-                sample(
-                    nowMs = 3_200L,
-                    boardHash = 99L,
-                    diffFraction = 0.01f,
-                    unknownCount = 0,
-                    frameSequence = 13L,
-                ),
-            ),
-        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        session.onSettle(sample(nowMs = 3_500L, boardHash = 99L, diffFraction = 0.01f, unknownCount = 0))
         val verified = session.onSettle(
-            sample(nowMs = 3_800L, boardHash = 99L, diffFraction = 0.01f, unknownCount = 0, frameSequence = 13L),
+            sample(
+                nowMs = 3_200L,
+                boardHash = 99L,
+                diffFraction = 0.01f,
+                unknownCount = 0,
+                frameSequence = 13L,
+            ),
         )
         assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
@@ -301,11 +262,9 @@ class FiveMoveSessionTest {
         assertThat(move.ignoredTransient).isEqualTo(2)
         assertThat(move.ignoredReasons).contains("implausible ROI")
         assertThat(move.ignoredReasons).contains("vision HOLD unk=8")
-        session.noteFreshBoard(99L, fresh = true, pass = true)
-        session.noteFreshBoard(99L, fresh = true, pass = true)
-        assertThat(session.requestDispatch(gates(nowMs = 3_900L, frameSequence = 13L)))
+        assertThat(session.requestDispatch(gates(nowMs = 3_300L, frameSequence = 13L)))
             .isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        val second = session.requestDispatch(gates(nowMs = 4_000L, frameSequence = 14L))
+        val second = session.requestDispatch(gates(nowMs = 3_400L, frameSequence = 14L))
         assertThat(second).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         assertThat((second as FiveMoveSession.Decision.Go).permit.moveNumber).isEqualTo(2)
     }
@@ -431,14 +390,8 @@ class FiveMoveSessionTest {
                 sample(nowMs = 1_000L, boardHash = 3L, diffFraction = 0.16f, unknownCount = 2, visionPass = false),
             ),
         ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        assertThat(
-            session.onSettle(
-                sample(nowMs = 4_202L, boardHash = 9L, diffFraction = 0.01f, unknownCount = 0, frameSequence = 4L),
-            ),
-        ).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
-        session.onSettle(sample(nowMs = 4_502L, boardHash = 9L, diffFraction = 0.01f, unknownCount = 0))
         val verified = session.onSettle(
-            sample(nowMs = 4_802L, boardHash = 9L, diffFraction = 0.01f, unknownCount = 0, frameSequence = 4L),
+            sample(nowMs = 4_202L, boardHash = 9L, diffFraction = 0.01f, unknownCount = 0, frameSequence = 4L),
         )
         assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.verifiedCount).isEqualTo(1)
@@ -446,7 +399,7 @@ class FiveMoveSessionTest {
         val move = session.movesSnapshot().single()
         assertThat(move.verification).contains("vision PASS")
         assertThat(move.verification).doesNotContain("CHANGED_UNSETTLED")
-        assertThat(move.durationMs).isEqualTo(4_802L)
+        assertThat(move.durationMs).isEqualTo(4_202L)
         assertThat(move.ignoredReasons).contains("vision HOLD unk=2")
     }
 
