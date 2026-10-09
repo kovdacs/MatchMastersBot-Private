@@ -32,25 +32,29 @@ class PlaySettle0270Test {
         val session = armed()
         val cadence = 1_000L
         val post = FiveMoveSession.scaled(FiveMoveSession.POST_SWIPE_MS, cadence)
+        assertThat(post).isAtMost(8_000L)
+        val firstAge = 2_000L
         val first = session.onSettle(
             pass(
-                nowMs = post,
+                nowMs = post + firstAge,
                 hash = 9L,
                 diff = 0.45f,
                 sequence = 2L,
-                ageMs = 2_000L,
+                ageMs = firstAge,
                 cadenceMs = cadence,
             ),
         )
         assertThat(first).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.SETTLING)
+        val secondAge = 4_900L
+        val secondCapture = post + cadence
         val verified = session.onSettle(
             pass(
-                nowMs = post + cadence,
+                nowMs = secondCapture + secondAge,
                 hash = 9L,
                 diff = 0.02f,
                 sequence = 3L,
-                ageMs = 4_900L,
+                ageMs = secondAge,
                 cadenceMs = cadence,
             ),
         )
@@ -85,7 +89,7 @@ class PlaySettle0270Test {
             pass(nowMs = 26_000L, hash = 9L, diff = 0.50f, sequence = 30L, ageMs = 3_000L, cadenceMs = 1_000L),
         )
         val verified = session.onSettle(
-            pass(nowMs = 28_000L, hash = 9L, diff = 0.45f, sequence = 31L, ageMs = 4_500L, cadenceMs = 1_000L),
+            pass(nowMs = 29_000L, hash = 9L, diff = 0.45f, sequence = 31L, ageMs = 4_500L, cadenceMs = 1_000L),
         )
         assertThat(settled).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat(verified).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
@@ -126,8 +130,8 @@ class PlaySettle0270Test {
         assertThat(solo.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         val menu = FiveMoveSession()
         menu.arm(0L)
-        val popped = menu.notePlayHud(PlayGate.MENU, 10L) as FiveMoveSession.Decision.Stop
-        assertThat(OwnerStatus.hu(popped.reason)).isEqualTo("Menü vagy felugró ablak – leálltam")
+        assertThat(menu.notePlayHud(PlayGate.MENU, 10L)).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat(menu.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         val dim = FiveMoveSession()
         dim.arm(0L)
         assertThat(dim.notePlayHud(PlayGate.DIMMED, 10L)).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)

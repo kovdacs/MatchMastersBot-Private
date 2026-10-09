@@ -30,6 +30,8 @@ class OwnerStatusTest {
             .isEqualTo("Nem látom, kié a kör – leálltam")
         assertThat(OwnerStatus.hu("STOP — 300s session limit"))
             .isEqualTo("Lejárt az 5 perc – leálltam")
+        assertThat(OwnerStatus.hu("STOP — 600s session limit"))
+            .isEqualTo("Lejárt a 10 perc – leálltam")
         assertThat(OwnerStatus.hu("Kisegítő szolgáltatás nincs bekapcsolva"))
             .isEqualTo("Engedélyezd a Kisegítő lehetőségeket")
         assertThat(OwnerStatus.hu("CAPTURE: OFF — CaptureService még nem él"))

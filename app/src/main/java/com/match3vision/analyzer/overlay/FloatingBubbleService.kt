@@ -1270,7 +1270,7 @@ class FloatingBubbleService : Service() {
                                 frame = useFrame,
                                 pixels = analyzed.pixels,
                                 overlayAllows = true,
-                                cycleContext = cycleContext,
+                                cycleContext = cycleContext.copy(maxFrameAgeMs = settleAgeLimit()),
                             )
                             if (done) {
                                 endFiveMoveInLoop(ctrl, ctrl.fiveMove.stopReason)
@@ -1936,7 +1936,6 @@ class FloatingBubbleService : Service() {
         }
         val callback = dispatched is InputDispatchResult.Dispatched && dispatched.callbackCompleted
         var changed = false
-        var stable = false
         var countChange = true
         var hudChanged = false
         var lastHash: Long? = null
@@ -1955,10 +1954,7 @@ class FloatingBubbleService : Service() {
             if (!com.match3vision.analyzer.hud.TurnGate.allowsVerification(hudNow)) countChange = false
             val hash = Board.fromVision(nextVision.board).contentHash()
             if (hash != beforeHash) changed = true
-            if (lastHash != null && hash == lastHash && hash != beforeHash) {
-                stable = true
-                break
-            }
+            if (lastHash != null && hash == lastHash && hash != beforeHash) break
             lastHash = hash
         }
         val needsTarget = callback && countChange && !changed && hudChanged
@@ -1966,16 +1962,30 @@ class FloatingBubbleService : Service() {
             session.abort("STOP — booster needs a target", System.currentTimeMillis())
             return true
         }
-        session.recordBooster(
-            changed = changed,
-            stable = stable,
-            callbackCompleted = callback,
+        if (!callback) {
+            session.recordBooster(
+                changed = changed,
+                stable = false,
+                callbackCompleted = false,
+                x = tap.x,
+                y = tap.y,
+                nowMs = System.currentTimeMillis(),
+                playExport = moveTrace(hud, boosterDecision, hud.log()),
+                countChange = countChange,
+                needsTarget = false,
+            )
+            return true
+        }
+        val beforeBoard = Board.fromVision(vision.board)
+        session.armBoosterSettle(
             x = tap.x,
             y = tap.y,
-            nowMs = System.currentTimeMillis(),
+            nowMs = started,
             playExport = moveTrace(hud, boosterDecision, hud.log()),
-            countChange = countChange,
-            needsTarget = false,
+            swipeSequence = frame.sequence,
+            beforeHash = beforeHash,
+            beforeLabel = beforeBoard.labelHash(),
+            beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
         )
         return true
     }
@@ -2123,6 +2133,14 @@ class FloatingBubbleService : Service() {
                     if (session.phase == FiveMoveSession.Phase.STOPPED) {
                         flushFiveMoveReport(session)
                         return true
+                    }
+                    if (session.phase == FiveMoveSession.Phase.SETTLING) {
+                        return settleFiveMove(
+                            session,
+                            frame,
+                            vision,
+                            Board.fromVision(vision.board).contentHash(),
+                        )
                     }
                     refreshBubbleUi()
                     return false
@@ -2356,6 +2374,7 @@ class FloatingBubbleService : Service() {
                     diffFraction = fraction,
                     frameFresh = next.ageMs() <= settleAgeLimit(),
                     labelHash = seenBoard.labelHash(),
+                    labelKeys = seenBoard.labelKeys(),
                     frameAgeMs = next.ageMs(),
                     cadenceMedianMs = CaptureService.managerOrNull()?.cadence?.medianIntervalMs() ?: 0L,
                     circlesBright = hudNow.circlesBright,

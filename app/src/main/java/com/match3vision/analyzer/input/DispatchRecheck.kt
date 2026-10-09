@@ -29,6 +29,8 @@ data class DispatchPermit(
     val capturedElapsedMs: Long = 0L,
     /** Independent screen-measurement source. Empty when a unit permit omitted it. */
     val screenSource: String = "",
+    /** Same limit the planner used. Defaults to the 3 s fail-safe. */
+    val maxFrameAgeMs: Long = GestureFailSafe.MAX_FRAME_AGE_MS,
 ) {
     companion object {
         fun from(
@@ -58,6 +60,7 @@ data class DispatchPermit(
                 sequenceAllowed = seqOk,
                 capturedElapsedMs = context.capturedElapsedMs,
                 screenSource = context.screenSource,
+                maxFrameAgeMs = context.maxFrameAgeMs,
             )
         }
     }
@@ -87,7 +90,7 @@ object DispatchRecheck {
         if (!permit.sequenceAllowed) {
             return Result(false, "frame sequence rejected")
         }
-        if (ageMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
+        if (ageMs > permit.maxFrameAgeMs) {
             return Result(false, "stale frame age=${ageMs}ms")
         }
         if (!permit.visionPass) return Result(false, "VISION HOLD")

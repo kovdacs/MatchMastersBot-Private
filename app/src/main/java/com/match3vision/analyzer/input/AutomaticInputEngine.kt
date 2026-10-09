@@ -73,6 +73,7 @@ class AutomaticInputEngine(
         hasFrame: Boolean = true,
         frameAgeMs: Long = 0L,
         frameSequenceDecision: com.match3vision.analyzer.capture.FrameSequenceGate.Decision? = null,
+        maxFrameAgeMs: Long = GestureFailSafe.MAX_FRAME_AGE_MS,
     ): GateDecision {
         val fs = GestureFailSafe.evaluate(
             GestureFailSafe.Context(
@@ -84,6 +85,7 @@ class AutomaticInputEngine(
                 captureOk = captureOk,
                 hasFrame = hasFrame,
                 frameAgeMs = frameAgeMs,
+                maxFrameAgeMs = maxFrameAgeMs,
                 frameSequenceDecision = frameSequenceDecision,
                 minMoveConfidence = minMoveConfidence,
             ),
@@ -121,6 +123,7 @@ class AutomaticInputEngine(
                 hasFrame = context.hasFrame,
                 frameAgeMs = context.frameAgeMs,
                 frameSequenceDecision = context.frameSequenceDecision,
+                maxFrameAgeMs = context.maxFrameAgeMs,
             )
         }
         if (!gate.allow || move == null) {

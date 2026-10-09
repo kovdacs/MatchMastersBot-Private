@@ -83,6 +83,23 @@ data class Board(
 
     fun labelsAgree(other: Board): Boolean = labelHash() == other.labelHash()
 
+    /**
+     * One key per cell. Unknown cells are [LABEL_UNKNOWN] so they are left out
+     * of a flicker comparison. Specials are not part of the key.
+     */
+    fun labelKeys(): LongArray {
+        val keys = LongArray(SIZE * SIZE)
+        var i = 0
+        forEachTile { t ->
+            keys[i++] = if (t.isUnknown) {
+                LABEL_UNKNOWN
+            } else {
+                (t.color.ordinal.toLong() shl 16) or t.shape.ordinal.toLong()
+            }
+        }
+        return keys
+    }
+
     fun snapshot(): Board = this
 
     fun forEachTile(block: (Tile) -> Unit) {
@@ -102,6 +119,21 @@ data class Board(
 
     companion object {
         const val SIZE = GridGeometry.GRID_SIZE
+        const val LABEL_UNKNOWN = Long.MIN_VALUE
+
+        /** Known cells may differ in at most one place. Unknown cells are skipped. */
+        fun labelsWithinOne(left: LongArray, right: LongArray): Boolean {
+            if (left.size != right.size) return false
+            var differ = 0
+            for (i in left.indices) {
+                if (left[i] == LABEL_UNKNOWN || right[i] == LABEL_UNKNOWN) continue
+                if (left[i] != right[i]) {
+                    differ += 1
+                    if (differ > 1) return false
+                }
+            }
+            return true
+        }
 
         fun fromGrid(tiles: Array<Array<Tile>>): Board = Board(tiles)
 

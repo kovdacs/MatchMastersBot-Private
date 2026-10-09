@@ -276,9 +276,9 @@ class InputLoopController(
         if (!context.hasFrame) return "FRAME: no frame"
         val seq = context.frameSequenceDecision
         if (seq != null && !seq.allow) return seq.reason
-        if (context.frameAgeMs > GestureFailSafe.MAX_FRAME_AGE_MS) {
+        if (context.frameAgeMs > context.maxFrameAgeMs) {
             return FrameSequenceGate.HOLD_STALE_FRAME +
-                " age=${context.frameAgeMs}ms > ${GestureFailSafe.MAX_FRAME_AGE_MS}ms"
+                " age=${context.frameAgeMs}ms > ${context.maxFrameAgeMs}ms"
         }
         return null
     }

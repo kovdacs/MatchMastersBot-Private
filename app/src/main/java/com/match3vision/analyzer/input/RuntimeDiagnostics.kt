@@ -53,6 +53,11 @@ data class RuntimeCycleContext(
      */
     val originOffsetX: Int = 0,
     val originOffsetY: Int = 0,
+    /**
+     * Oldest frame the dispatcher may act on. The five-move loop sets this to
+     * the settle age limit so a frame that just verified is not refused.
+     */
+    val maxFrameAgeMs: Long = GestureFailSafe.MAX_FRAME_AGE_MS,
 ) {
     init {
         require(!coordinateAlignmentProven) {

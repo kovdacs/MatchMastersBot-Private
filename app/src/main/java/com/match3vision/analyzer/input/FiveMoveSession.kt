@@ -1,5 +1,6 @@
 package com.match3vision.analyzer.input
 
+import com.match3vision.analyzer.board.Board
 import com.match3vision.analyzer.moves.PlayMoveRanker
 
 /**
@@ -13,12 +14,14 @@ import com.match3vision.analyzer.moves.PlayMoveRanker
  * The clock starts at [arm] (the 10 LÉPÉS TESZT press, after the self-check).
  * All verified moves must finish inside [SESSION_LIMIT_MS].
  * A swipe is never abandoned at 20 s. The next swipe waits for a playable
- * board: two vision PASS frames with the same 49 labels, at least
- * [PLAYABLE_GAP_MS] apart (or one measured frame interval, when that is
- * longer), both captured after the swipe, both at least [POST_SWIPE_MS]
- * after it ( [POST_SWIPE_BIG_MS] after a 4+ clear or a special). Frame age
- * up to [SETTLE_FRAME_AGE_MS] is accepted. Those waits scale with the
- * measured capture interval. The wait itself never sends a gesture. If the
+ * board: two vision PASS frames whose known labels differ in at most one
+ * cell, at least [PLAYABLE_GAP_MS] apart (or one measured frame interval,
+ * when that is longer), both captured after the swipe, both at least
+ * [POST_SWIPE_MS] after it ( [POST_SWIPE_BIG_MS] after a 4+ clear or a
+ * special). The wait and the gap use capture time. Frame age up to
+ * [SETTLE_FRAME_AGE_MS] is accepted. Those waits scale with the measured
+ * capture interval, at most twice the nominal wait. The wait itself never
+ * sends a gesture. If the
  * board is still not playable after [SETTLE_WAIT_MS], the session stops.
  *
  * This type does not run vision and does not dispatch a gesture.
@@ -92,6 +95,8 @@ class FiveMoveSession {
         val swapOverlaps: Boolean = true,
         /** Null uses [boardHash], so older tests still treat a new hash as new labels. */
         val labelHash: Long? = null,
+        /** Per-cell keys. When set, two frames agree if at most one known cell differs. */
+        val labelKeys: LongArray? = null,
         val frameAgeMs: Long = 0L,
         val cadenceMedianMs: Long = 0L,
         val circlesBright: Int? = null,
@@ -219,7 +224,10 @@ class FiveMoveSession {
         val beforeLabel: Long = beforeHash,
         val beforeCircles: Int? = null,
         val longSettle: Boolean = false,
+        /** False for an ACTIVATE tap. It settles, and it is not a verified swipe. */
+        val countsAsSwipe: Boolean = true,
         var anchorLabel: Long? = null,
+        var anchorKeys: LongArray? = null,
         var anchorMs: Long = 0L,
         var anchorSeq: Long = 0L,
         var playableSinceMs: Long = 0L,
@@ -230,6 +238,8 @@ class FiveMoveSession {
     )
 
     private var unknownMoves: Int = 0
+    private var menuStreak: Int = 0
+    private var menuSinceMs: Long = 0L
     private var zeroCircleReads: Int = 0
     private var lastCircleSequence: Long = -1L
     private var unchangedRetries: Int = 0
@@ -268,20 +278,34 @@ class FiveMoveSession {
     }
 
     /**
-     * Opponent's Turn and a menu or popup stop immediately. An unknown HUD
-     * (neither solo-positive nor PvP Your Turn) stops after two such moves.
-     * A dimmed transition is ignored. Solo never increments the unknown streak.
+     * Opponent's Turn stops immediately. A menu or popup is a hold until
+     * [MENU_FRAMES] consecutive menu frames span [MENU_HOLD_MS]; any our-turn
+     * frame clears that streak. An unknown HUD (neither solo-positive nor PvP
+     * Your Turn) stops after two such moves. A dimmed transition is ignored.
+     * Solo never increments the unknown streak.
      */
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
         val decision: Decision? = when (kind) {
             PlayGate.OPPONENT -> abort("STOP — Opponent's Turn", nowMs)
-            PlayGate.MENU -> abort("STOP — menu or popup", nowMs)
+            PlayGate.MENU -> {
+                if (menuStreak == 0) menuSinceMs = nowMs
+                menuStreak += 1
+                if (menuStreak >= MENU_FRAMES && nowMs - menuSinceMs >= MENU_HOLD_MS) {
+                    abort("STOP — menu or popup", nowMs)
+                } else {
+                    Decision.Hold("menu or popup")
+                }
+            }
             PlayGate.DIMMED -> Decision.Hold("dimmed transition")
             PlayGate.UNKNOWN ->
                 if (unknownMoves >= 2) abort("STOP — unknown HUD", nowMs) else null
             else -> {
                 unknownMoves = 0
+                if (kind == PlayGate.OURS) {
+                    menuStreak = 0
+                    menuSinceMs = 0L
+                }
                 null
             }
         }
@@ -437,7 +461,7 @@ class FiveMoveSession {
         if (!a11yConnected) return abort("STOP — accessibility lost", nowMs)
         if (outsideTouches > 0) return abort("STOP — user interference", nowMs)
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return abort("STOP — 300s session limit", nowMs)
+            return abort(sessionLimitText(), nowMs)
         }
         return null
     }
@@ -525,6 +549,49 @@ class FiveMoveSession {
         return verification
     }
 
+    /**
+     * An ACTIVATE tap settles on the same playable-board gate as a swipe.
+     * The poll that noticed the tap does not make the next frame swipable.
+     */
+    fun armBoosterSettle(
+        x: Float,
+        y: Float,
+        nowMs: Long,
+        playExport: String,
+        swipeSequence: Long,
+        beforeHash: Long,
+        beforeLabel: Long,
+        beforeCircles: Int?,
+    ): Decision {
+        boosterLatched = true
+        if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
+        sessionLimit(nowMs)?.let { return it }
+        if (gesturesDispatched >= MAX_MOVES) {
+            return stop(nowMs, "STOP — 40 gesture safety cap")
+        }
+        gesturesDispatched += 1
+        openMove = OpenMove(
+            number = gesturesDispatched,
+            startedAtMs = nowMs,
+            cells = "booster ACTIVATE",
+            fromX = x,
+            fromY = y,
+            toX = x,
+            toY = y,
+            beforeHash = beforeHash,
+            beforeUnknown = 0,
+            callback = "onCompleted",
+            playExport = playExport,
+            swipeSequence = swipeSequence,
+            beforeLabel = beforeLabel,
+            beforeCircles = beforeCircles,
+            longSettle = true,
+            countsAsSwipe = false,
+        )
+        phase = Phase.SETTLING
+        return Decision.Hold("settling booster")
+    }
+
     fun noteGesture(fact: GestureFact): Decision {
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
         sessionLimit(fact.nowMs)?.let { return it }
@@ -600,8 +667,8 @@ class FiveMoveSession {
             return decided(stop(sample.nowMs, "STOP — user interference"), "settle")
         }
         if (sample.nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            closeOpen(open, sample, "FAILED — 300s session limit")
-            return decided(stop(sample.nowMs, "STOP — 300s session limit"), "settle")
+            closeOpen(open, sample, "FAILED — ${SESSION_LIMIT_MS / 1_000}s session limit")
+            return decided(stop(sample.nowMs, sessionLimitText()), "settle")
         }
         if (!sample.countBoardChange) {
             val changed = sample.boardHash != open.beforeHash
@@ -636,19 +703,26 @@ class FiveMoveSession {
         if (!sample.capturedAfterGesture || sample.frameSequence <= open.swipeSequence) {
             return ignore(open, "frame is from before the gesture")
         }
+        val captured = sample.nowMs - age.coerceAtLeast(0L)
         val post = scaled(if (open.longSettle) POST_SWIPE_BIG_MS else POST_SWIPE_MS, sample.cadenceMedianMs)
-        if (sample.nowMs - open.startedAtMs < post) {
+        if (captured - open.startedAtMs < post) {
             return ignore(open, "waiting ${post}ms after the swipe")
         }
         val labels = sample.labelHash ?: sample.boardHash
         val gap = maxOf(PLAYABLE_GAP_MS, sample.cadenceMedianMs)
-        if (open.anchorLabel == null || open.anchorLabel != labels) {
+        val keys = sample.labelKeys
+        val anchored = open.anchorLabel != null && when {
+            keys != null && open.anchorKeys != null -> Board.labelsWithinOne(open.anchorKeys!!, keys)
+            else -> open.anchorLabel == labels
+        }
+        if (!anchored) {
             open.anchorLabel = labels
-            open.anchorMs = sample.nowMs
+            open.anchorKeys = keys?.copyOf()
+            open.anchorMs = captured
             open.anchorSeq = sample.frameSequence
             return ignore(open, "first stable label pixelDiff=${sample.diffFraction ?: "none"}")
         }
-        if (sample.frameSequence <= open.anchorSeq || sample.nowMs - open.anchorMs < gap) {
+        if (sample.frameSequence <= open.anchorSeq || captured - open.anchorMs < gap) {
             return ignore(open, "label pair too close")
         }
         val labelsDiffer = labels != open.beforeLabel
@@ -667,7 +741,7 @@ class FiveMoveSession {
             frameSequence = sample.frameSequence,
         )
         if (labelsDiffer || drop) {
-            if (autoProbe && open.number == 1 && !sample.swapOverlaps) {
+            if (autoProbe && swipesVerified == 0 && !sample.swapOverlaps) {
                 closeOpen(open, sample, "FAILED — auto-calibration missed the swapped cells")
                 return decided(stop(sample.nowMs, AutoCalibration.STOP_MISSED), "settle")
             }
@@ -680,15 +754,15 @@ class FiveMoveSession {
                 sample,
                 "PASS — callback completed, board changed, labels stable, fresh, ROI plausible, vision PASS$extraNote",
             )
-            verifiedCount += 1
-            swipesVerified += 1
-            playSkip = 0
-            unchangedRetries = 0
-            if (autoProbe && open.number == 1) {
+            if (autoProbe && swipesVerified == 0) {
                 autoProbe = false
                 pendingAutoSave = true
                 if (calibrationLine.isBlank()) calibrationLine = AutoCalibration.NOTE
             }
+            verifiedCount += 1
+            if (open.countsAsSwipe) swipesVerified += 1
+            playSkip = 0
+            unchangedRetries = 0
             openMove = null
             if (spent != null) return decided(spent, "settle")
             if (verifiedCount >= MAX_MOVES) {
@@ -856,10 +930,12 @@ class FiveMoveSession {
     private fun sessionLimit(nowMs: Long): Decision.Stop? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
         if (nowMs - startedAtMs >= SESSION_LIMIT_MS) {
-            return stop(nowMs, "STOP — 300s session limit")
+            return stop(nowMs, sessionLimitText())
         }
         return null
     }
+
+    private fun sessionLimitText(): String = "STOP — ${SESSION_LIMIT_MS / 1_000}s session limit"
 
     private fun immediateAbort(
         nowMs: Long,
@@ -871,7 +947,7 @@ class FiveMoveSession {
         else -> null
     }
 
-    private fun autoProbeOpen(): Boolean = autoProbe && swipesDispatched == 0
+    private fun autoProbeOpen(): Boolean = autoProbe && swipesVerified == 0
 
     private fun qualifiesAsPass(sample: SettleSample): Boolean =
         sample.capturedAfterGesture &&
@@ -918,6 +994,8 @@ class FiveMoveSession {
         swipesVerified = 0
         playSkip = 0
         unknownMoves = 0
+        menuStreak = 0
+        menuSinceMs = 0L
         zeroCircleReads = 0
         lastCircleSequence = -1L
         unchangedRetries = 0
@@ -1018,7 +1096,9 @@ class FiveMoveSession {
 
     companion object {
         const val MAX_MOVES = 40
-        const val SESSION_LIMIT_MS = 300_000L
+        const val SESSION_LIMIT_MS = 600_000L
+        const val MENU_FRAMES = 3
+        const val MENU_HOLD_MS = 3_000L
         const val PER_MOVE_BUDGET_MS = 20_000L
         const val SETTLE_WAIT_MS = 60_000L
         const val POST_SWIPE_MS = 2_500L
@@ -1031,10 +1111,10 @@ class FiveMoveSession {
         const val UNCHANGED_MIN_MS = 1_500L
         const val STABLE_FRACTION = 0.02f
 
-        /** Longer waits on a slow camera. The 60 s cap does not grow. */
+        /** Longer waits on a slow camera, at most twice nominal. The 60 s cap does not grow. */
         fun scaled(baseMs: Long, cadenceMs: Long): Long {
             if (cadenceMs <= NOMINAL_FRAME_MS) return baseMs
-            val factor = cadenceMs.toDouble() / NOMINAL_FRAME_MS.toDouble()
+            val factor = (cadenceMs.toDouble() / NOMINAL_FRAME_MS.toDouble()).coerceAtMost(2.0)
             return (baseMs * factor).toLong().coerceAtLeast(baseMs)
         }
         const val MIN_POST_COLLAPSE_MS = 2_000L
