@@ -627,6 +627,11 @@ class FiveMoveSession {
         outstanding = null
     }
 
+    /** The ACTIVATE tap never got a fresh frame. Swipes continue. */
+    fun giveUpBooster() {
+        boosterLatched = true
+    }
+
     /**
      * Records one ACTIVATE tap. A miss latches the booster and leaves the
      * session running. A stable board change counts as a verified move.

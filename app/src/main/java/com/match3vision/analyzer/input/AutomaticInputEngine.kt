@@ -238,6 +238,11 @@ class AutomaticInputEngine(
             }
             is InputDispatchResult.Failed -> {
                 AutoPlayTrace.log(AutoPlayTrace.TAG_DISPATCH_RESULT, "FAILED — ${dispatch.reason}")
+                if (FreshFrameDispatch.isStaleFrameBlock(dispatch.reason)) {
+                    val reason = "HOLD — stale frame, wait for a fresh one: ${dispatch.reason}"
+                    stateMachine.hold(reason)
+                    return ExecuteResult.Held(reason)
+                }
                 // One failed dispatch does not retry. STOP → controller pauses.
                 val reason = "STOP — input dispatch failed (no retry): ${dispatch.reason}"
                 stateMachine.stop(reason)

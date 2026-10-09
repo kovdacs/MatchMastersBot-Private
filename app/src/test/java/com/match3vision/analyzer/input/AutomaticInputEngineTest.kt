@@ -90,6 +90,36 @@ class AutomaticInputEngineTest {
         reasons = listOf("test move"),
     )
 
+    @Test
+    fun staleFrameToctou_holdsAndDoesNotStop() {
+        val exec = object : InputGestureExecutor {
+            override fun isReady(): Boolean = true
+            override fun dispatch(gesture: GestureSpec): InputDispatchResult =
+                InputDispatchResult.Failed(
+                    "TOCTOU recheck blocked dispatchGesture: stale frame age=5150ms",
+                )
+        }
+        val eng = AutomaticInputEngine(
+            enableSwitch = InputEnableSwitch(initiallyEnabled = true),
+            executor = exec,
+        )
+        val held = eng.tryExecute(vision(), goodMove())
+        assertThat(held).isInstanceOf(AutomaticInputEngine.ExecuteResult.Held::class.java)
+        assertThat((held as AutomaticInputEngine.ExecuteResult.Held).reason).contains("stale frame")
+        assertThat(held.reason).doesNotContain("STOP")
+        assertThat(eng.stateMachine().state).isNotEqualTo(BotLoopState.STOP)
+
+        val stopping = AutomaticInputEngine(
+            enableSwitch = InputEnableSwitch(initiallyEnabled = true),
+            executor = object : InputGestureExecutor {
+                override fun isReady(): Boolean = true
+                override fun dispatch(gesture: GestureSpec): InputDispatchResult =
+                    InputDispatchResult.Failed("input channel not ready")
+            },
+        ).tryExecute(vision(), goodMove())
+        assertThat(stopping).isInstanceOf(AutomaticInputEngine.ExecuteResult.Stopped::class.java)
+    }
+
     private fun engine(
         enabled: Boolean = true,
         ready: Boolean = true,

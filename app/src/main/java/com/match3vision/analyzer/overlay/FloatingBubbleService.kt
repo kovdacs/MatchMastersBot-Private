@@ -37,7 +37,11 @@ import com.match3vision.analyzer.input.GestureSpec
 import com.match3vision.analyzer.input.InputDispatchResult
 import com.match3vision.analyzer.input.AutoPlayController
 import com.match3vision.analyzer.input.BoardStability
+import com.match3vision.analyzer.input.DispatchPermit
+import com.match3vision.analyzer.input.DispatchRecheck
 import com.match3vision.analyzer.input.FiveMoveSession
+import com.match3vision.analyzer.input.FrameClock
+import com.match3vision.analyzer.input.FreshFrameDispatch
 import com.match3vision.analyzer.input.OverlayOutsideTouch
 import com.match3vision.analyzer.input.PlayGate
 import com.match3vision.analyzer.input.CalibrationTarget
@@ -1952,29 +1956,75 @@ class FloatingBubbleService : Service() {
             swipesVerified = session.swipesVerified,
             selfCheckMeasured = selfCheckThisSession(),
         ) ?: return false
-        val latest = CaptureService.managerOrNull()?.latestFrame?.value ?: return false
-        if (latest.sequence < frame.sequence) return false
-        val again = withContext(Dispatchers.Default) { analyzeFrame(latest) }
-        val againVision = again.vision ?: return false
-        if (!againVision.validation.isPass) return false
-        val againHud = readHud(again.pixels, latest)
         val beforeHash = Board.fromVision(vision.board).contentHash()
-        val nowHash = Board.fromVision(againVision.board).contentHash()
-        if (!SoloBooster.stillArmed(hud, againHud, beforeHash, nowHash)) return false
         val executor = AccessibilityGestureExecutor()
         if (!executor.isReady()) return false
         val started = System.currentTimeMillis()
         val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = 80L)
-        session.beginBoosterWindow(started)
-        session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, started)
-        val dispatched = try {
-            withContext(Dispatchers.Default) {
-                executor.dispatchRecognizedTap(gesture)
+        val latest = CaptureService.managerOrNull()?.latestFrame?.value
+        var frameNow = if (latest != null && latest.sequence >= frame.sequence) latest else frame
+        var visionNow = vision
+        var hudNow = hud
+        if (frameNow.sequence != frame.sequence || frameNow !== frame) {
+            val again = withContext(Dispatchers.Default) { analyzeFrame(frameNow) }
+            val read = again.vision
+            if (read != null) {
+                visionNow = read
+                hudNow = readHud(again.pixels, frameNow)
             }
-        } finally {
-            session.finishOwnGesture(System.currentTimeMillis())
         }
-        val callback = dispatched is InputDispatchResult.Dispatched && dispatched.callbackCompleted
+        var dispatched: InputDispatchResult? = null
+        while (dispatched == null) {
+            val elapsed = System.currentTimeMillis() - started
+            val ageLimit = settleAgeLimit()
+            val liveHash = Board.fromVision(visionNow.board).contentHash()
+            val gates = visionNow.validation.isPass &&
+                roiLooksPlausible(visionNow) &&
+                SoloBooster.stillArmed(hud, hudNow, beforeHash, liveHash)
+            val recheck = DispatchRecheck.evaluate(
+                boosterPermit(gesture, frameNow, visionNow, ageLimit),
+                FrameClock.tryElapsed(),
+            )
+            when (
+                FreshFrameDispatch.booster(
+                    elapsedMs = elapsed,
+                    ageMs = frameNow.ageMs(),
+                    ageLimitMs = ageLimit,
+                    gatesPass = gates,
+                    showsActivateOrYourTurn = FreshFrameDispatch.showsActivate(hudNow),
+                    recheckAllow = recheck.allow,
+                )
+            ) {
+                FreshFrameDispatch.Booster.GIVE_UP -> {
+                    session.giveUpBooster()
+                    return false
+                }
+                FreshFrameDispatch.Booster.WAIT -> {
+                    delay(FiveMoveSession.POLL_STEP_MS)
+                    val next = CaptureService.managerOrNull()?.latestFrame?.value ?: continue
+                    if (next.sequence < frameNow.sequence) continue
+                    val analyzed = withContext(Dispatchers.Default) { analyzeFrame(next) }
+                    val nextVision = analyzed.vision ?: continue
+                    frameNow = next
+                    visionNow = nextVision
+                    hudNow = readHud(analyzed.pixels, next)
+                }
+                FreshFrameDispatch.Booster.SEND -> {
+                    val tapAt = System.currentTimeMillis()
+                    session.beginBoosterWindow(tapAt)
+                    session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, tapAt)
+                    dispatched = try {
+                        withContext(Dispatchers.Default) {
+                            executor.dispatchRecognizedTap(gesture)
+                        }
+                    } finally {
+                        session.finishOwnGesture(System.currentTimeMillis())
+                    }
+                }
+            }
+        }
+        val sent = dispatched
+        val callback = sent is InputDispatchResult.Dispatched && sent.callbackCompleted
         var changed = false
         var countChange = true
         var hudChanged = false
@@ -2029,6 +2079,36 @@ class FloatingBubbleService : Service() {
             beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
         )
         return true
+    }
+
+    private fun boosterPermit(
+        gesture: GestureSpec,
+        frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult,
+        ageLimitMs: Long,
+    ): DispatchPermit {
+        val (screenW, screenH) = screenSizePx()
+        val pass = vision.validation.isPass &&
+            vision.gridConfidence >= com.match3vision.analyzer.vision.VisionThresholds.MIN_GRID_CONFIDENCE &&
+            vision.boardConfidence >= com.match3vision.analyzer.vision.VisionThresholds.MIN_BOARD_CONFIDENCE &&
+            vision.unknownCount <= com.match3vision.analyzer.vision.VisionThresholds.MAX_UNKNOWN_COUNT
+        return DispatchPermit(
+            a11yConnected = MatchMastersAccessibilityService.isConnected(),
+            captureOn = true,
+            hasFrame = true,
+            frameAgeMs = frame.ageMs(),
+            visionPass = pass,
+            inputEnabled = true,
+            screenWidth = screenW,
+            screenHeight = screenH,
+            frameWidth = frame.width,
+            frameHeight = frame.height,
+            gesture = gesture,
+            simulated = false,
+            sequenceAllowed = true,
+            capturedElapsedMs = frame.elapsedRealtimeMs,
+            maxFrameAgeMs = ageLimitMs,
+        )
     }
 
     private fun moveTrace(hud: HudObservation, boosterDecision: String, body: String): String {
