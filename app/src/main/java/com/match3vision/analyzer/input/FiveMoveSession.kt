@@ -321,6 +321,7 @@ class FiveMoveSession {
     private var menuStreak: Int = 0
     private var menuSinceMs: Long = 0L
     private var zeroCircleReads: Int = 0
+    private var sawBrightCircles: Boolean = false
     private var lastCircleSequence: Long = -1L
     private var unchangedRetries: Int = 0
     private val decisionLog = ArrayList<String>()
@@ -331,8 +332,9 @@ class FiveMoveSession {
     fun label(): String = "10 LÉPÉS TESZT: $verifiedCount"
 
     /**
-     * Zero bright circles stop only after two classifiable reads on a playable
-     * board. One empty read, or a row that was not classified, does not stop.
+     * Zero bright circles stop only after a swipe has been sent, the row was
+     * bright earlier in this session, and two later playable reads are both
+     * zero. A zero at the start, before any swipe, is an unreadable row.
      */
     fun noteCircles(
         classifiable: Boolean,
@@ -350,10 +352,15 @@ class FiveMoveSession {
         if (frameSequence == lastCircleSequence) return null
         lastCircleSequence = frameSequence
         if (bright > 0) {
+            sawBrightCircles = true
             zeroCircleReads = 0
             return null
         }
         if (!ContinuousPlay.stopOnZeroCircles(screenMode, timeLeftSeconds)) {
+            zeroCircleReads = 0
+            return null
+        }
+        if (!sawBrightCircles || swipesDispatched < 1) {
             zeroCircleReads = 0
             return null
         }
@@ -1767,6 +1774,7 @@ class FiveMoveSession {
         menuStreak = 0
         menuSinceMs = 0L
         zeroCircleReads = 0
+        sawBrightCircles = false
         lastCircleSequence = -1L
         unchangedRetries = 0
         ownGestureOpen = false

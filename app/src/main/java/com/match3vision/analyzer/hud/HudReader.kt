@@ -22,8 +22,8 @@ object HudReader {
     const val ACTIVATE_BOTTOM = 970
 
     /**
-     * Move pips on the owner's 1080×2400 frames. They sit on the bottom edge
-     * of the board, not in the gem row above them. Spacing is 68 px.
+     * 0.27.8 pip geometry on the owner's 1080×2400 frames. They sit on the
+     * bottom edge of the board, not in the gem row above them. Spacing is 68 px.
      * A filled pip is the cyan cap (luma ~190). An empty slot is the purple
      * band (luma ~86). Sampling the gems above this row stays bright forever.
      */

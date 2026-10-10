@@ -130,10 +130,18 @@ class FiveMoveSessionTest {
         val running = FiveMoveSession()
         running.arm(0L)
         assertThat(running.noteCircles(false, null, true, 10L, 1L)).isNull()
-        assertThat(running.noteCircles(true, 3, true, 10L, 2L)).isNull()
-        assertThat(running.noteCircles(true, 0, true, 20L, 3L)).isNull()
+        assertThat(running.noteCircles(true, 0, true, 20L, 2L)).isNull()
+        assertThat(running.noteCircles(true, 0, true, 30L, 3L)).isNull()
+        assertThat(running.noteCircles(true, 3, true, 40L, 4L)).isNull()
+        assertThat(running.noteCircles(true, 0, true, 50L, 5L)).isNull()
+        assertThat(running.noteCircles(true, 0, true, 60L, 6L)).isNull()
         assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        val stopped = running.noteCircles(true, 0, true, 30L, 4L) as FiveMoveSession.Decision.Stop
+        val permit = (running.requestDispatch(gates(nowMs = 70L)) as FiveMoveSession.Decision.Go).permit
+        running.consumePermit(permit)
+        running.noteGesture(gesture(startedAtMs = 70L, nowMs = 80L, beforeHash = 4L))
+        assertThat(running.noteCircles(true, 8, true, 90L, 7L)).isNull()
+        assertThat(running.noteCircles(true, 0, true, 100L, 8L)).isNull()
+        val stopped = running.noteCircles(true, 0, true, 110L, 9L) as FiveMoveSession.Decision.Stop
         assertThat(stopped.reason).contains("moves spent")
         assertThat(running.phase).isEqualTo(FiveMoveSession.Phase.STOPPED)
     }
