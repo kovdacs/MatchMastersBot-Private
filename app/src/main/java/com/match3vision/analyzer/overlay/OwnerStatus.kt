@@ -24,7 +24,8 @@ object OwnerStatus {
             key.contains("unknown hud") -> "Nem ismerem a képernyőt – leálltam"
             key.contains("no legal") -> "Nincs szabályos lépés – leálltam"
             key.contains("turn not readable") -> "Nem látom, kié a kör – leálltam"
-            key.contains("játék vége") -> "Játék vége"
+            key.contains("játék vége") || key.contains("time out") || key.contains("time's up") ->
+                "Játék vége"
             key.contains("1800s") -> "Lejárt a 30 perc – leálltam"
             key.contains("900s") -> "Lejárt a 15 perc – leálltam"
             key.contains("600s") -> "Lejárt a 10 perc – leálltam"

@@ -23,14 +23,10 @@ import kotlin.math.hypot
  * All verified moves must finish inside [SESSION_LIMIT_MS].
  * A swipe is never abandoned at 20 s. The next swipe waits for a playable
  * board: two vision PASS frames whose known labels differ in at most one
- * cell, at least [PLAYABLE_GAP_MS] apart. The gap does not grow with a slow
- * camera. The post-swipe wait is skipped when the first PASS frame already
- * differs from the pre-swipe board. Otherwise both frames are at least
- * [POST_SWIPE_MS] after the swipe ([POST_SWIPE_BIG_MS] after a 4+ clear or a
- * special). The wait and the gap use capture time. Frame age up to
- * [SETTLE_FRAME_AGE_MS] is accepted. Those waits scale with the measured
- * capture interval, at most twice the nominal wait. The wait itself never
- * sends a gesture. If a swipe is still not playable after [SETTLE_WAIT_MS],
+ * cell, at least [PLAYABLE_GAP_MS] apart. There is no fixed wait after the
+ * swipe. The gap uses capture time and does not grow with a slow camera.
+ * Frame age up to [SETTLE_FRAME_AGE_MS] is accepted. If a swipe is still not
+ * playable after [SETTLE_WAIT_MS],
  * the session stops. An ACTIVATE tap does not: the first two agreeing PASS
  * frames are playable even when the labels and the HUD did not change, and
  * after [BOOSTER_PLAYABLE_MS] without that pair play continues.
@@ -971,12 +967,10 @@ class FiveMoveSession {
     ): BoosterStep {
         if (!PlayFlags.boosters) return BoosterStep.SWIPE
         if (needsTarget) {
-            boosterTargetNote = "booster target=off needsTarget equipped=${equippedBoosterId ?: "unknown"}"
-            return BoosterStep.SWIPE
-        }
-        if (equippedBoosterId == null && !provenNoTarget) {
-            boosterTargetNote = "booster target=unverified equipped=unknown"
-            return BoosterStep.SWIPE
+            boosterTargetNote =
+                "booster target=off needsTarget equipped=${equippedBoosterId ?: "unknown"} activate=immediate"
+        } else if (equippedBoosterId == null && !provenNoTarget) {
+            boosterTargetNote = "booster target=unverified equipped=unknown activate=immediate"
         }
         if (phase != Phase.RUNNING) return BoosterStep.SWIPE
         val interested = !boosterLatched && !boosterGaveUp && (activateVisible || boosterAttempts > 0)
@@ -1018,16 +1012,20 @@ class FiveMoveSession {
 
     /**
      * One playable board after a sent tap. Watching for two boards that still
-     * show ACTIVATE requests a retry. The latch is the word disappearing or
-     * the bar emptying.
+     * show ACTIVATE requests a retry. The word disappearing rearms the next charge.
+     * [barFull] is recorded with that result.
      */
     fun noteBoosterBoard(activateVisible: Boolean, barFull: Boolean): String {
+        if ((boosterGaveUp || boosterLatched) && !activateVisible) {
+            boosterAttemptLog += "result=rearmed"
+            rearmBooster()
+            return "rearmed"
+        }
         if (boosterLatched || boosterGaveUp || boosterAttempts == 0) return "idle"
-        if (!activateVisible || !barFull) {
-            boosterLatched = true
-            boosterReadyToRetry = false
-            boosterAttemptLog += "attempt=$boosterAttempts result=registered"
-            return "latched"
+        if (!activateVisible) {
+            boosterAttemptLog += "attempt=$boosterAttempts result=registered barFull=$barFull"
+            rearmBooster()
+            return "rearmed"
         }
         boosterBoardsSinceTap += 1
         if (boosterBoardsSinceTap < BOOSTER_CONFIRM_BOARDS) {
@@ -1044,6 +1042,16 @@ class FiveMoveSession {
         boosterReadyToRetry = true
         boosterAttemptLog += "attempt=$boosterAttempts result=retry"
         return "retry"
+    }
+
+    /** The word is gone, so the next time ACTIVATE appears it may be tapped again. */
+    private fun rearmBooster() {
+        boosterLatched = false
+        boosterGaveUp = false
+        boosterAttempts = 0
+        boosterReadyToRetry = false
+        boosterBoardsSinceTap = 0
+        boosterHandlingStartedAt = -1L
     }
 
     fun boosterLog(): String = boosterAttemptLog.joinToString("\n")
@@ -1290,7 +1298,7 @@ class FiveMoveSession {
         if (sample.diffFraction != null && sample.diffFraction > STABLE_FRACTION) {
             open.sawBoardChange = true
         }
-        if (sample.visionPass && sample.unknownCount <= MAX_UNKNOWN) open.sawPass = true
+        if (sample.visionPass && sample.unknownCount <= PLAY_UNKNOWN_LIMIT) open.sawPass = true
         if (open.countsAsSwipe &&
             sample.nowMs - open.startedAtMs >= SETTLE_WAIT_MS &&
             !open.sawPass
@@ -1308,7 +1316,7 @@ class FiveMoveSession {
         if (age > ageLimit) return settleHold(open, sample, "frame not fresh")
         if (!sample.overlayOutside) return settleHold(open, sample, "overlay on the board")
         if (!sample.roiPlausible) return settleHold(open, sample, "implausible ROI")
-        if (!sample.visionPass || sample.unknownCount > MAX_UNKNOWN) {
+        if (!sample.visionPass || sample.unknownCount > PLAY_UNKNOWN_LIMIT) {
             return settleHold(open, sample, "vision HOLD unk=${sample.unknownCount}")
         }
         if (!sample.capturedAfterGesture || sample.frameSequence <= open.swipeSequence) {
@@ -1323,12 +1331,6 @@ class FiveMoveSession {
             sample.circlesClassifiable &&
             brightNow != null &&
             brightNow == beforeCircles - 1
-        if (open.countsAsSwipe && !labelsDiffer && !drop) {
-            val post = scaled(if (open.longSettle) POST_SWIPE_BIG_MS else POST_SWIPE_MS, sample.cadenceMedianMs)
-            if (captured - open.startedAtMs < post) {
-                return settleHold(open, sample, "waiting ${post}ms after the swipe")
-            }
-        }
         val gap = PLAYABLE_GAP_MS
         val keys = sample.labelKeys
         val anchored = open.anchorLabel != null && when {
@@ -1601,7 +1603,7 @@ class FiveMoveSession {
             sample.overlayOutside &&
             sample.roiPlausible &&
             sample.visionPass &&
-            sample.unknownCount <= MAX_UNKNOWN
+            sample.unknownCount <= PLAY_UNKNOWN_LIMIT
 
     private fun transientReason(sample: SettleSample): String = when {
         !sample.capturedAfterGesture -> "frame is from before the gesture"
@@ -1609,7 +1611,7 @@ class FiveMoveSession {
         !sample.overlayOutside -> "overlay on the board"
         !sample.roiPlausible -> "implausible ROI"
         !sample.visionPass -> "vision HOLD unk=${sample.unknownCount}"
-        sample.unknownCount > MAX_UNKNOWN -> "unk=${sample.unknownCount}"
+        sample.unknownCount > PLAY_UNKNOWN_LIMIT -> "unk=${sample.unknownCount}"
         else -> "not a PASS frame"
     }
 
@@ -1914,7 +1916,8 @@ class FiveMoveSession {
         const val SETTLE_WAIT_MS = 60_000L
         const val POST_SWIPE_MS = 2_500L
         const val POST_SWIPE_BIG_MS = 4_000L
-        const val PLAYABLE_GAP_MS = 300L
+        const val PLAYABLE_GAP_MS = 250L
+        const val PLAY_UNKNOWN_LIMIT = 3
         const val LANDED_WINDOW_MS = 6_000L
         const val BOOSTER_PLAYABLE_MS = 15_000L
         const val IDLE_WITHOUT_GESTURE_MS = 20_000L

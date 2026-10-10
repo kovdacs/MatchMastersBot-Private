@@ -343,6 +343,7 @@ object HudReader {
 object SoloBooster {
     data class Tap(val x: Float, val y: Float)
 
+    @Suppress("UNUSED_PARAMETER")
     fun decision(
         hud: HudObservation,
         controlEnabled: Boolean,
@@ -354,11 +355,9 @@ object SoloBooster {
         latched -> "latched"
         !controlEnabled -> "toggle-off"
         hud.turnState == HudObservation.TURN_OPPONENT -> "opponent"
-        swipesVerified < 1 -> "no-swipe-yet"
         !selfCheckMeasured -> "no-self-check"
         !hud.activateWord && !hud.boosterReady -> "no-activate-word"
         !hud.soloPositive && !hud.playerTurn() -> "not-our-layout"
-        extraMoveAvailable -> "wait-extra"
         else -> "tap"
     }
 

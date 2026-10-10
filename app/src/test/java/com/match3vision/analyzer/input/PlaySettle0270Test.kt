@@ -183,8 +183,8 @@ class PlaySettle0270Test {
         )
         assertThat(result).contains("PASS")
         assertThat(session.boosterLatched).isFalse()
-        assertThat(session.noteBoosterBoard(activateVisible = false, barFull = false)).isEqualTo("latched")
-        assertThat(session.boosterLatched).isTrue()
+        assertThat(session.noteBoosterBoard(activateVisible = false, barFull = false)).isEqualTo("rearmed")
+        assertThat(session.boosterLatched).isFalse()
         assertThat(session.verifiedCount).isEqualTo(1)
         assertThat(session.swipesVerified).isEqualTo(0)
         assertThat(session.swipesDispatched).isEqualTo(0)
@@ -198,7 +198,7 @@ class PlaySettle0270Test {
                 swipesVerified = session.swipesVerified,
                 selfCheckMeasured = true,
             ),
-        ).isEqualTo("no-swipe-yet")
+        ).isEqualTo("tap")
         assertThat(
             SoloBooster.plan(
                 hud,
@@ -208,7 +208,7 @@ class PlaySettle0270Test {
                 swipesVerified = session.swipesVerified,
                 selfCheckMeasured = true,
             ),
-        ).isNull()
+        ).isNotNull()
     }
 
     @Test

@@ -33,6 +33,7 @@ import com.match3vision.analyzer.hud.SoloBooster
 import com.match3vision.analyzer.moves.PlayMoveRanker
 import com.match3vision.analyzer.play.BoosterRegistry
 import com.match3vision.analyzer.play.ContinuousPlay
+import com.match3vision.analyzer.play.PlayUnknown
 import com.match3vision.analyzer.input.AutoCalibration
 import com.match3vision.analyzer.input.AccessibilityGestureExecutor
 import com.match3vision.analyzer.input.GestureSpec
@@ -2089,6 +2090,16 @@ class FloatingBubbleService : Service() {
         return true
     }
 
+    private fun playVisionPass(vision: com.match3vision.analyzer.vision.VisionResult): Boolean {
+        val reason = (vision.validation as? com.match3vision.analyzer.vision.ValidationResult.Hold)?.reason
+        return PlayUnknown.forPlay(
+            validationPass = vision.validation.isPass,
+            unknownCount = vision.unknownCount,
+            gridConfidence = vision.gridConfidence,
+            holdReason = reason,
+        )
+    }
+
     private fun boosterPermit(
         gesture: GestureSpec,
         frame: CaptureFrame,
@@ -2096,10 +2107,12 @@ class FloatingBubbleService : Service() {
         ageLimitMs: Long,
     ): DispatchPermit {
         val (screenW, screenH) = screenSizePx()
-        val pass = vision.validation.isPass &&
+        val pass = playVisionPass(vision) &&
             vision.gridConfidence >= com.match3vision.analyzer.vision.VisionThresholds.MIN_GRID_CONFIDENCE &&
-            vision.boardConfidence >= com.match3vision.analyzer.vision.VisionThresholds.MIN_BOARD_CONFIDENCE &&
-            vision.unknownCount <= com.match3vision.analyzer.vision.VisionThresholds.MAX_UNKNOWN_COUNT
+            (
+                vision.boardConfidence >= com.match3vision.analyzer.vision.VisionThresholds.MIN_BOARD_CONFIDENCE ||
+                    vision.unknownCount > com.match3vision.analyzer.vision.VisionThresholds.MAX_UNKNOWN_COUNT
+                )
         return DispatchPermit(
             a11yConnected = MatchMastersAccessibilityService.isConnected(),
             captureOn = true,
@@ -2141,7 +2154,7 @@ class FloatingBubbleService : Service() {
             selfCheckMeasured = selfCheckThisSession(),
             overlayCollapsed = collapsedForCapture,
             overlayOutsideRoi = overlayAllows,
-            visionPass = vision.validation.isPass,
+            visionPass = playVisionPass(vision),
             frameFresh = frame.ageMs() <= settleAgeLimit(),
             ownUi = AutoPlaySession.frameGate.analyzerUiForeground,
             msSinceCollapse = if (collapseWallMs > 0L) frame.timestampMs - collapseWallMs else -1L,
@@ -2673,7 +2686,7 @@ class FloatingBubbleService : Service() {
                     circlesClassifiable = hudNow.circlesClassifiable,
                     dimmed = dimmedFrame(analyzed.pixels, next, nextVision),
                     roiPlausible = roiLooksPlausible(nextVision),
-                    visionPass = nextVision.validation.isPass,
+                    visionPass = playVisionPass(nextVision),
                     unknownCount = nextVision.unknownCount,
                     ownUi = AutoPlaySession.frameGate.analyzerUiForeground,
                     a11yConnected = MatchMastersAccessibilityService.isConnected(),

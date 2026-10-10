@@ -182,7 +182,7 @@ class FullGame028Test {
                 needsTarget = true,
                 provenNoTarget = false,
             ),
-        ).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        ).isEqualTo(FiveMoveSession.BoosterStep.TAP)
         session.noteEquippedBooster(null)
         assertThat(
             session.considerBoosterFrame(
@@ -191,7 +191,7 @@ class FullGame028Test {
                 barFull = true,
                 canSendNow = true,
             ),
-        ).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        ).isEqualTo(FiveMoveSession.BoosterStep.TAP)
         assertThat(session.boosterTargetNote).contains("unverified")
     }
 

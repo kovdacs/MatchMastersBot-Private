@@ -1,9 +1,10 @@
 package com.match3vision.analyzer.hud
 
 /**
- * The left-card ACTIVATE word is tapped when the bubble toggle is on, the
- * turn is not the opponent's, and no extra-move swap is available. The toggle
- * defaults on. A bright rectangle without the word is not a tap.
+ * The left-card ACTIVATE word is tapped when the bubble toggle is on and the
+ * turn is not the opponent's. An extra-move swap does not delay the tap, and
+ * the first swipe of the game does not either. The toggle defaults on. A
+ * bright rectangle without the word is not a tap.
  */
 object BoosterMonitor {
     const val CONTROL_OFF = "off"
@@ -17,6 +18,7 @@ object BoosterMonitor {
         else -> UNKNOWN
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun mayTap(
         controlEnabled: Boolean,
         activateWord: Boolean,
@@ -30,8 +32,6 @@ object BoosterMonitor {
     ): Boolean = controlEnabled &&
         (activateWord || boosterReady) &&
         ourTurn &&
-        !extraMoveAvailable &&
-        swipesVerified >= 1 &&
         selfCheckMeasured &&
         (soloPositive || yourTurn)
 }

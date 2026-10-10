@@ -1,20 +1,21 @@
 package com.match3vision.analyzer.input
 
 /**
- * Stability, not wall-clock age. Two consecutive PASS frames with equal
- * labels may be swiped when both were captured at least [POST_GESTURE_MS]
- * after the last gesture and the newer frame is at most [MAX_FRAME_AGE_MS] old.
- * The caller still re-checks the two swapped cells on the newest frame.
+ * Two consecutive PASS frames with equal labels may be swiped when the newer
+ * frame is at most [MAX_FRAME_AGE_MS] old. When both capture times are known,
+ * they must be at least [MIN_AGREE_GAP_MS] apart. There is no wait after the
+ * previous gesture. The caller still re-checks the two swapped cells.
  */
 object SwipeGuard {
     const val MAX_FRAME_AGE_MS = 5_000L
-    const val POST_GESTURE_MS = 2_500L
+    const val MIN_AGREE_GAP_MS = 250L
 
     /**
      * Null when this frame may be swiped. The first call only records the
-     * label. [capturedAtMs] and [previousCapturedAtMs] are wall-clock capture
-     * times. [Long.MAX_VALUE] skips the post-gesture check for that frame.
+     * label. [Long.MAX_VALUE] means that capture time is unknown, so the gap
+     * check is skipped for that pair.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun motionBlock(
         ageMs: Long,
         previousLabel: Long?,
@@ -26,10 +27,9 @@ object SwipeGuard {
         if (ageMs > MAX_FRAME_AGE_MS) return "frame older than ${MAX_FRAME_AGE_MS}ms"
         if (previousLabel == null) return "waiting for the previous PASS frame"
         if (previousLabel != labelHash) return "labels changed"
-        if (lastGestureAtMs > 0L) {
-            val readyAt = lastGestureAtMs + POST_GESTURE_MS
-            if (capturedAtMs < readyAt || previousCapturedAtMs < readyAt) {
-                return "waiting for the board to settle"
+        if (capturedAtMs != Long.MAX_VALUE && previousCapturedAtMs != Long.MAX_VALUE) {
+            if (capturedAtMs - previousCapturedAtMs < MIN_AGREE_GAP_MS) {
+                return "frames too close"
             }
         }
         return null
