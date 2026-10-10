@@ -251,12 +251,21 @@ class MoveAnalysisEngineTest {
         assertThat(lowBoard.blocked).isTrue()
         assertThat(lowBoard.topMoves).isEmpty()
 
-        val tooManyUnknown = engine.analyzeBoard(
+        val fewUnknown = engine.analyzeBoard(
             board = board,
             gatePass = true,
             gridConfidence = 0.99f,
             boardConfidence = 0.99f,
             unknownCount = 2,
+        )
+        assertThat(fewUnknown.blocked).isFalse()
+        assertThat(fewUnknown.topMoves).isNotEmpty()
+        val tooManyUnknown = engine.analyzeBoard(
+            board = board,
+            gatePass = true,
+            gridConfidence = 0.99f,
+            boardConfidence = 0.99f,
+            unknownCount = 4,
         )
         assertThat(tooManyUnknown.blocked).isTrue()
         assertThat(tooManyUnknown.topMoves).isEmpty()

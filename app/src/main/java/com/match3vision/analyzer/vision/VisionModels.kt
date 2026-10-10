@@ -216,6 +216,8 @@ data class CellVision(
     val occluded: Boolean,
     val confidence: Float,
     val isUnknown: Boolean,
+    /** 1 row arrow, 2 column arrow, 0 when the detector did not measure an axis. */
+    val specialAxis: Int = 0,
 ) {
     companion object {
         fun unknown(occluded: Boolean = false, confidence: Float = 0f) = CellVision(

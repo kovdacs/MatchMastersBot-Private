@@ -26,13 +26,21 @@ import timber.log.Timber
 class CaptureService : Service() {
 
     private var captureManager: ScreenCaptureManager? = null
+    private val stopPolicy = CaptureStopPolicy()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannel()
-        captureManager = ScreenCaptureManager(applicationContext)
+        val manager = ScreenCaptureManager(applicationContext)
+        manager.systemStopListener = {
+            stopPolicy.onSystemStop(
+                removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+                stopSelf = { stopSelf() },
+            )
+        }
+        captureManager = manager
         instance = this
         Timber.i("CaptureService created")
     }
@@ -100,9 +108,11 @@ class CaptureService : Service() {
     }
 
     private fun stopCaptureAndSelf() {
-        captureManager?.stop()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        stopPolicy.onExplicitStop(
+            stopProjection = { captureManager?.stop() },
+            removeForeground = { stopForeground(STOP_FOREGROUND_REMOVE) },
+            stopSelf = { stopSelf() },
+        )
     }
 
     override fun onDestroy() {

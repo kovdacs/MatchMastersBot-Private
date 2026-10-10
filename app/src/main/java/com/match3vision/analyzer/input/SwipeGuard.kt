@@ -1,21 +1,37 @@
 package com.match3vision.analyzer.input
 
 /**
- * A swipe is sent only from a fresh frame whose labels still match the
- * previous PASS frame, and only after the two swapped cells still match on
- * the newest frame. Anything else is board motion or a misread.
+ * Two consecutive PASS frames with equal labels may be swiped when the newer
+ * frame is at most [MAX_FRAME_AGE_MS] old. When both capture times are known,
+ * they must be at least [MIN_AGREE_GAP_MS] apart. There is no wait after the
+ * previous gesture. The caller still re-checks the two swapped cells.
  */
 object SwipeGuard {
-    const val MAX_FRAME_AGE_MS = 1_500L
+    const val MAX_FRAME_AGE_MS = 5_000L
+    const val MIN_AGREE_GAP_MS = 250L
 
     /**
      * Null when this frame may be swiped. The first call only records the
-     * label; a swipe needs that previous PASS frame to agree.
+     * label. [Long.MAX_VALUE] means that capture time is unknown, so the gap
+     * check is skipped for that pair.
      */
-    fun motionBlock(ageMs: Long, previousLabel: Long?, labelHash: Long): String? {
-        if (ageMs > MAX_FRAME_AGE_MS) return "swipe made during board motion"
+    @Suppress("UNUSED_PARAMETER")
+    fun motionBlock(
+        ageMs: Long,
+        previousLabel: Long?,
+        labelHash: Long,
+        capturedAtMs: Long = Long.MAX_VALUE,
+        previousCapturedAtMs: Long = Long.MAX_VALUE,
+        lastGestureAtMs: Long = 0L,
+    ): String? {
+        if (ageMs > MAX_FRAME_AGE_MS) return "frame older than ${MAX_FRAME_AGE_MS}ms"
         if (previousLabel == null) return "waiting for the previous PASS frame"
-        if (previousLabel != labelHash) return "swipe made during board motion"
+        if (previousLabel != labelHash) return "labels changed"
+        if (capturedAtMs != Long.MAX_VALUE && previousCapturedAtMs != Long.MAX_VALUE) {
+            if (capturedAtMs - previousCapturedAtMs < MIN_AGREE_GAP_MS) {
+                return "frames too close"
+            }
+        }
         return null
     }
 

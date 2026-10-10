@@ -61,11 +61,13 @@ object ColorShapeReconciler {
         shape: TileShape,
         shapeConf: Float,
         special: SpecialType,
+        specialAxis: Int = 0,
     ): CellVision {
         val cell = reconcilePair(color, colorConf, shape, shapeConf, special)
         if (special == SpecialType.NONE) return cell
         return cell.copy(
             special = special,
+            specialAxis = specialAxis,
             isUnknown = false,
             confidence = maxOf(cell.confidence, VisionThresholds.SPECIAL_MIN_CONFIDENCE).coerceIn(0f, 1f),
         )

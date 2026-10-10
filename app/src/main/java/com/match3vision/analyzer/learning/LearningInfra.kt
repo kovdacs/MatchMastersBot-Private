@@ -3,15 +3,38 @@ package com.match3vision.analyzer.learning
 /**
  * Collect/export only — NO online self-modifying model.
  */
-data class Sample(val id: String, val features: Map<String, Float>, val label: String?)
-data class FeatureVector(val values: Map<String, Float>)
+data class Sample(
+    val id: String,
+    val features: Map<String, Float>,
+    val label: String?,
+    /** Lossless. A float cannot hold a 64-bit board hash. */
+    val boardHash: Long? = null,
+)
+data class FeatureVector(val values: Map<String, Float>, val boardHash: Long? = null)
 
 class SampleStore {
     private val samples = mutableListOf<Sample>()
     fun add(sample: Sample) { samples += sample }
     fun all(): List<Sample> = samples.toList()
-    fun exportJson(): String = samples.joinToString(prefix = "[", postfix = "]") {
-        """{"id":"${it.id}","label":${it.label?.let { l -> "\"$l\"" } ?: "null"}}"""
+
+    fun exportJson(): String {
+        val rows = samples.map { sample ->
+            val fields = linkedMapOf<String, com.match3vision.analyzer.hud.Json.Value>(
+                "id" to com.match3vision.analyzer.hud.Json.Str(sample.id),
+                "label" to (sample.label?.let { com.match3vision.analyzer.hud.Json.Str(it) }
+                    ?: com.match3vision.analyzer.hud.Json.Null),
+                "features" to com.match3vision.analyzer.hud.Json.Obj(
+                    sample.features.mapValues { (_, n) ->
+                        com.match3vision.analyzer.hud.Json.Num(n.toString())
+                    },
+                ),
+            )
+            if (sample.boardHash != null) {
+                fields["boardHash"] = com.match3vision.analyzer.hud.Json.Str(sample.boardHash.toString())
+            }
+            com.match3vision.analyzer.hud.Json.Obj(fields)
+        }
+        return com.match3vision.analyzer.hud.Json.write(com.match3vision.analyzer.hud.Json.Arr(rows))
     }
 }
 
@@ -27,11 +50,11 @@ class LabelStore {
 class FeatureExtractor {
     fun extract(boardHash: Long, unknownCount: Int, confidence: Float): FeatureVector =
         FeatureVector(
-            mapOf(
-                "boardHash" to boardHash.toFloat(),
+            values = mapOf(
                 "unknownCount" to unknownCount.toFloat(),
                 "confidence" to confidence,
             ),
+            boardHash = boardHash,
         )
 }
 
@@ -42,7 +65,7 @@ class DatasetManager(
 ) {
     fun collect(id: String, boardHash: Long, unknownCount: Int, confidence: Float, label: String? = null) {
         val fv = features.extract(boardHash, unknownCount, confidence)
-        samples.add(Sample(id, fv.values, label))
+        samples.add(Sample(id, fv.values, label, boardHash = fv.boardHash))
         if (label != null) labels.put(id, label)
     }
     fun sampleStore() = samples

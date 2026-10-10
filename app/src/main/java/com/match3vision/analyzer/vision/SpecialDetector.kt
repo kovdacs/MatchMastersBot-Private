@@ -7,7 +7,7 @@ package com.match3vision.analyzer.vision
  */
 class SpecialDetector {
 
-    data class Result(val special: SpecialType, val confidence: Float)
+    data class Result(val special: SpecialType, val confidence: Float, val axis: Int = 0)
 
     fun detect(
         cellPixels: IntArray,
@@ -58,10 +58,10 @@ class SpecialDetector {
         }
 
         // Two-way arrow: two opposing bright lobes (left-right or top-bottom)
-        val arrow = arrowScore(cellPixels, cellWidth, cellHeight)
+        val arrow = arrowRead(cellPixels, cellWidth, cellHeight)
         var arrowConf = 0f
-        if (arrow > 0.62f) {
-            arrowConf = (arrow * 0.75f).coerceIn(0f, 0.95f)
+        if (arrow.score > 0.62f) {
+            arrowConf = (arrow.score * 0.75f).coerceIn(0f, 0.95f)
         }
 
         val best = listOf(
@@ -73,7 +73,8 @@ class SpecialDetector {
         if (best.second < VisionThresholds.SPECIAL_MIN_CONFIDENCE) {
             return none()
         }
-        return Result(best.first, best.second)
+        val axis = if (best.first == SpecialType.TWO_WAY_ARROW) arrow.axis else 0
+        return Result(best.first, best.second, axis)
     }
 
     private fun none() = Result(SpecialType.NONE, 0f)
@@ -107,7 +108,9 @@ class SpecialDetector {
         return if (dominant > 0.25f && dominant > other * 1.6f) dominant else 0f
     }
 
-    private fun arrowScore(pixels: IntArray, w: Int, h: Int): Float {
+    private data class ArrowRead(val score: Float, val axis: Int)
+
+    private fun arrowRead(pixels: IntArray, w: Int, h: Int): ArrowRead {
         val midY = h / 2
         val midX = w / 2
         val band = (h / 5).coerceAtLeast(1)
@@ -134,7 +137,10 @@ class SpecialDetector {
         val bottom = regionBright(midX - band, midX + band, midY, h)
         val horiz = minOf(left, right) * 2f
         val vert = minOf(top, bottom) * 2f
-        return maxOf(horiz, vert).coerceIn(0f, 1f)
+        val row = horiz >= vert
+        val score = (if (row) horiz else vert).coerceIn(0f, 1f)
+        val axis = if (row) AXIS_ROW else AXIS_COL
+        return ArrowRead(score, axis)
     }
 
     private fun pixelOrNull(pixels: IntArray, w: Int, h: Int, x: Int, y: Int): Int? {
@@ -145,6 +151,10 @@ class SpecialDetector {
     }
 
     companion object {
+        /** Matches [com.match3vision.analyzer.moves.MatchShape] row and column axes. */
+        const val AXIS_ROW = 1
+        const val AXIS_COL = 2
+
         /**
          * First x of the unguarded top arrow band at y = 0.
          * For 131×339 this is -2, and 131*339 = 44409, which is the device

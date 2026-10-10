@@ -90,6 +90,16 @@ class FrameSequenceGate {
                 Decision(Verdict.ALLOW_INITIAL, "no frame required yet", allow = true)
             }
         }
+        val conflict = listOfNotNull(gestureFrame, lastAccepted).any {
+            it.sequence == frame.sequence && it.identity != frame.identity
+        }
+        if (conflict) {
+            return Decision(
+                Verdict.REJECT_SAME,
+                "HOLD — equal sequence with a different identity",
+                allow = false,
+            )
+        }
         val gesture = gestureFrame
         if (requireNewAfterGesture && gesture != null) {
             when {

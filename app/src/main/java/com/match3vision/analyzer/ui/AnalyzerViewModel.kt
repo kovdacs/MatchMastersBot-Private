@@ -72,6 +72,7 @@ data class AnalyzerUiState(
     /** Analysis bitmap freeze status (MediaProjection self-UI guard). */
     val frameGateText: String = "FAGYASZTVA (indítás)",
     val analysisFrameFrozen: Boolean = true,
+    val notificationStatus: String = "",
 ) {
     companion object {
         const val SUBTITLE = "Auto — egy INDÍTÁS: engedélyek → rögzítés → buborék → auto kör (a11y CONNECTED kell). Diagnosztika: kisegítő maradhat KI."
@@ -131,6 +132,10 @@ class AnalyzerViewModel @JvmOverloads constructor(
                 statusMessage = "Képernyőrögzítés engedélyére vár…",
             )
         }
+    }
+
+    fun setNotificationStatus(status: String) {
+        _uiState.update { it.copy(notificationStatus = status) }
     }
 
     fun onCapturePermissionDenied() {

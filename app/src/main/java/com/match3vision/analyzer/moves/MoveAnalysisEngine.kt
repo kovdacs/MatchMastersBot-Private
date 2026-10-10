@@ -7,6 +7,7 @@ import com.match3vision.analyzer.evaluation.MoveEvaluation
 import com.match3vision.analyzer.evaluation.MoveEvaluator
 import com.match3vision.analyzer.vision.ValidationResult
 import com.match3vision.analyzer.vision.VisionResult
+import com.match3vision.analyzer.play.PlayUnknown
 import com.match3vision.analyzer.vision.VisionThresholds
 import com.match3vision.analyzer.vision.VisionValidator
 
@@ -16,7 +17,8 @@ import com.match3vision.analyzer.vision.VisionValidator
  * Runs only when Vision validation PASS **and**
  * gridConf ≥ [VisionThresholds.MIN_GRID_CONFIDENCE] (0.98) **and**
  * boardConf ≥ [VisionThresholds.MIN_BOARD_CONFIDENCE] (0.95) **and**
- * unknownCount ≤ [VisionThresholds.MAX_UNKNOWN_COUNT] (1).
+ * unknownCount ≤ [com.match3vision.analyzer.play.PlayUnknown.LIMIT] (3).
+ * Two or three unknown cells still produce moves that do not touch them.
  *
  * Otherwise returns HOLD — Decision AI blocked (no moves). Never actuates.
  */
@@ -100,7 +102,14 @@ class MoveAnalysisEngine(
             gridConfidence = gridConfidence,
             unknownCount = unknownCount,
         )
-        if (!gatePass || thresholdGate !is ValidationResult.Pass) {
+        val unknownHold = thresholdGate is ValidationResult.Hold &&
+            PlayUnknown.forPlay(
+                validationPass = false,
+                unknownCount = unknownCount,
+                gridConfidence = gridConfidence,
+                holdReason = thresholdGate.reason,
+            )
+        if (!gatePass || (thresholdGate !is ValidationResult.Pass && !unknownHold)) {
             val reason = when {
                 !gatePass && !holdHint.isNullOrBlank() -> holdHint
                 thresholdGate is ValidationResult.Hold -> thresholdGate.reason
@@ -108,7 +117,7 @@ class MoveAnalysisEngine(
             }
             return blocked(reason)
         }
-        if (unknownCount > VisionThresholds.MAX_UNKNOWN_COUNT) {
+        if (unknownCount > PlayUnknown.LIMIT) {
             return blocked(HOLD_BLOCKED)
         }
 
@@ -126,7 +135,7 @@ class MoveAnalysisEngine(
             blocked = false,
             holdReason = null,
             topMoves = ranked,
-            play = PlayMoveRanker(moveGenerator).rankLookahead(board, hud = hud),
+            play = PlayMoveRanker(moveGenerator).rankForPlay(board, hud),
         )
     }
 

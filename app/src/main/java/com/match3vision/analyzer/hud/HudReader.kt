@@ -22,8 +22,8 @@ object HudReader {
     const val ACTIVATE_BOTTOM = 970
 
     /**
-     * Move pips on the owner's 1080×2400 frames. They sit on the bottom edge
-     * of the board, not in the gem row above them. Spacing is 68 px.
+     * 0.27.8 pip geometry on the owner's 1080×2400 frames. They sit on the
+     * bottom edge of the board, not in the gem row above them. Spacing is 68 px.
      * A filled pip is the cyan cap (luma ~190). An empty slot is the purple
      * band (luma ~86). Sampling the gems above this row stays bright forever.
      */
@@ -42,8 +42,16 @@ object HudReader {
         if (width < 200 || height < 400 || pixels.size < width * height) {
             return HudObservation.UNKNOWN
         }
-        val turn = HudText.turn(pixels, width, height)
+        val turn = OwnerHud.apply(HudText.turn(pixels, width, height), pixels, width, height)
+        val endScreen = OwnerHud.endScreen(pixels, width, height)
         val card = HudText.card(pixels, width, height)
+        val glyphMult = HudText.multiplier(pixels, width, height)
+        val multValue = glyphMult.value ?: OwnerHud.ourMultiplier(pixels, width, height)
+        val multNote = when {
+            glyphMult.value != null -> glyphMult.note
+            multValue != null -> "x$multValue"
+            else -> glyphMult.note
+        }
         val reds = opponentReds(pixels, width, height)
         val activateSample = activateSample(pixels, width, height)
         val circlesSample = circleSample(pixels, width, height)
@@ -57,7 +65,6 @@ object HudReader {
         val opponent = turn.state == HudObservation.TURN_OPPONENT
         val redPvp = reds >= OPPONENT_RED_MIN && player
         if ((opponent || redPvp) && !circleSignal) {
-            val mult = HudText.multiplier(pixels, width, height)
             val ready = word && player
             val barFull = card.text == "FULL" || card.text == "7/7" || card.text == "ACTIVATE" || word
             val full = barFull
@@ -79,8 +86,8 @@ object HudReader {
                     yourTurn = turn.label,
                     turnState = turn.state,
                     timeLeftSeconds = turn.seconds,
-                    multiplier = mult.value,
-                    multiplierNote = mult.note,
+                    multiplier = multValue,
+                    multiplierNote = multNote,
                     hudState = HudObservation.hudStateFor(turn.state, soloLayout = false),
                     hudScores = scores,
                 ),
@@ -90,6 +97,7 @@ object HudReader {
                 activateSample.brightFraction,
                 soloPositive = false,
                 barFull = barFull || activateSample.bright,
+                endScreen = endScreen,
             )
         }
         val knownSolo = circleSignal || ((activateSample.bright || word) && reds < OPPONENT_RED_MIN)
@@ -103,6 +111,8 @@ object HudReader {
                     yourTurn = turn.label,
                     turnState = turn.state,
                     timeLeftSeconds = turn.seconds,
+                    multiplier = multValue,
+                    multiplierNote = multNote,
                     hudState = HudObservation.HUD_UNKNOWN,
                     hudScores = scores,
                 ),
@@ -112,6 +122,7 @@ object HudReader {
                 activateSample.brightFraction,
                 soloPositive = turn.state == HudObservation.TURN_YOUR,
                 barFull = false,
+                endScreen = endScreen,
             )
         }
         val activate = activateSample.bright || word
@@ -150,6 +161,8 @@ object HudReader {
                 yourTurn = turn.label,
                 turnState = turn.state,
                 timeLeftSeconds = turn.seconds,
+                multiplier = multValue,
+                multiplierNote = multNote,
                 legendPoints = legend.second,
                 hudState = HudObservation.hudStateFor(turn.state, soloLayout = true),
                 hudScores = scores,
@@ -160,6 +173,7 @@ object HudReader {
             activateSample.brightFraction,
             soloPositive = true,
             barFull = barFull,
+            endScreen = endScreen,
         )
     }
 
@@ -171,6 +185,7 @@ object HudReader {
         brightFraction: Double,
         soloPositive: Boolean,
         barFull: Boolean = false,
+        endScreen: String? = null,
     ): HudObservation = hud.copy(
         movesRemaining = movesRemaining,
         circlesBright = if (circles.classifiable) circles.bright else null,
@@ -182,7 +197,11 @@ object HudReader {
         activateBrightFraction = brightFraction,
         soloPositive = soloPositive,
         barFull = barFull,
+        endScreen = endScreen,
     )
+
+    fun pickAPiecePrompt(pixels: IntArray, width: Int, height: Int): Boolean =
+        OwnerHud.pickAPiece(pixels, width, height)
 
     fun activateCenter(width: Int, height: Int): Pair<Float, Float> {
         val x = (ACTIVATE_LEFT + ACTIVATE_RIGHT) / 2.0 * width / REF_W
@@ -241,7 +260,11 @@ object HudReader {
 
     private data class CircleSample(val bright: Int, val dark: Int, val classifiable: Boolean, val report: String?)
 
-    /** Report is set only when every sample is a clear empty or filled circle. */
+    /**
+     * Report is set only when every sample is a clear empty or filled circle.
+     * Sampler body is the 0.27.8 read (commit 4cf71ed): row y=942, origin x=402,
+     * pitch 68, ten circles, bright luma 140, 7×7 mean. Do not move these.
+     */
     private fun circleSample(pixels: IntArray, width: Int, height: Int): CircleSample {
         var bright = 0
         var dark = 0
@@ -324,6 +347,7 @@ object HudReader {
 object SoloBooster {
     data class Tap(val x: Float, val y: Float)
 
+    @Suppress("UNUSED_PARAMETER")
     fun decision(
         hud: HudObservation,
         controlEnabled: Boolean,
@@ -335,11 +359,9 @@ object SoloBooster {
         latched -> "latched"
         !controlEnabled -> "toggle-off"
         hud.turnState == HudObservation.TURN_OPPONENT -> "opponent"
-        swipesVerified < 1 -> "no-swipe-yet"
         !selfCheckMeasured -> "no-self-check"
         !hud.activateWord && !hud.boosterReady -> "no-activate-word"
         !hud.soloPositive && !hud.playerTurn() -> "not-our-layout"
-        extraMoveAvailable -> "wait-extra"
         else -> "tap"
     }
 

@@ -50,6 +50,29 @@ class FrameSequenceGateTest {
     }
 
     @Test
+    fun equalSequence_differentIdentity_isRejected() {
+        val before = FrameSequenceGate()
+        assertThat(before.evaluate(id(5, 100)).allow).isTrue()
+        val clash = before.evaluate(id(5, 999))
+        assertThat(clash.allow).isFalse()
+        assertThat(clash.verdict).isEqualTo(FrameSequenceGate.Verdict.REJECT_SAME)
+        assertThat(clash.reason).contains("different identity")
+
+        val after = FrameSequenceGate()
+        val gestured = id(5, 100)
+        assertThat(after.evaluate(gestured).allow).isTrue()
+        after.markGestureDispatched(gestured)
+        val sameSeq = after.evaluate(id(5, 999))
+        assertThat(sameSeq.allow).isFalse()
+        assertThat(sameSeq.verdict).isEqualTo(FrameSequenceGate.Verdict.REJECT_SAME)
+        assertThat(sameSeq.reason).contains("different identity")
+
+        val newer = after.evaluate(id(6, 200, ts = 3_000L))
+        assertThat(newer.allow).isTrue()
+        assertThat(newer.verdict).isEqualTo(FrameSequenceGate.Verdict.ALLOW_NEW)
+    }
+
+    @Test
     fun reset_clearsRequireNew() {
         val gate = FrameSequenceGate()
         gate.markGestureDispatched(id(1, 1))

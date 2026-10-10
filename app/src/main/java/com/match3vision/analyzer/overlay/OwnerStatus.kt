@@ -10,6 +10,11 @@ object OwnerStatus {
         if (text.isEmpty()) return "Várok egy stabil táblát"
         val key = text.lowercase()
         return when {
+            key.startsWith("help") && key.contains("unavailable") ->
+                "A segítség most nem működött – folytatom a játékot"
+            key.startsWith("help") && key.contains("hammer") -> "Kalapácsot használok…"
+            key.startsWith("help") && key.contains("shuffle") -> "Táblacserét használok…"
+            key.startsWith("help") -> "Segítséget használok, utána folytatom…"
             key.contains("opponent") -> "Az ellenfél köre van – leálltam"
             key.contains("unrecognized pvp") -> "Nem ismerem fel a kört – leálltam"
             key.contains("auto-calibration: board change") -> "A lépés nem a várt helyen történt – leálltam"
@@ -24,6 +29,9 @@ object OwnerStatus {
             key.contains("unknown hud") -> "Nem ismerem a képernyőt – leálltam"
             key.contains("no legal") -> "Nincs szabályos lépés – leálltam"
             key.contains("turn not readable") -> "Nem látom, kié a kör – leálltam"
+            key.contains("játék vége") || key.contains("time out") || key.contains("time's up") ->
+                "Játék vége"
+            key.contains("1800s") -> "Lejárt a 30 perc – leálltam"
             key.contains("900s") -> "Lejárt a 15 perc – leálltam"
             key.contains("600s") -> "Lejárt a 10 perc – leálltam"
             key.contains("300s") -> "Lejárt az 5 perc – leálltam"

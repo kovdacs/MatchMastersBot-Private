@@ -48,7 +48,7 @@ data class BoosterEntry(
 /**
  * Minimal JSON reader for [BoosterCatalog]. The unit-test classpath has no org.json.
  */
-internal object Json {
+object Json {
     fun parse(text: String): Value {
         val parser = Parser(text)
         val value = parser.parseValue()
@@ -70,6 +70,55 @@ internal object Json {
     data class Num(val raw: String) : Value()
     data class Bool(val value: Boolean) : Value()
     data object Null : Value()
+
+    fun write(value: Value): String = buildString { emit(value) }
+
+    private fun StringBuilder.emit(value: Value) {
+        when (value) {
+            is Obj -> {
+                append('{')
+                value.fields.entries.forEachIndexed { index, (key, child) ->
+                    if (index > 0) append(',')
+                    emit(Str(key))
+                    append(':')
+                    emit(child)
+                }
+                append('}')
+            }
+            is Arr -> {
+                append('[')
+                value.items.forEachIndexed { index, child ->
+                    if (index > 0) append(',')
+                    emit(child)
+                }
+                append(']')
+            }
+            is Str -> {
+                append('"')
+                value.value.forEach { c ->
+                    when (c) {
+                        '"' -> append("\\\"")
+                        '\\' -> append("\\\\")
+                        '\b' -> append("\\b")
+                        '\u000C' -> append("\\f")
+                        '\n' -> append("\\n")
+                        '\r' -> append("\\r")
+                        '\t' -> append("\\t")
+                        else -> if (c.code < 0x20) {
+                            append("\\u")
+                            append(c.code.toString(16).padStart(4, '0'))
+                        } else {
+                            append(c)
+                        }
+                    }
+                }
+                append('"')
+            }
+            is Num -> append(value.raw)
+            is Bool -> append(if (value.value) "true" else "false")
+            Null -> append("null")
+        }
+    }
 
     private class Parser(private val s: String) {
         private var i = 0

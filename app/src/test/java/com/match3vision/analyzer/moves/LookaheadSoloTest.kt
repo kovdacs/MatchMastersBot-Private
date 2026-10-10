@@ -100,7 +100,7 @@ class LookaheadSoloTest {
                 swipesVerified = 1,
                 selfCheckMeasured = true,
             ),
-        ).isFalse()
+        ).isTrue()
         BoosterControl.enabled = true
     }
 
@@ -248,9 +248,9 @@ class LookaheadSoloTest {
         assertThat(
             SoloBooster.plan(
                 hud, 1080, 2400, controlEnabled = true, extraMoveAvailable = true,
-                swipesVerified = 1, selfCheckMeasured = true,
+                swipesVerified = 0, selfCheckMeasured = true,
             ),
-        ).isNull()
+        ).isNotNull()
         val pvp = HudObservation(mode = "pvp", soloLayout = false, activate = "yes")
         assertThat(pvp.activateWord).isFalse()
         assertThat(SoloBooster.plan(pvp, 1080, 2400, controlEnabled = true)).isNull()

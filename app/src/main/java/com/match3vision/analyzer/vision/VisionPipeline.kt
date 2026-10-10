@@ -193,12 +193,25 @@ class VisionPipeline(
         val shape = shapeDetector.detect(shapePixels, shapeW, shapeH)
 
         // Special overlays (+ badges) often sit near edges — keep full cell.
-        val special = specialDetector.detect(
+        val detected = specialDetector.detect(
             crop,
             cw,
             ch,
             source = "VisionPipeline.analyzeCell r=$row c=$col",
         )
+        val owner = if (com.match3vision.analyzer.play.PlayFlags.specials) {
+            OwnerSpecials.classify(crop, cw, ch)
+        } else {
+            SpecialDetector.Result(SpecialType.NONE, 0f)
+        }
+        val special = if (
+            owner.special != SpecialType.NONE &&
+            owner.confidence >= VisionThresholds.SPECIAL_MIN_CONFIDENCE
+        ) {
+            owner
+        } else {
+            detected
+        }
 
         val reconciled = ColorShapeReconciler.reconcile(
             color = color.color,
@@ -206,6 +219,7 @@ class VisionPipeline(
             shape = shape.shape,
             shapeConf = shape.confidence,
             special = special.special,
+            specialAxis = special.axis,
         )
         if (reconciled.isUnknown) {
             diag["unkReason_${row}_${col}"] = UnknownReason.diagnose(
