@@ -229,6 +229,13 @@ class FiveMoveSession {
     private var helpStartedAtMs: Long = 0L
     private var helpTargetX: Float = Float.NaN
     private var helpTargetY: Float = Float.NaN
+    /** 0.28.7: a help that failed once is not tried again in this match. */
+    private val helpUnavailable = linkedSetOf<String>()
+    /** One attempt per help type per stall; a verified swipe ends the stall. */
+    private val helpTriedThisStall = linkedSetOf<String>()
+    private var helpBeforeLabel: Long? = null
+    private val helpLog = ArrayDeque<String>()
+    val unavailableHelps: Set<String> get() = helpUnavailable
 
     /** Move 1 may dispatch before a saved calibration exists. */
     var autoProbe: Boolean = false
@@ -476,6 +483,10 @@ class FiveMoveSession {
             shuffle = null,
             geometryVerified = false,
         ),
+        hammerMakesExtra: Boolean = false,
+        allWeak: Boolean = !hasLegalMove,
+        boosterReady: Boolean = false,
+        ourTurn: Boolean = true,
     ): HelpPolicy.Choice? {
         val choice = HelpPolicy.choose(
             hasLegalMove = hasLegalMove,
@@ -484,16 +495,45 @@ class FiveMoveSession {
             usedThisTurn = helpsUsedThisTurn,
             hasThreeMatch = hasThreeMatch,
             boxReady = boxReady,
+            hammerMakesExtra = hammerMakesExtra,
+            allWeak = allWeak,
+            unavailable = helpUnavailable,
+            triedThisStall = helpTriedThisStall,
+            boosterReady = boosterReady,
+            ourTurn = ourTurn,
         )
         if (helpPhase == "idle") {
+            val off = if (helpUnavailable.isEmpty()) "none" else helpUnavailable.joinToString(",")
+            val prev = helpNote
             helpNote = when {
                 !PlayFlags.helps -> "helps off"
                 !charges.geometryVerified -> "helps unread geometry=unverified used=$helpsUsedThisTurn"
+                !ourTurn -> "helps wait not our turn"
+                boosterReady -> "helps wait booster ACTIVATE first"
                 choice != null -> "helps choice=${choice.id} reason=${choice.reason}"
-                else -> "helps none used=$helpsUsedThisTurn hammer=${charges.hammer} shuffle=${charges.shuffle} box=${charges.box}"
+                else -> "helps none used=$helpsUsedThisTurn hammer=${charges.hammer} shuffle=${charges.shuffle} " +
+                    "box=${charges.box} legal=${hasLegalMove} extra=${extraMoveAvailable} " +
+                    "hammerExtra=${hammerMakesExtra} weak=${allWeak} unavailable=$off"
             }
+            if (choice != null && helpNote != prev) logHelp(helpNote)
         }
         return choice
+    }
+
+    private fun logHelp(line: String) {
+        helpLog.addLast(line)
+        while (helpLog.size > HELP_LOG_MAX) helpLog.removeFirst()
+    }
+
+    private fun markHelpUnavailable(id: String?, nowMs: Long, reason: String) {
+        if (id != null) helpUnavailable += id
+        helpPhase = "idle"
+        helpId = null
+        helpStartedAtMs = 0L
+        helpBeforeLabel = null
+        helpNote = "help unavailable id=${id ?: "none"} reason=$reason (play continues)"
+        logHelp(helpNote)
+        notePlayBlock(nowMs, helpNote)
     }
 
     fun advanceHelp(
@@ -503,13 +543,12 @@ class FiveMoveSession {
         choice: HelpPolicy.Choice?,
         targetX: Float?,
         targetY: Float?,
+        boardLabel: Long? = null,
     ): HelpGesture? {
         if (!PlayFlags.helps) return null
         if (helpPhase == "prompt") {
             if (nowMs - helpStartedAtMs > HELP_PROMPT_MS) {
-                helpPhase = "idle"
-                helpNote = "help prompt missed id=$helpId"
-                notePlayBlock(nowMs, helpNote)
+                markHelpUnavailable(helpId, nowMs, "prompt missed")
                 return null
             }
             if (!promptVisible) {
@@ -517,48 +556,66 @@ class FiveMoveSession {
                 return HelpGesture.Hold("help waiting for pick a piece")
             }
             if (targetX == null || targetY == null) {
-                helpPhase = "idle"
-                helpNote = "help target unverified id=$helpId"
-                notePlayBlock(nowMs, helpNote)
+                markHelpUnavailable(helpId, nowMs, "target unverified")
                 return null
             }
             helpPhase = "settle"
             helpStartedAtMs = nowMs
             helpNote = "help pick id=$helpId x=${targetX.toInt()} y=${targetY.toInt()}"
+            logHelp(helpNote)
             notePlayBlock(nowMs, helpNote)
             return HelpGesture.Tap(targetX, targetY, helpNote)
         }
         if (helpPhase == "settle") {
-            if (playable && nowMs - helpStartedAtMs >= 600L) {
-                helpNote = "help settled id=$helpId"
+            val before = helpBeforeLabel
+            val changed = boardLabel == null || before == null || boardLabel != before
+            if (playable && changed && nowMs - helpStartedAtMs >= 600L) {
+                helpNote = "help settled id=$helpId boardChanged=yes"
+                logHelp(helpNote)
                 notePlayBlock(nowMs, helpNote)
                 helpPhase = "idle"
                 helpId = null
+                helpBeforeLabel = null
                 return null
             }
             if (nowMs - helpStartedAtMs > HELP_SETTLE_MS) {
-                helpPhase = "idle"
-                helpNote = "help settle timeout id=$helpId"
-                notePlayBlock(nowMs, helpNote)
+                markHelpUnavailable(
+                    helpId,
+                    nowMs,
+                    if (playable && !changed) "board unchanged" else "settle timeout",
+                )
                 return null
             }
             notePlayBlock(nowMs, "help settling")
             return HelpGesture.Hold("help settling")
         }
         if (choice == null) return null
+        if (choice.id in helpUnavailable || choice.id in helpTriedThisStall) return null
         if (lastHelpAttemptAtMs > 0L && nowMs - lastHelpAttemptAtMs < HELP_ATTEMPT_GAP_MS) {
             helpNote = "help cooldown"
             notePlayBlock(nowMs, helpNote)
             return null
         }
+        if (choice.needsTarget && (targetX == null || targetY == null)) {
+            helpNote = "help target unverified id=${choice.id} (not tapped)"
+            notePlayBlock(nowMs, helpNote)
+            return null
+        }
+        val point = com.match3vision.analyzer.play.HelpButtons.center(choice.id)
+        if (point == null) {
+            markHelpUnavailable(choice.id, nowMs, "button not found")
+            return null
+        }
         lastHelpAttemptAtMs = nowMs
-        val point = com.match3vision.analyzer.play.HelpButtons.center(choice.id) ?: return null
+        helpTriedThisStall += choice.id
         helpId = choice.id
         helpStartedAtMs = nowMs
+        helpBeforeLabel = boardLabel
         helpTargetX = targetX ?: Float.NaN
         helpTargetY = targetY ?: Float.NaN
         helpPhase = if (choice.needsTarget) "prompt" else "settle"
         helpNote = "help tap=${choice.id} reason=${choice.reason}"
+        logHelp(helpNote)
         notePlayBlock(nowMs, helpNote)
         return HelpGesture.Tap(point.x, point.y, helpNote)
     }
@@ -573,13 +630,12 @@ class FiveMoveSession {
     /** A sent help may hold the tick. A failed or unsent tap must not. */
     fun helpConsumesTurn(): Boolean = helpQuotaHeld && helpPhase != "idle"
 
-    /** The tap was not sent. The quota stays where it was and the perk can be tried again. */
+    /**
+     * The tap was not sent or not confirmed. The quota stays where it was, the
+     * perk is marked unavailable for the rest of the match, and play continues.
+     */
     fun abandonHelp(nowMs: Long, reason: String) {
-        helpPhase = "idle"
-        helpId = null
-        helpStartedAtMs = 0L
-        helpNote = reason
-        notePlayBlock(nowMs, reason)
+        markHelpUnavailable(helpId, nowMs, reason)
     }
 
     fun helpTarget(): Pair<Float, Float>? {
@@ -1465,7 +1521,14 @@ class FiveMoveSession {
                 if (calibrationLine.isBlank()) calibrationLine = AutoCalibration.NOTE
             }
             verifiedCount += 1
-            if (open.countsAsSwipe) swipesVerified += 1
+            if (open.countsAsSwipe) {
+                swipesVerified += 1
+                if (helpPhase == "idle") {
+                    helpTriedThisStall.clear()
+                    helpsUsedThisTurn = 0
+                    helpQuotaHeld = false
+                }
+            }
             playSkip = 0
             unchangedRetries = 0
             openMove = null
@@ -1579,6 +1642,14 @@ class FiveMoveSession {
         appendLine(PlayFlags.log())
         appendLine(boosterTargetNote)
         appendLine(helpNote)
+        appendLine("--- HELPS ---")
+        appendLine(
+            "helpsUnavailable=${if (helpUnavailable.isEmpty()) "none" else helpUnavailable.joinToString(",")} " +
+                "triedThisStall=${if (helpTriedThisStall.isEmpty()) "none" else helpTriedThisStall.joinToString(",")} " +
+                "phase=$helpPhase",
+        )
+        if (helpLog.isEmpty()) appendLine("none")
+        helpLog.forEach { appendLine(it) }
         appendLine("--- BOOSTER ---")
         if (boosterAttemptLog.isEmpty()) appendLine("none")
         boosterAttemptLog.forEach { appendLine(it) }
@@ -1883,6 +1954,10 @@ class FiveMoveSession {
         helpStartedAtMs = 0L
         helpTargetX = Float.NaN
         helpTargetY = Float.NaN
+        helpUnavailable.clear()
+        helpTriedThisStall.clear()
+        helpBeforeLabel = null
+        helpLog.clear()
         equippedBoosterId = null
         boosterTargetNote = "booster target=unverified equipped=unknown"
         helpNote = "helps unread"
@@ -1989,7 +2064,9 @@ class FiveMoveSession {
         const val HELP_ATTEMPT_GAP_MS = 30_000L
         const val OPPONENT_BAR_FRAMES = 3
         const val HELP_PROMPT_MS = 4_000L
-        const val HELP_SETTLE_MS = 8_000L
+        /** No board change within this after a help tap: unavailable, play continues. */
+        const val HELP_SETTLE_MS = 4_000L
+        const val HELP_LOG_MAX = 30
         const val BOOSTER_TAP_MS = 120L
         const val BOOSTER_MAX_ATTEMPTS = 3
         const val BOOSTER_CONFIRM_BOARDS = 2

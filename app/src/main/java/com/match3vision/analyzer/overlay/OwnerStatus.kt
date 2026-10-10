@@ -10,6 +10,11 @@ object OwnerStatus {
         if (text.isEmpty()) return "Várok egy stabil táblát"
         val key = text.lowercase()
         return when {
+            key.startsWith("help") && key.contains("unavailable") ->
+                "A segítség most nem működött – folytatom a játékot"
+            key.startsWith("help") && key.contains("hammer") -> "Kalapácsot használok…"
+            key.startsWith("help") && key.contains("shuffle") -> "Táblacserét használok…"
+            key.startsWith("help") -> "Segítséget használok, utána folytatom…"
             key.contains("opponent") -> "Az ellenfél köre van – leálltam"
             key.contains("unrecognized pvp") -> "Nem ismerem fel a kört – leálltam"
             key.contains("auto-calibration: board change") -> "A lépés nem a várt helyen történt – leálltam"

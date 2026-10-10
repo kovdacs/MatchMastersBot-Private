@@ -2332,27 +2332,55 @@ class FloatingBubbleService : Service() {
                     )
                 }
                 val extraMove = playRanking.ordered.any { it.extraMove }
-                val boxCell = com.match3vision.analyzer.play.HelpTargets.adjacentToCluster(boardNow)
+                val helpIdle = session.helpPhase == "idle"
+                val boxCell = if (helpIdle && com.match3vision.analyzer.play.PlayFlags.boxHelp) {
+                    com.match3vision.analyzer.play.HelpTargets.adjacentToCluster(boardNow)
+                } else {
+                    null
+                }
+                // 0.28.7: hammer only when no swap gives an extra move and a hammer on a
+                // visible, known-color cell would create one. Simulated only when it could be used.
+                val hammerTarget = if (
+                    helpIdle && motion == null && !extraMove &&
+                    com.match3vision.analyzer.play.PlayFlags.helps &&
+                    charges.hammer == 1 && "hammer" !in session.unavailableHelps &&
+                    playRanking.ordered.isNotEmpty()
+                ) {
+                    try {
+                        com.match3vision.analyzer.play.HelpTargets.hammerForExtraMoveCached(boardNow)
+                    } catch (t: Throwable) {
+                        Timber.e(t, "hammer simulation failed; continuing play")
+                        null
+                    }
+                } else {
+                    null
+                }
+                val allWeak = playRanking.ordered.isEmpty() || playRanking.ordered.all {
+                    !it.extraMove && it.blueCleared == 0 && it.totalCleared <= 3
+                }
+                val ourTurn = turnRefusal == null && hud.turnState != HudObservation.TURN_OPPONENT
                 val helpChoice = session.considerHelp(
                     hasLegalMove = playRanking.ordered.isNotEmpty(),
                     extraMoveAvailable = extraMove,
                     hasThreeMatch = playRanking.ordered.any { it.matchLen >= 3 },
                     boxReady = boxCell != null,
                     charges = charges,
+                    hammerMakesExtra = hammerTarget != null,
+                    allWeak = allWeak,
+                    boosterReady = hud.activateWord || hud.boosterReady,
+                    ourTurn = ourTurn,
                 )
                 val helpCell = when (helpChoice?.id) {
                     "box" -> boxCell
-                    "hammer" -> {
-                        val picked = com.match3vision.analyzer.play.TargetPicker().bestCell(boardNow)
-                        val tile = boardNow.get(picked.row, picked.col)
+                    "hammer" -> hammerTarget?.let { target ->
+                        val tile = boardNow.get(target.row, target.col)
                         if (
-                            picked.blue < 0 ||
                             !tile.visible ||
                             tile.color == com.match3vision.analyzer.vision.TileColor.UNKNOWN
                         ) {
                             null
                         } else {
-                            picked.row to picked.col
+                            target.row to target.col
                         }
                     }
                     else -> null
@@ -2372,6 +2400,7 @@ class FloatingBubbleService : Service() {
                     choice = if (session.helpPhase == "idle") helpChoice else null,
                     targetX = helpPoint?.first,
                     targetY = helpPoint?.second,
+                    boardLabel = boardNow.labelHash(),
                 )
                 when (helpGesture) {
                     is FiveMoveSession.HelpGesture.Tap -> {

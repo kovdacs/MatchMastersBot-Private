@@ -21,11 +21,12 @@ class OwnerLive0286Test {
     }
 
     @Test
-    fun helps_defaultOff_andResetStaysOff() {
-        assertThat(PlayFlags.helps).isFalse()
-        PlayFlags.helps = true
+    fun helps_defaultOn_0287_andExplicitOffStillBlocks() {
+        assertThat(PlayFlags.helps).isTrue()
+        PlayFlags.helps = false
         PlayFlags.reset()
-        assertThat(PlayFlags.helps).isFalse()
+        assertThat(PlayFlags.helps).isTrue()
+        PlayFlags.helps = false
         val session = FiveMoveSession()
         session.arm(0L)
         val charges = HelpPolicy.Charges(hammer = 1, shuffle = 1, geometryVerified = true)
@@ -50,7 +51,7 @@ class OwnerLive0286Test {
     }
 
     @Test
-    fun helpAttempt_isLimitedToOnePer30s() {
+    fun helpAttempt_failedOnce_isUnavailableForTheMatch() {
         PlayFlags.helps = true
         val session = armed()
         val choice = HelpPolicy.Choice("hammer", needsTarget = true, reason = "enables extra move")
@@ -60,7 +61,7 @@ class OwnerLive0286Test {
         assertThat(session.helpConsumesTurn()).isFalse()
         val blocked = session.advanceHelp(1_200L, false, true, choice, 400f, 1500f)
         assertThat(blocked).isNull()
-        assertThat(session.helpNote).isEqualTo("help cooldown")
+        assertThat(session.helpNote).contains("unavailable")
         val go = session.requestDispatch(gates(1_300L, frameSequence = 2L))
         assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
         val later = session.advanceHelp(
@@ -71,7 +72,8 @@ class OwnerLive0286Test {
             400f,
             1500f,
         )
-        assertThat(later).isInstanceOf(FiveMoveSession.HelpGesture.Tap::class.java)
+        assertThat(later).isNull()
+        assertThat(session.unavailableHelps).contains("hammer")
     }
 
     @Test

@@ -10,8 +10,13 @@ object PlayFlags {
     var boosters: Boolean = true
     /** Off until an owner frame names the equipped booster. A target tap is not sent. */
     var targetBoosters: Boolean = false
-    /** Off. A live solo loop was stuck retapping Hammer and never swiped. */
-    var helps: Boolean = false
+    /**
+     * 0.28.7: on. Hammer and Shuffle only, non-blocking: a help that fails once
+     * is unavailable for the rest of the match (the 0.28.5 hammer loop cannot recur).
+     */
+    var helps: Boolean = true
+    /** Box (rainbow) help stays off until a live owner frame proves it. */
+    var boxHelp: Boolean = false
     /** Off until real frames calibrate arrow, bomb, and color-bomb pixels. */
     var specials: Boolean = false
     var modeAdapt: Boolean = true
@@ -21,12 +26,13 @@ object PlayFlags {
         pvpResume = true
         boosters = true
         targetBoosters = false
-        helps = false
+        helps = true
+        boxHelp = false
         specials = false
         modeAdapt = true
     }
 
     fun log(): String =
         "continuous=$continuous pvpResume=$pvpResume boosters=$boosters " +
-            "targetBoosters=$targetBoosters helps=$helps specials=$specials modeAdapt=$modeAdapt"
+            "targetBoosters=$targetBoosters helps=$helps boxHelp=$boxHelp specials=$specials modeAdapt=$modeAdapt"
 }

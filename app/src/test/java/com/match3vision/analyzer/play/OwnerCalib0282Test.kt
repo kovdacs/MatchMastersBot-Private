@@ -116,10 +116,13 @@ class OwnerCalib0282Test {
         assertThat(stuck!!.id).isEqualTo("shuffle")
         assertThat(stuck.reason).isEqualTo("no legal move")
         val noThree = HelpPolicy.Charges(hammer = 1, shuffle = 0, box = 0, geometryVerified = true)
-        val hammer = HelpPolicy.choose(true, false, noThree, 0, hasThreeMatch = false, boxReady = false)
+        assertThat(HelpPolicy.choose(true, false, noThree, 0, hasThreeMatch = false, boxReady = false)).isNull()
+        val hammer = HelpPolicy.choose(true, false, noThree, 0, hammerMakesExtra = true)
         assertThat(hammer!!.id).isEqualTo("hammer")
-        assertThat(hammer.reason).isEqualTo("no 3-match")
+        assertThat(hammer.reason).isEqualTo("enables extra move")
         val boxOnly = HelpPolicy.Charges(hammer = 0, shuffle = 0, box = 1, geometryVerified = true)
+        assertThat(HelpPolicy.choose(true, false, boxOnly, 0, hasThreeMatch = true, boxReady = true)).isNull()
+        PlayFlags.boxHelp = true
         val box = HelpPolicy.choose(true, false, boxOnly, 0, hasThreeMatch = true, boxReady = true)
         assertThat(box!!.id).isEqualTo("box")
         assertThat(box.reason).isEqualTo("adjacent to a cluster")
@@ -136,10 +139,10 @@ class OwnerCalib0282Test {
         val session = FiveMoveSession()
         session.arm(0L)
         val choice = session.considerHelp(
-            hasLegalMove = false,
+            hasLegalMove = true,
             extraMoveAvailable = false,
-            hasThreeMatch = false,
             charges = HelpPolicy.Charges(hammer = 1, shuffle = 0, box = 0, geometryVerified = true),
+            hammerMakesExtra = true,
         )
         val button = session.advanceHelp(1_000L, false, true, choice, 400f, 1500f)
         assertThat(button).isInstanceOf(FiveMoveSession.HelpGesture.Tap::class.java)

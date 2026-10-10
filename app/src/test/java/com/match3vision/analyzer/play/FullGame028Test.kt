@@ -208,10 +208,9 @@ class FullGame028Test {
         val unread = HelpPolicy.Charges(hammer = null, shuffle = null, geometryVerified = false)
         assertThat(HelpPolicy.choose(false, true, unread, 0)).isNull()
         val charged = HelpPolicy.Charges(hammer = 1, shuffle = 0, geometryVerified = true)
-        val stuck = HelpPolicy.choose(false, false, charged, 0)
-        assertThat(stuck!!.id).isEqualTo("hammer")
-        assertThat(stuck.reason).isEqualTo("no 3-match")
-        val extra = HelpPolicy.choose(true, true, charged, 0)
+        assertThat(HelpPolicy.choose(false, false, charged, 0)).isNull()
+        assertThat(HelpPolicy.choose(true, true, charged, 0, hammerMakesExtra = true)).isNull()
+        val extra = HelpPolicy.choose(true, false, charged, 0, hammerMakesExtra = true)
         assertThat(extra!!.reason).isEqualTo("enables extra move")
         assertThat(HelpPolicy.choose(false, true, charged, HelpPolicy.MAX_PER_TURN)).isNull()
         PlayFlags.helps = false

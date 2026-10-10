@@ -200,10 +200,15 @@ class RecognizedTap0285Test {
             null,
             null,
         )
-        assertThat(again).isInstanceOf(FiveMoveSession.HelpGesture.Tap::class.java)
+        assertThat(again).isNull()
+        assertThat(session.unavailableHelps).contains("shuffle")
+
+        val fresh = armed()
+        assertThat(fresh.advanceHelp(1_000L, false, true, choice, null, null))
+            .isInstanceOf(FiveMoveSession.HelpGesture.Tap::class.java)
         val completed = InputDispatchResult.Dispatched(tapGesture(), callbackCompleted = true)
-        assertThat(RecognizedTap.applyHelp(session, completed, 1_300L)).isTrue()
-        assertThat(session.helpsUsedThisTurn).isEqualTo(1)
+        assertThat(RecognizedTap.applyHelp(fresh, completed, 1_300L)).isTrue()
+        assertThat(fresh.helpsUsedThisTurn).isEqualTo(1)
     }
 
     @Test
