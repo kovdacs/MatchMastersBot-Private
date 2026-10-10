@@ -147,19 +147,17 @@ class RecognizedTap0285Test {
     }
 
     @Test
-    fun scheduledOnly_settlesWithoutCountingTheAttempt() {
+    fun scheduledOnly_doesNotSettle_andTheSwipeGoes() {
         val result = InputDispatchResult.Failed(
             "SCHEDULED_ONLY — gesture scheduled only; callback was not awaited",
         )
         val session = armed()
-        assertThat(applyBooster(session, result, 1_000L)).isTrue()
-        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.SETTLING)
+        assertThat(applyBooster(session, result, 1_000L)).isFalse()
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         assertThat(session.boosterAttempts).isEqualTo(0)
         assertThat(session.boosterLatched).isFalse()
-        session.onSettle(pass(nowMs = 1_400L, hash = 7L, sequence = 2L))
-        session.onSettle(pass(nowMs = 1_800L, hash = 7L, sequence = 3L))
-        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        assertThat(session.boosterMayTap()).isTrue()
+        val go = session.requestDispatch(gates(1_100L, frameSequence = 2L))
+        assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
     }
 
     @Test
@@ -194,7 +192,14 @@ class RecognizedTap0285Test {
         assertThat(session.helpsUsedThisTurn).isEqualTo(0)
         assertThat(session.helpPhase).isEqualTo("idle")
 
-        val again = session.advanceHelp(1_200L, false, true, choice, null, null)
+        val again = session.advanceHelp(
+            1_000L + FiveMoveSession.HELP_ATTEMPT_GAP_MS,
+            false,
+            true,
+            choice,
+            null,
+            null,
+        )
         assertThat(again).isInstanceOf(FiveMoveSession.HelpGesture.Tap::class.java)
         val completed = InputDispatchResult.Dispatched(tapGesture(), callbackCompleted = true)
         assertThat(RecognizedTap.applyHelp(session, completed, 1_300L)).isTrue()

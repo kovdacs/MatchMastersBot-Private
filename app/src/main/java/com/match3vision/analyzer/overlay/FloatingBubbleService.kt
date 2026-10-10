@@ -81,9 +81,9 @@ import com.match3vision.analyzer.input.DiagnosticShare
 import com.match3vision.analyzer.input.VerifyTiming
 import com.match3vision.analyzer.input.ProductionCycleContext
 import com.match3vision.analyzer.input.RuntimeCycleContext
-import com.match3vision.analyzer.input.ProductionInstall
 import com.match3vision.analyzer.input.ProductionLiveReaders
 import com.match3vision.analyzer.input.RecognizedTap
+import com.match3vision.analyzer.input.RecognizedTapDispatch
 import com.match3vision.analyzer.input.RuntimeLabels
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.input.VerificationPolicy
@@ -2035,17 +2035,32 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * The same live probe the swipe executor uses. A default executor fails
-     * closed, which would block every ACTIVATE tap.
+     * Swipes enable [InputEnableSwitch] only inside [AutoPlayController.dispatchFiveMoveOnce].
+     * The five-move loop leaves that switch off the rest of the time. A tap must
+     * use the same executor and the same switch, turned on for the dispatch only.
+     * A fresh executor whose probe reads the switch while it is off fails with
+     * "input disabled (live)" and never reaches the channel.
      */
-    private fun productionTapExecutor(): AccessibilityGestureExecutor =
-        ProductionInstall.accessibilityExecutor(
-            liveProbe = ProductionLiveReaders.probe(AutoPlaySession.controller.enableSwitch()),
-        )
+    private suspend fun dispatchTap(permit: DispatchPermit): InputDispatchResult {
+        val engine = AutoPlaySession.controller.inputLoop().inputEngine()
+        val executor = engine.executor()
+        if (executor !is AccessibilityGestureExecutor) {
+            return InputDispatchResult.Failed("production executor missing")
+        }
+        if (!executor.isReady()) {
+            return InputDispatchResult.Failed("tap executor not ready")
+        }
+        return withContext(Dispatchers.Default) {
+            RecognizedTapDispatch.whileInputEnabled(engine.enableSwitch()) {
+                executor.dispatchRecognizedTap(permit)
+            }
+        }
+    }
 
     /**
      * One help tap, off the main thread, after the same recheck as a swipe.
-     * The quota moves only when the callback completes.
+     * The quota moves only when the callback completes. False means the tick
+     * must swipe.
      */
     private suspend fun sendHelpTap(
         session: FiveMoveSession,
@@ -2053,25 +2068,19 @@ class FloatingBubbleService : Service() {
         y: Float,
         frame: CaptureFrame,
         vision: com.match3vision.analyzer.vision.VisionResult,
-    ) {
+    ): Boolean {
         val now = System.currentTimeMillis()
         val gesture = GestureSpec.tap(x, y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
-        val executor = productionTapExecutor()
-        if (!executor.isReady()) {
-            session.abandonHelp(now, "help tap not ready")
-            return
-        }
         val permit = boosterPermit(gesture, frame, vision, settleAgeLimit())
         session.beginOwnGesture(x, y, x, y, now)
         val result = try {
-            withContext(Dispatchers.Default) {
-                executor.dispatchRecognizedTap(permit)
-            }
+            dispatchTap(permit)
         } finally {
             session.finishOwnGesture(System.currentTimeMillis())
         }
-        RecognizedTap.applyHelp(session, result, System.currentTimeMillis())
+        val sent = RecognizedTap.applyHelp(session, result, System.currentTimeMillis())
         Timber.i("help tap point=(%d,%d) kind=%s", x.toInt(), y.toInt(), RecognizedTap.kind(result))
+        return sent
     }
 
     private suspend fun sendSoloBoosterTap(
@@ -2093,19 +2102,12 @@ class FloatingBubbleService : Service() {
             selfCheckMeasured = selfCheckMeasured,
         ) ?: return false
         val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
-        val executor = productionTapExecutor()
-        if (!executor.isReady()) {
-            session.notePlayBlock(System.currentTimeMillis(), "booster tap not ready")
-            return false
-        }
         if (BoosterControl.equippedId.isBlank()) Timber.i("id unknown")
         val permit = boosterPermit(gesture, frame, vision, settleAgeLimit())
         val tapAt = System.currentTimeMillis()
         session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, tapAt)
         val result = try {
-            withContext(Dispatchers.Default) {
-                executor.dispatchRecognizedTap(permit)
-            }
+            dispatchTap(permit)
         } finally {
             session.finishOwnGesture(System.currentTimeMillis())
         }
@@ -2373,21 +2375,25 @@ class FloatingBubbleService : Service() {
                 )
                 when (helpGesture) {
                     is FiveMoveSession.HelpGesture.Tap -> {
-                        session.releaseUnusedPermit()
-                        sendHelpTap(session, helpGesture.x, helpGesture.y, frame, vision)
-                        refreshBubbleUi()
-                        return false
+                        val sent = sendHelpTap(session, helpGesture.x, helpGesture.y, frame, vision)
+                        if (sent) {
+                            session.releaseUnusedPermit()
+                            refreshBubbleUi()
+                            return false
+                        }
                     }
                     is FiveMoveSession.HelpGesture.Hold -> {
-                        session.releaseUnusedPermit()
-                        AutoPlaySession.updateDiagnostics(
-                            phase = "TARTÁS",
-                            cycleReason = helpGesture.reason,
-                            gestureStatus = "NOT CREATED",
-                            inputBlockReason = helpGesture.reason,
-                        )
-                        refreshBubbleUi()
-                        return false
+                        if (session.helpConsumesTurn()) {
+                            session.releaseUnusedPermit()
+                            AutoPlaySession.updateDiagnostics(
+                                phase = "TARTÁS",
+                                cycleReason = helpGesture.reason,
+                                gestureStatus = "NOT CREATED",
+                                inputBlockReason = helpGesture.reason,
+                            )
+                            refreshBubbleUi()
+                            return false
+                        }
                     }
                     null -> Unit
                 }
@@ -3082,8 +3088,11 @@ class FloatingBubbleService : Service() {
         val bmp: Bitmap = frame.bitmap
         var copied: IntArray? = null
         var failure = "CAPTURE_INVALID — frame pixels were not available"
+        val snapshot = frame.pixels
         if (w <= 0 || h <= 0) {
             failure = "CAPTURE_INVALID — missing or invalid frame size ${w}x$h"
+        } else if (snapshot != null && snapshot.size >= w * h) {
+            copied = snapshot.copyOf(w * h)
         } else if (bmp.isRecycled) {
             failure = "CAPTURE_INVALID — bitmap recycled before copy"
         } else {

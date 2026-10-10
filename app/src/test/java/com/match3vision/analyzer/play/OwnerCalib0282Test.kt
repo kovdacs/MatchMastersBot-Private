@@ -110,6 +110,7 @@ class OwnerCalib0282Test {
 
     @Test
     fun helps_shuffleThenHammerThenBox_andThePromptTap() {
+        PlayFlags.helps = true
         val none = HelpPolicy.Charges(hammer = 1, shuffle = 1, box = 1, geometryVerified = true)
         val stuck = HelpPolicy.choose(false, false, none, 0, hasThreeMatch = false, boxReady = true)
         assertThat(stuck!!.id).isEqualTo("shuffle")

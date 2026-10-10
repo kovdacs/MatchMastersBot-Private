@@ -10,7 +10,8 @@ object PlayFlags {
     var boosters: Boolean = true
     /** Off until an owner frame names the equipped booster. A target tap is not sent. */
     var targetBoosters: Boolean = false
-    var helps: Boolean = true
+    /** Off. A live solo loop was stuck retapping Hammer and never swiped. */
+    var helps: Boolean = false
     /** Off until real frames calibrate arrow, bomb, and color-bomb pixels. */
     var specials: Boolean = false
     var modeAdapt: Boolean = true
@@ -20,7 +21,7 @@ object PlayFlags {
         pvpResume = true
         boosters = true
         targetBoosters = false
-        helps = true
+        helps = false
         specials = false
         modeAdapt = true
     }

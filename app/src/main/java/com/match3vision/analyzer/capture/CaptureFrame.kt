@@ -23,6 +23,8 @@ data class CaptureFrame(
     val contentRoi: ContentRoi? = null,
     val sequence: Long = 0L,
     val elapsedRealtimeMs: Long = 0L,
+    /** Immutable copy taken at capture. Consumers read this, not a bitmap that may be recycled. */
+    val pixels: IntArray? = null,
 ) {
     val contentWidth: Int
         get() = contentRoi?.width() ?: width

@@ -260,7 +260,11 @@ object HudReader {
 
     private data class CircleSample(val bright: Int, val dark: Int, val classifiable: Boolean, val report: String?)
 
-    /** Report is set only when every sample is a clear empty or filled circle. */
+    /**
+     * Report is set only when every sample is a clear empty or filled circle.
+     * Sampler body is the 0.27.8 read (commit 4cf71ed): row y=942, origin x=402,
+     * pitch 68, ten circles, bright luma 140, 7×7 mean. Do not move these.
+     */
     private fun circleSample(pixels: IntArray, width: Int, height: Int): CircleSample {
         var bright = 0
         var dark = 0

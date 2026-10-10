@@ -48,6 +48,7 @@ fun AnalyzerScreen(
     onStopCapture: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit = {},
     onOpenOverlaySettings: () -> Unit = {},
+    onRetryNotification: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val auto by AutoPlaySession.ui.collectAsStateWithLifecycle()
@@ -62,6 +63,8 @@ fun AnalyzerScreen(
                 moveCount = auto.moveCount,
                 frameGateText = state.frameGateText,
                 frameCount = state.frameCount,
+                notificationStatus = state.notificationStatus,
+                onRetryNotification = onRetryNotification,
                 onStop = onStopCapture,
             )
             return@Surface
@@ -98,6 +101,7 @@ fun AnalyzerScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )
+            NotificationStatusRow(state.notificationStatus, onRetryNotification)
 
             Button(
                 onClick = {
@@ -420,12 +424,25 @@ private fun FramePreview(bitmap: Bitmap?) {
 }
 
 @Composable
+private fun NotificationStatusRow(status: String, onRetry: () -> Unit) {
+    if (status.isBlank()) return
+    Text(status, fontWeight = FontWeight.Medium)
+    if (status == NotificationPermissionGate.DENIED) {
+        OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+            Text("Értesítés újra")
+        }
+    }
+}
+
+@Composable
 private fun CompactRunningPanel(
     mode: AutoPlayController.Mode,
     statusText: String,
     moveCount: Int,
     frameGateText: String,
     frameCount: Long,
+    notificationStatus: String,
+    onRetryNotification: () -> Unit,
     onStop: () -> Unit,
 ) {
     Column(
@@ -451,6 +468,7 @@ private fun CompactRunningPanel(
             fontWeight = FontWeight.Medium,
         )
         Text("Fogadott képkockák: $frameCount")
+        NotificationStatusRow(notificationStatus, onRetryNotification)
         Text(
             "A buborék kis overlay. Nyisd meg a Match Masters-t a háttérben.",
             style = MaterialTheme.typography.bodySmall,

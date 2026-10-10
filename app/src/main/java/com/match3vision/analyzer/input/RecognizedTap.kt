@@ -5,8 +5,8 @@ package com.match3vision.analyzer.input
  *
  * A completed callback counts. A failure, cancel, timeout, or missing callback
  * does not: the booster stays retryable and the help quota is left alone.
- * A scheduled-only result is unconfirmed. The booster enters settle without
- * counting the attempt. The help phase already started is left to settle.
+ * A scheduled-only result is unconfirmed. It does not settle and does not
+ * count. The tick swipes instead.
  */
 object RecognizedTap {
     enum class Kind { CONFIRMED, UNCONFIRMED, FAILED }
@@ -42,7 +42,11 @@ object RecognizedTap {
                 session.noteBoosterException(reason)
                 false
             }
-            Kind.CONFIRMED, Kind.UNCONFIRMED -> {
+            Kind.UNCONFIRMED -> {
+                session.notePlayBlock(nowMs, "booster tap unconfirmed")
+                false
+            }
+            Kind.CONFIRMED -> {
                 val decision = session.armBoosterSettle(
                     x = x,
                     y = y,
@@ -68,7 +72,7 @@ object RecognizedTap {
                 true
             }
             Kind.UNCONFIRMED -> {
-                session.notePlayBlock(nowMs, "help tap unconfirmed")
+                session.abandonHelp(nowMs, "help tap unconfirmed")
                 false
             }
             Kind.FAILED -> {

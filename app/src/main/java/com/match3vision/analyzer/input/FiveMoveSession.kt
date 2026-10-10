@@ -324,6 +324,11 @@ class FiveMoveSession {
     private var menuSinceMs: Long = 0L
     private var zeroCircleReads: Int = 0
     private var sawBrightCircles: Boolean = false
+    private var circleBaseline: Int? = null
+    private var circleReadingChanged: Boolean = false
+    private var soloEvidence: Boolean = false
+    private var opponentBarStreak: Int = 0
+    private var lastHelpAttemptAtMs: Long = 0L
     private var lastCircleSequence: Long = -1L
     private var unchangedRetries: Int = 0
     private val decisionLog = ArrayList<String>()
@@ -353,6 +358,11 @@ class FiveMoveSession {
         if (boosterWindowActive(nowMs)) return null
         if (frameSequence == lastCircleSequence) return null
         lastCircleSequence = frameSequence
+        if (circleBaseline == null) {
+            circleBaseline = bright
+        } else if (bright != circleBaseline) {
+            circleReadingChanged = true
+        }
         if (bright > 0) {
             sawBrightCircles = true
             zeroCircleReads = 0
@@ -362,7 +372,8 @@ class FiveMoveSession {
             zeroCircleReads = 0
             return null
         }
-        if (!sawBrightCircles || swipesDispatched < 1) {
+        // A zero before the first swipe, or a row that never changed, is unreadable.
+        if (swipesDispatched < 1 || !circleReadingChanged || !sawBrightCircles) {
             zeroCircleReads = 0
             return null
         }
@@ -386,6 +397,14 @@ class FiveMoveSession {
         timeLeftSeconds = hud.timeLeftSeconds
         multiplier = hud.multiplier
         latestClassified = next
+        if (hud.soloPositive || hud.circlesClassifiable) {
+            soloEvidence = true
+        }
+        opponentBarStreak = if (hud.turnState == HudObservation.TURN_OPPONENT) {
+            opponentBarStreak + 1
+        } else {
+            0
+        }
         if (next == screenMode) {
             pendingMode = null
             pendingModeFrames = 0
@@ -527,6 +546,12 @@ class FiveMoveSession {
             return HelpGesture.Hold("help settling")
         }
         if (choice == null) return null
+        if (lastHelpAttemptAtMs > 0L && nowMs - lastHelpAttemptAtMs < HELP_ATTEMPT_GAP_MS) {
+            helpNote = "help cooldown"
+            notePlayBlock(nowMs, helpNote)
+            return null
+        }
+        lastHelpAttemptAtMs = nowMs
         val point = com.match3vision.analyzer.play.HelpButtons.center(choice.id) ?: return null
         helpId = choice.id
         helpStartedAtMs = nowMs
@@ -544,6 +569,9 @@ class FiveMoveSession {
         helpsUsedThisTurn += 1
         helpQuotaHeld = true
     }
+
+    /** A sent help may hold the tick. A failed or unsent tap must not. */
+    fun helpConsumesTurn(): Boolean = helpQuotaHeld && helpPhase != "idle"
 
     /** The tap was not sent. The quota stays where it was and the perk can be tried again. */
     fun abandonHelp(nowMs: Long, reason: String) {
@@ -576,7 +604,13 @@ class FiveMoveSession {
             return decided(Decision.Hold("booster window"), "hud")
         }
         val decision: Decision? = when (kind) {
-            PlayGate.OPPONENT -> when (ContinuousPlay.opponentAction(latestClassified)) {
+            PlayGate.OPPONENT -> when {
+                soloEvidence && opponentBarStreak < OPPONENT_BAR_FRAMES -> {
+                    notePlayBlock(nowMs, "solo opponent bar streak=$opponentBarStreak")
+                    null
+                }
+                soloEvidence -> abort("STOP — Opponent's Turn", nowMs)
+                else -> when (ContinuousPlay.opponentAction(latestClassified)) {
                 ContinuousPlay.WAIT -> {
                     opponentWait = true
                     lastOpponentAtMs = nowMs
@@ -587,6 +621,7 @@ class FiveMoveSession {
                     null
                 }
                 else -> abort("STOP — Opponent's Turn", nowMs)
+                }
             }
             PlayGate.MENU -> {
                 if (menuStreak == 0) menuSinceMs = nowMs
@@ -1318,14 +1353,23 @@ class FiveMoveSession {
             return decided(stop(sample.nowMs, sessionLimitText()), "settle")
         }
         if (!sample.countBoardChange) {
-            val changed = sample.boardHash != open.beforeHash
-            val verification = if (changed) {
-                "FAILED — board changed during the opponent's turn"
-            } else {
-                "FAILED — opponent turn before the move was verified"
+            if (!soloEvidence) {
+                opponentBarStreak = OPPONENT_BAR_FRAMES
+            } else if (opponentBarStreak < OPPONENT_BAR_FRAMES) {
+                opponentBarStreak += 1
             }
-            closeOpen(open, sample, verification)
-            return decided(stop(sample.nowMs, "STOP — opponent turn during verification"), "settle")
+            if (!soloEvidence || opponentBarStreak >= OPPONENT_BAR_FRAMES) {
+                val changed = sample.boardHash != open.beforeHash
+                val verification = if (changed) {
+                    "FAILED — board changed during the opponent's turn"
+                } else {
+                    "FAILED — opponent turn before the move was verified"
+                }
+                closeOpen(open, sample, verification)
+                return decided(stop(sample.nowMs, "STOP — opponent turn during verification"), "settle")
+            }
+        } else {
+            opponentBarStreak = 0
         }
         if (sample.diffFraction != null && sample.diffFraction > STABLE_FRACTION) {
             open.sawBoardChange = true
@@ -1800,6 +1844,11 @@ class FiveMoveSession {
         menuSinceMs = 0L
         zeroCircleReads = 0
         sawBrightCircles = false
+        circleBaseline = null
+        circleReadingChanged = false
+        soloEvidence = false
+        opponentBarStreak = 0
+        lastHelpAttemptAtMs = 0L
         lastCircleSequence = -1L
         unchangedRetries = 0
         ownGestureOpen = false
@@ -1937,6 +1986,8 @@ class FiveMoveSession {
         const val SESSION_LIMIT_MS = 1_800_000L
         const val MODE_CONFIRM_FRAMES = 3
         const val IDLE_RING = 80
+        const val HELP_ATTEMPT_GAP_MS = 30_000L
+        const val OPPONENT_BAR_FRAMES = 3
         const val HELP_PROMPT_MS = 4_000L
         const val HELP_SETTLE_MS = 8_000L
         const val BOOSTER_TAP_MS = 120L

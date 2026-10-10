@@ -122,7 +122,12 @@ class FullGame028Test {
         val solo = FiveMoveSession()
         solo.arm(0L)
         solo.observeHud(HudObservation.solo(movesRemaining = 8))
-        val stop = solo.notePlayHud(PlayGate.OPPONENT, 1_000L)
+        repeat(FiveMoveSession.OPPONENT_BAR_FRAMES - 1) { index ->
+            solo.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT))
+            assertThat(solo.notePlayHud(PlayGate.OPPONENT, 1_000L + index)).isNull()
+        }
+        solo.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT))
+        val stop = solo.notePlayHud(PlayGate.OPPONENT, 1_300L)
         assertThat(stop).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat(solo.stopReason).contains("Opponent's Turn")
     }
@@ -171,6 +176,7 @@ class FullGame028Test {
         assertThat(target).isNotNull()
         assertThat(target!!.row).isEqualTo(3)
         assertThat(target.col).isEqualTo(4)
+        PlayFlags.helps = true
         assertThat(session.considerHelp(hasLegalMove = false, extraMoveAvailable = true)).isNull()
         assertThat(session.helpNote).contains("unread")
         assertThat(
@@ -198,6 +204,7 @@ class FullGame028Test {
 
     @Test
     fun helps_onePerTurn_andUnreadChargesDoNotTap() {
+        PlayFlags.helps = true
         val unread = HelpPolicy.Charges(hammer = null, shuffle = null, geometryVerified = false)
         assertThat(HelpPolicy.choose(false, true, unread, 0)).isNull()
         val charged = HelpPolicy.Charges(hammer = 1, shuffle = 0, geometryVerified = true)

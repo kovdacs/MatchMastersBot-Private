@@ -55,10 +55,19 @@ class ScreenCaptureManager(
     private var heightPx: Int = 0
     private var densityDpi: Int = 0
 
+    val frameLease: FrameLease = FrameLease()
+
+    /** CaptureService removes its foreground notification and calls stopSelf. */
+    var systemStopListener: (() -> Unit)? = null
+
+    private val stopOnce = AtomicBoolean(false)
+
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Timber.i("MediaProjection stopped by system")
-            stop()
+            if (!stopOnce.compareAndSet(false, true)) return
+            tearDown(stopProjection = false)
+            systemStopListener?.invoke()
         }
     }
 
@@ -119,10 +128,12 @@ class ScreenCaptureManager(
 
     @Synchronized
     fun stop() {
-        if (!running.getAndSet(false) && mediaProjection == null) {
-            _isCapturing.value = false
-            return
-        }
+        if (!stopOnce.compareAndSet(false, true)) return
+        tearDown(stopProjection = true)
+    }
+
+    private fun tearDown(stopProjection: Boolean) {
+        running.set(false)
         _isCapturing.value = false
         try {
             virtualDisplay?.release()
@@ -139,7 +150,7 @@ class ScreenCaptureManager(
         imageReader = null
         try {
             mediaProjection?.unregisterCallback(projectionCallback)
-            mediaProjection?.stop()
+            if (stopProjection) mediaProjection?.stop()
         } catch (t: Throwable) {
             Timber.w(t, "MediaProjection stop")
         }
@@ -147,7 +158,7 @@ class ScreenCaptureManager(
         captureThread?.quitSafely()
         captureThread = null
         captureHandler = null
-        Timber.i("Capture stopped")
+        Timber.i("Capture stopped stopProjection=$stopProjection")
     }
 
     /** Stops capture and clears the latest frame reference. */
@@ -157,7 +168,7 @@ class ScreenCaptureManager(
         _latestFrame.value = null
         frameSequence = 0L
         cadence.reset()
-        if (prev != null && !prev.bitmap.isRecycled) {
+        if (prev != null && !frameLease.held(prev.sequence) && !prev.bitmap.isRecycled) {
             try {
                 prev.bitmap.recycle()
             } catch (_: Throwable) {
@@ -209,24 +220,33 @@ class ScreenCaptureManager(
             )
 
             val prev = _latestFrame.value
+            val sequence = ++frameSequence
             val frame = CaptureFrame(
                 width = widthPx,
                 height = heightPx,
                 timestampMs = now,
                 bitmap = cropped,
                 contentRoi = roi,
-                sequence = ++frameSequence,
+                sequence = sequence,
                 elapsedRealtimeMs = elapsed,
+                pixels = argb.copyOf(),
             )
+            val readyToFree = frameLease.publish(sequence, argb)
             if (elapsed > 0L) cadence.record(elapsed)
             _latestFrame.value = frame
-            // Recycle previous bitmap after swap (avoid MediaProjection leak).
-            if (prev != null && prev.bitmap !== cropped && !prev.bitmap.isRecycled) {
-                try {
-                    prev.bitmap.recycle()
-                } catch (t: Throwable) {
-                    Timber.w(t, "prev bitmap recycle")
+            // A frozen frame keeps its bitmap until the consumer releases the lease.
+            if (prev != null && prev.bitmap !== cropped && frameLease.canFree(prev.sequence)) {
+                frameLease.free(prev.sequence)
+                if (!prev.bitmap.isRecycled) {
+                    try {
+                        prev.bitmap.recycle()
+                    } catch (t: Throwable) {
+                        Timber.w(t, "prev bitmap recycle")
+                    }
                 }
+            }
+            readyToFree.forEach { id ->
+                if (id != prev?.sequence) frameLease.free(id)
             }
         } catch (t: Throwable) {
             Timber.e(t, "onImageAvailable failed")

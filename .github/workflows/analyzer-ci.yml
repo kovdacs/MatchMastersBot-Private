@@ -86,6 +86,12 @@ jobs:
                   print(body[:4000])
           PY
 
+      - name: Compile instrumentation tests
+        run: |
+          # No managed device on this runner. Compile androidTest so the
+          # permission, overlay, and accessibility smoke stays buildable.
+          ./gradlew --no-daemon assembleDebugAndroidTest
+
       - name: Confirm committed stable debug keystore
         run: |
           set -euo pipefail

@@ -28,6 +28,7 @@ import com.match3vision.analyzer.overlay.AutoPlaySession
 import com.match3vision.analyzer.overlay.FloatingBubbleService
 import com.match3vision.analyzer.ui.AnalyzerScreen
 import com.match3vision.analyzer.ui.AnalyzerViewModel
+import com.match3vision.analyzer.ui.NotificationPermissionGate
 import com.match3vision.analyzer.ui.theme.Match3VisionTheme
 import timber.log.Timber
 
@@ -42,6 +43,7 @@ import timber.log.Timber
 class MainActivity : ComponentActivity() {
 
     private val viewModel: AnalyzerViewModel by viewModels()
+    private val notificationGate = NotificationPermissionGate()
 
     private var pendingAfterOverlay = false
     private var pendingAfterA11y = false
@@ -79,6 +81,8 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        val status = notificationGate.onResult(granted)
+        viewModel.setNotificationStatus(status)
         Timber.d("POST_NOTIFICATIONS granted=$granted")
         continueStartFlow()
     }
@@ -115,6 +119,7 @@ class MainActivity : ComponentActivity() {
                     onStopCapture = { stopEverything() },
                     onOpenAccessibilitySettings = { openAccessibilitySettings() },
                     onOpenOverlaySettings = { openOverlaySettings() },
+                    onRetryNotification = { retryNotificationPermission() },
                 )
             }
         }
@@ -172,15 +177,16 @@ class MainActivity : ComponentActivity() {
 
     private fun continueStartFlow() {
         refreshPermissionFlags()
-        // 1) Notifications (API 33+)
+        // 1) Notifications (API 33+). Denial is remembered: capture continues
+        // without asking again until the owner taps the retry button.
         if (Build.VERSION.SDK_INT >= 33) {
-            val granted = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
+            val granted = notificationsGranted()
+            if (notificationGate.shouldRequest(permissionRequired = true, granted = granted)) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 return
+            }
+            if (!granted) {
+                viewModel.setNotificationStatus(NotificationPermissionGate.DENIED)
             }
         }
         // 2) Overlay for floating bubble
@@ -293,6 +299,25 @@ class MainActivity : ComponentActivity() {
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun notificationsGranted(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
+    /** One more POST_NOTIFICATIONS prompt. Does not restart the start loop. */
+    private fun retryNotificationPermission() {
+        notificationGate.allowRetry()
+        if (Build.VERSION.SDK_INT < 33) return
+        if (notificationsGranted()) {
+            viewModel.setNotificationStatus(NotificationPermissionGate.GRANTED)
+            return
+        }
+        if (notificationGate.shouldRequest(permissionRequired = true, granted = false)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun refreshPermissionFlags() {
