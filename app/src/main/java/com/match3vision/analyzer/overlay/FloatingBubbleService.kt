@@ -2036,6 +2036,23 @@ class FloatingBubbleService : Service() {
      * thread so the accessibility callback is not awaited (that await deadlocks
      * the main looper). It does not enter settle and does not hold the permit.
      */
+    private fun sendHelpTap(session: FiveMoveSession, x: Float, y: Float) {
+        val gesture = GestureSpec.tap(x, y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
+        val executor = AccessibilityGestureExecutor()
+        if (!executor.isReady()) {
+            session.notePlayBlock(System.currentTimeMillis(), "help tap not ready")
+            return
+        }
+        val tapAt = System.currentTimeMillis()
+        session.beginOwnGesture(x, y, x, y, tapAt)
+        try {
+            executor.dispatchRecognizedTap(gesture)
+        } finally {
+            session.finishOwnGesture(System.currentTimeMillis())
+        }
+        Timber.i("help tap point=(%d,%d)", x.toInt(), y.toInt())
+    }
+
     private fun sendSoloBoosterTap(
         session: FiveMoveSession,
         hud: HudObservation,
@@ -2133,6 +2150,13 @@ class FloatingBubbleService : Service() {
         )
         val hudNow = readHud(pixels, frame)
         session.observeHud(hudNow)
+        if (hudNow.endScreen != null && session.phase == FiveMoveSession.Phase.RUNNING) {
+            session.abort("STOP — Játék vége", now)
+            session.notePlayBlock(now, "end screen ${hudNow.endScreen}")
+            showChipNotice(session.stopReason)
+            flushFiveMoveReport(session)
+            return true
+        }
         val dimmed = dimmedFrame(pixels, frame, vision)
         val hudKind = PlayGate.kind(hudNow, visionPass = vision.validation.isPass, dimmed = dimmed)
         if (session.phase == FiveMoveSession.Phase.RUNNING) {
@@ -2226,7 +2250,7 @@ class FloatingBubbleService : Service() {
                     capturedAtMs = frame.timestampMs,
                     rankMs = rankMs,
                 )
-                if (motion != null) {
+                if (motion != null && session.helpPhase == "idle") {
                     session.releaseUnusedPermit()
                     AutoPlaySession.updateDiagnostics(
                         phase = "TARTÁS",
@@ -2236,11 +2260,78 @@ class FloatingBubbleService : Service() {
                     refreshBubbleUi()
                     return false
                 }
-                session.considerHelp(
-                    hasLegalMove = playRanking.ordered.isNotEmpty(),
-                    extraMoveAvailable = playRanking.ordered.any { it.extraMove },
-                )
+                val framePixels = pixels
+                val charges = if (framePixels == null) {
+                    com.match3vision.analyzer.play.HelpPolicy.Charges(
+                        hammer = null,
+                        shuffle = null,
+                        geometryVerified = false,
+                    )
+                } else {
+                    com.match3vision.analyzer.play.HelpButtons.charges(
+                        framePixels,
+                        frame.width,
+                        frame.height,
+                    )
+                }
                 val extraMove = playRanking.ordered.any { it.extraMove }
+                val boxCell = com.match3vision.analyzer.play.HelpTargets.adjacentToCluster(boardNow)
+                val helpChoice = session.considerHelp(
+                    hasLegalMove = playRanking.ordered.isNotEmpty(),
+                    extraMoveAvailable = extraMove,
+                    hasThreeMatch = playRanking.ordered.any { it.matchLen >= 3 },
+                    boxReady = boxCell != null,
+                    charges = charges,
+                )
+                val helpCell = when (helpChoice?.id) {
+                    "box" -> boxCell
+                    "hammer" -> {
+                        val picked = com.match3vision.analyzer.play.TargetPicker().bestCell(boardNow)
+                        picked.row to picked.col
+                    }
+                    else -> null
+                }
+                val helpPoint = helpCell?.let { (row, col) ->
+                    val box = vision.grid.cellBox(row, col)
+                    box.centerX() to box.centerY()
+                } ?: session.helpTarget()
+                val helpGesture = session.advanceHelp(
+                    nowMs = System.currentTimeMillis(),
+                    promptVisible = framePixels != null && com.match3vision.analyzer.hud.HudReader.pickAPiecePrompt(
+                        framePixels,
+                        frame.width,
+                        frame.height,
+                    ),
+                    playable = motion == null,
+                    choice = if (session.helpPhase == "idle") helpChoice else null,
+                    targetX = helpPoint?.first,
+                    targetY = helpPoint?.second,
+                )
+                when (helpGesture) {
+                    is FiveMoveSession.HelpGesture.Tap -> {
+                        session.releaseUnusedPermit()
+                        sendHelpTap(session, helpGesture.x, helpGesture.y)
+                        refreshBubbleUi()
+                        return false
+                    }
+                    is FiveMoveSession.HelpGesture.Hold -> {
+                        session.releaseUnusedPermit()
+                        AutoPlaySession.updateDiagnostics(
+                            phase = "TARTÁS",
+                            cycleReason = helpGesture.reason,
+                            gestureStatus = "NOT CREATED",
+                            inputBlockReason = helpGesture.reason,
+                        )
+                        refreshBubbleUi()
+                        return false
+                    }
+                    null -> Unit
+                }
+                if (motion != null) {
+                    session.releaseUnusedPermit()
+                    refreshBubbleUi()
+                    return false
+                }
                 val equipped = BoosterControl.equippedId.takeIf { it.isNotBlank() }
                 val entry = equipped?.let { registry.get(it) }
                 val boosterStep = try {

@@ -155,6 +155,11 @@ class FiveMoveSession {
         data class Stop(val reason: String) : Decision()
     }
 
+    sealed class HelpGesture {
+        data class Tap(val x: Float, val y: Float, val note: String) : HelpGesture()
+        data class Hold(val reason: String) : HelpGesture()
+    }
+
     var phase: Phase = Phase.IDLE
         private set
 
@@ -220,6 +225,12 @@ class FiveMoveSession {
         private set
     var helpNote: String = "helps unread"
         private set
+    var helpPhase: String = "idle"
+        private set
+    private var helpId: String? = null
+    private var helpStartedAtMs: Long = 0L
+    private var helpTargetX: Float = Float.NaN
+    private var helpTargetY: Float = Float.NaN
 
     /** Move 1 may dispatch before a saved calibration exists. */
     var autoProbe: Boolean = false
@@ -426,20 +437,106 @@ class FiveMoveSession {
         return target
     }
 
-    /** Live charges are unread, so this returns null and does not tap. */
-    fun considerHelp(hasLegalMove: Boolean, extraMoveAvailable: Boolean): HelpPolicy.Choice? {
+    /**
+     * One help step. A button tap is returned only when charges were read.
+     * Hammer and Box then wait for "Pick a piece" before the cell tap.
+     * Shuffle waits until the board is playable. A timeout resumes swipes.
+     */
+    fun considerHelp(
+        hasLegalMove: Boolean,
+        extraMoveAvailable: Boolean,
+        hasThreeMatch: Boolean = hasLegalMove,
+        boxReady: Boolean = false,
+        charges: HelpPolicy.Charges = HelpPolicy.Charges(
+            hammer = null,
+            shuffle = null,
+            geometryVerified = false,
+        ),
+    ): HelpPolicy.Choice? {
         val choice = HelpPolicy.choose(
             hasLegalMove = hasLegalMove,
             extraMoveAvailable = extraMoveAvailable,
-            charges = HelpPolicy.Charges(hammer = null, shuffle = null, geometryVerified = false),
+            charges = charges,
             usedThisTurn = helpsUsedThisTurn,
+            hasThreeMatch = hasThreeMatch,
+            boxReady = boxReady,
         )
-        helpNote = when {
-            !PlayFlags.helps -> "helps off"
-            choice != null -> "helps choice=${choice.id} reason=${choice.reason}"
-            else -> "helps unread geometry=unverified used=$helpsUsedThisTurn"
+        if (helpPhase == "idle") {
+            helpNote = when {
+                !PlayFlags.helps -> "helps off"
+                !charges.geometryVerified -> "helps unread geometry=unverified used=$helpsUsedThisTurn"
+                choice != null -> "helps choice=${choice.id} reason=${choice.reason}"
+                else -> "helps none used=$helpsUsedThisTurn hammer=${charges.hammer} shuffle=${charges.shuffle} box=${charges.box}"
+            }
         }
         return choice
+    }
+
+    fun advanceHelp(
+        nowMs: Long,
+        promptVisible: Boolean,
+        playable: Boolean,
+        choice: HelpPolicy.Choice?,
+        targetX: Float?,
+        targetY: Float?,
+    ): HelpGesture? {
+        if (!PlayFlags.helps) return null
+        if (helpPhase == "prompt") {
+            if (nowMs - helpStartedAtMs > HELP_PROMPT_MS) {
+                helpPhase = "idle"
+                helpNote = "help prompt missed id=$helpId"
+                notePlayBlock(nowMs, helpNote)
+                return null
+            }
+            if (!promptVisible) {
+                notePlayBlock(nowMs, "help waiting for pick a piece")
+                return HelpGesture.Hold("help waiting for pick a piece")
+            }
+            if (targetX == null || targetY == null) {
+                helpPhase = "idle"
+                helpNote = "help target unverified id=$helpId"
+                notePlayBlock(nowMs, helpNote)
+                return null
+            }
+            helpPhase = "settle"
+            helpStartedAtMs = nowMs
+            helpNote = "help pick id=$helpId x=${targetX.toInt()} y=${targetY.toInt()}"
+            notePlayBlock(nowMs, helpNote)
+            return HelpGesture.Tap(targetX, targetY, helpNote)
+        }
+        if (helpPhase == "settle") {
+            if (playable && nowMs - helpStartedAtMs >= 600L) {
+                helpNote = "help settled id=$helpId"
+                notePlayBlock(nowMs, helpNote)
+                helpPhase = "idle"
+                helpId = null
+                return null
+            }
+            if (nowMs - helpStartedAtMs > HELP_SETTLE_MS) {
+                helpPhase = "idle"
+                helpNote = "help settle timeout id=$helpId"
+                notePlayBlock(nowMs, helpNote)
+                return null
+            }
+            notePlayBlock(nowMs, "help settling")
+            return HelpGesture.Hold("help settling")
+        }
+        if (choice == null) return null
+        val point = com.match3vision.analyzer.play.HelpButtons.center(choice.id) ?: return null
+        helpsUsedThisTurn += 1
+        helpId = choice.id
+        helpStartedAtMs = nowMs
+        helpTargetX = targetX ?: Float.NaN
+        helpTargetY = targetY ?: Float.NaN
+        helpPhase = if (choice.needsTarget) "prompt" else "settle"
+        helpNote = "help tap=${choice.id} reason=${choice.reason}"
+        notePlayBlock(nowMs, helpNote)
+        return HelpGesture.Tap(point.x, point.y, helpNote)
+    }
+
+    fun helpTarget(): Pair<Float, Float>? {
+        if (helpTargetX.isNaN() || helpTargetY.isNaN()) return null
+        return helpTargetX to helpTargetY
     }
 
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
@@ -1696,6 +1793,11 @@ class FiveMoveSession {
         multiplier = null
         opponentWait = false
         helpsUsedThisTurn = 0
+        helpPhase = "idle"
+        helpId = null
+        helpStartedAtMs = 0L
+        helpTargetX = Float.NaN
+        helpTargetY = Float.NaN
         equippedBoosterId = null
         boosterTargetNote = "booster target=unverified equipped=unknown"
         helpNote = "helps unread"
@@ -1799,6 +1901,8 @@ class FiveMoveSession {
         const val SESSION_LIMIT_MS = 1_800_000L
         const val MODE_CONFIRM_FRAMES = 3
         const val IDLE_RING = 80
+        const val HELP_PROMPT_MS = 4_000L
+        const val HELP_SETTLE_MS = 8_000L
         const val BOOSTER_TAP_MS = 120L
         const val BOOSTER_MAX_ATTEMPTS = 3
         const val BOOSTER_CONFIRM_BOARDS = 2

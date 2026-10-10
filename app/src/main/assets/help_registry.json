@@ -12,5 +12,12 @@
     "needsTarget": false,
     "targetType": "none",
     "activation": "perk button"
+  },
+  {
+    "id": "box",
+    "name": "Box",
+    "needsTarget": true,
+    "targetType": "cell",
+    "activation": "perk button then piece"
   }
 ]

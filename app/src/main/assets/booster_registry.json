@@ -96,6 +96,14 @@
     "category": "NO_TARGET_TAP"
   },
   {
+    "id": "army_duck",
+    "name": "Army Duck",
+    "needsTarget": false,
+    "targetType": "none",
+    "activation": "ACTIVATE tap",
+    "category": "NO_TARGET_TAP"
+  },
+  {
     "id": "high_voltage",
     "name": "High Voltage",
     "needsTarget": true,

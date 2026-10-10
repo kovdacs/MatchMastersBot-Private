@@ -16,20 +16,23 @@ enum class PlayMode {
     companion object {
         fun classify(hud: HudObservation): PlayMode {
             if (!PlayFlags.modeAdapt) return BASIC
+            val opponent = hud.turnState == HudObservation.TURN_OPPONENT ||
+                hud.hudState == HudObservation.HUD_OPPONENT
+            if (opponent) return PVP
+            val your = hud.turnState == HudObservation.TURN_YOUR ||
+                hud.hudState == HudObservation.HUD_YOUR
+            val pvpMarks = hud.multiplier != null || hud.mode.equals("pvp", ignoreCase = true)
+            if (your && pvpMarks) return PVP
             val circles = hud.circlesClassifiable && hud.circlesBright != null
             if (hud.soloPositive || hud.hudState == HudObservation.HUD_SOLO || circles) {
                 return SOLO
             }
-            val banner = hud.turnState == HudObservation.TURN_YOUR ||
-                hud.turnState == HudObservation.TURN_OPPONENT ||
-                hud.hudState == HudObservation.HUD_YOUR ||
-                hud.hudState == HudObservation.HUD_OPPONENT
-            if (banner) return PVP
+            if (your) return PVP
             val timer = hud.timeLeftSeconds != null ||
                 hud.turnState == HudObservation.TURN_TIME ||
                 hud.hudState == HudObservation.HUD_TIME
             if (timer) return TIMER
-            if (hud.mode.equals("pvp", ignoreCase = true)) return PVP
+            if (pvpMarks) return PVP
             return BASIC
         }
     }

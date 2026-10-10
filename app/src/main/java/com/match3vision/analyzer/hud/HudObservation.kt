@@ -62,6 +62,8 @@ data class HudObservation(
     /** Classifier inputs. Present so a live export can be tuned. */
     val hudScores: String = "opponentReds=0 your=0.00 opponent=0.00 time=0.00 " +
         "activateLuma=0 activateBright=0.00 circlesBright=0 circlesDark=0 circlesClassifiable=no",
+    /** out-of-moves or opponent-wins. Null while the match is still going. */
+    val endScreen: String? = null,
 ) {
     fun playerTurn(): Boolean = turnState == TURN_YOUR || turnState == TURN_TIME
 
@@ -82,6 +84,7 @@ data class HudObservation(
             "barFull=${if (barFull) "yes" else "no"} boosterReady=${if (boosterReady) "yes" else "no"} " +
             "activateScore=$activateScore activateFloor=$activateFloor activateRect=$activateRect " +
             "soloPositive=${if (soloPositive) "yes" else "no"} " +
+            "endScreen=${endScreen ?: "none"} " +
             "hudState=$hudState hudScores=$hudScores"
 
     companion object {

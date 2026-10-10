@@ -20,6 +20,7 @@ object ContinuousPlay {
     fun stopOnZeroCircles(mode: PlayMode, timeLeftSeconds: Int?): Boolean {
         if (!PlayFlags.continuous) return true
         if (mode == PlayMode.TIMER && (timeLeftSeconds == null || timeLeftSeconds > 0)) return false
+        if (mode == PlayMode.PVP) return false
         return true
     }
 

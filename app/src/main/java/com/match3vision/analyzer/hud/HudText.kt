@@ -201,6 +201,24 @@ internal object HudText {
         )
     }
 
+    /** Digits inside one reference-pixel box. Used for the left "xN" pill. */
+    fun boxedDigits(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ): Int? {
+        val ink = inkBox(
+            pixels, width, height,
+            scaleX(left, width), scaleX(right, width),
+            scaleY(top, height), scaleY(bottom, height),
+        ) ?: return null
+        return trailingDigits(ink)
+    }
+
     fun multiplier(pixels: IntArray, width: Int, height: Int): Multiplier {
         val ink = inkBox(
             pixels, width, height,
