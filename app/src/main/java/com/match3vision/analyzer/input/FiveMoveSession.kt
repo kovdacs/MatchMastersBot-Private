@@ -215,7 +215,9 @@ class FiveMoveSession {
         private set
 
     private var opponentWait: Boolean = false
-    private var helpsUsedThisTurn: Int = 0
+    var helpsUsedThisTurn: Int = 0
+        private set
+    private var helpQuotaHeld: Boolean = false
     private var equippedBoosterId: String? = null
     var boosterTargetNote: String = "booster target=unverified equipped=unknown"
         private set
@@ -526,7 +528,6 @@ class FiveMoveSession {
         }
         if (choice == null) return null
         val point = com.match3vision.analyzer.play.HelpButtons.center(choice.id) ?: return null
-        helpsUsedThisTurn += 1
         helpId = choice.id
         helpStartedAtMs = nowMs
         helpTargetX = targetX ?: Float.NaN
@@ -535,6 +536,22 @@ class FiveMoveSession {
         helpNote = "help tap=${choice.id} reason=${choice.reason}"
         notePlayBlock(nowMs, helpNote)
         return HelpGesture.Tap(point.x, point.y, helpNote)
+    }
+
+    /** The perk button tap completed. A failed or cancelled tap must not call this. */
+    fun noteHelpSent() {
+        if (helpQuotaHeld) return
+        helpsUsedThisTurn += 1
+        helpQuotaHeld = true
+    }
+
+    /** The tap was not sent. The quota stays where it was and the perk can be tried again. */
+    fun abandonHelp(nowMs: Long, reason: String) {
+        helpPhase = "idle"
+        helpId = null
+        helpStartedAtMs = 0L
+        helpNote = reason
+        notePlayBlock(nowMs, reason)
     }
 
     fun helpTarget(): Pair<Float, Float>? {
@@ -585,7 +602,10 @@ class FiveMoveSession {
             else -> {
                 unknownMoves = 0
                 if (kind == PlayGate.OURS) {
-                    if (opponentWait) helpsUsedThisTurn = 0
+                    if (opponentWait) {
+                        helpsUsedThisTurn = 0
+                        helpQuotaHeld = false
+                    }
                     opponentWait = false
                     menuStreak = 0
                     menuSinceMs = 0L
@@ -964,6 +984,7 @@ class FiveMoveSession {
      * vanish and never holds a dispatch permit. After [BOOSTER_HANDLING_BUDGET_MS]
      * the booster is given up and the caller swipes.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun considerBoosterFrame(
         nowMs: Long,
         activateVisible: Boolean,
@@ -973,11 +994,13 @@ class FiveMoveSession {
         provenNoTarget: Boolean = false,
     ): BoosterStep {
         if (!PlayFlags.boosters) return BoosterStep.SWIPE
-        if (needsTarget) {
-            boosterTargetNote =
-                "booster target=off needsTarget equipped=${equippedBoosterId ?: "unknown"} activate=immediate"
-        } else if (equippedBoosterId == null && !provenNoTarget) {
-            boosterTargetNote = "booster target=unverified equipped=unknown activate=immediate"
+        val equipped = equippedBoosterId
+        if (needsTarget && equipped != null) {
+            boosterTargetNote = "booster target=blocked needsTarget equipped=$equipped"
+            return BoosterStep.SWIPE
+        }
+        if (equipped == null) {
+            boosterTargetNote = "id unknown"
         }
         if (phase != Phase.RUNNING) return BoosterStep.SWIPE
         val interested = !boosterLatched && !boosterGaveUp && (activateVisible || boosterAttempts > 0)
@@ -1180,9 +1203,11 @@ class FiveMoveSession {
         beforeHash: Long,
         beforeLabel: Long,
         beforeCircles: Int?,
+        countTap: Boolean = true,
+        callbackCompleted: Boolean = true,
     ): Decision {
         if (phase != Phase.RUNNING) return Decision.Stop(stopReason.ifBlank { "not running" })
-        noteBoosterTap(x, y, BOOSTER_TAP_MS)
+        if (countTap) noteBoosterTap(x, y, BOOSTER_TAP_MS)
         sessionLimit(nowMs)?.let { return it }
         if (gesturesDispatched >= MAX_MOVES) {
             return stop(nowMs, safetyCapText())
@@ -1200,7 +1225,7 @@ class FiveMoveSession {
             toY = y,
             beforeHash = beforeHash,
             beforeUnknown = 0,
-            callback = "onCompleted",
+            callback = if (callbackCompleted) "onCompleted" else "unconfirmed",
             playExport = playExport,
             swipeSequence = swipeSequence,
             beforeLabel = beforeLabel,
@@ -1803,6 +1828,7 @@ class FiveMoveSession {
         multiplier = null
         opponentWait = false
         helpsUsedThisTurn = 0
+        helpQuotaHeld = false
         helpPhase = "idle"
         helpId = null
         helpStartedAtMs = 0L

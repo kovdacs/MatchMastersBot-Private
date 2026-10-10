@@ -81,7 +81,9 @@ import com.match3vision.analyzer.input.DiagnosticShare
 import com.match3vision.analyzer.input.VerifyTiming
 import com.match3vision.analyzer.input.ProductionCycleContext
 import com.match3vision.analyzer.input.RuntimeCycleContext
+import com.match3vision.analyzer.input.ProductionInstall
 import com.match3vision.analyzer.input.ProductionLiveReaders
+import com.match3vision.analyzer.input.RecognizedTap
 import com.match3vision.analyzer.input.RuntimeLabels
 import com.match3vision.analyzer.input.StartupReadinessGate
 import com.match3vision.analyzer.input.VerificationPolicy
@@ -2033,33 +2035,53 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * Schedules one ACTIVATE tap and returns. The call stays on the play
-     * thread so the accessibility callback is not awaited (that await deadlocks
-     * the main looper). It does not enter settle and does not hold the permit.
+     * The same live probe the swipe executor uses. A default executor fails
+     * closed, which would block every ACTIVATE tap.
      */
-    private fun sendHelpTap(session: FiveMoveSession, x: Float, y: Float) {
+    private fun productionTapExecutor(): AccessibilityGestureExecutor =
+        ProductionInstall.accessibilityExecutor(
+            liveProbe = ProductionLiveReaders.probe(AutoPlaySession.controller.enableSwitch()),
+        )
+
+    /**
+     * One help tap, off the main thread, after the same recheck as a swipe.
+     * The quota moves only when the callback completes.
+     */
+    private suspend fun sendHelpTap(
+        session: FiveMoveSession,
+        x: Float,
+        y: Float,
+        frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult,
+    ) {
+        val now = System.currentTimeMillis()
         val gesture = GestureSpec.tap(x, y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
-        val executor = AccessibilityGestureExecutor()
+        val executor = productionTapExecutor()
         if (!executor.isReady()) {
-            session.notePlayBlock(System.currentTimeMillis(), "help tap not ready")
+            session.abandonHelp(now, "help tap not ready")
             return
         }
-        val tapAt = System.currentTimeMillis()
-        session.beginOwnGesture(x, y, x, y, tapAt)
-        try {
-            executor.dispatchRecognizedTap(gesture)
+        val permit = boosterPermit(gesture, frame, vision, settleAgeLimit())
+        session.beginOwnGesture(x, y, x, y, now)
+        val result = try {
+            withContext(Dispatchers.Default) {
+                executor.dispatchRecognizedTap(permit)
+            }
         } finally {
             session.finishOwnGesture(System.currentTimeMillis())
         }
-        Timber.i("help tap point=(%d,%d)", x.toInt(), y.toInt())
+        RecognizedTap.applyHelp(session, result, System.currentTimeMillis())
+        Timber.i("help tap point=(%d,%d) kind=%s", x.toInt(), y.toInt(), RecognizedTap.kind(result))
     }
 
-    private fun sendSoloBoosterTap(
+    private suspend fun sendSoloBoosterTap(
         session: FiveMoveSession,
         hud: HudObservation,
         frame: CaptureFrame,
+        vision: com.match3vision.analyzer.vision.VisionResult,
         extraMoveAvailable: Boolean,
         selfCheckMeasured: Boolean,
+        playExport: String,
     ): Boolean {
         val tap = SoloBooster.plan(
             hud,
@@ -2071,23 +2093,43 @@ class FloatingBubbleService : Service() {
             selfCheckMeasured = selfCheckMeasured,
         ) ?: return false
         val gesture = GestureSpec.tap(tap.x, tap.y, durationMs = FiveMoveSession.BOOSTER_TAP_MS)
-        val executor = AccessibilityGestureExecutor()
-        if (!executor.isReady()) return false
+        val executor = productionTapExecutor()
+        if (!executor.isReady()) {
+            session.notePlayBlock(System.currentTimeMillis(), "booster tap not ready")
+            return false
+        }
+        if (BoosterControl.equippedId.isBlank()) Timber.i("id unknown")
+        val permit = boosterPermit(gesture, frame, vision, settleAgeLimit())
         val tapAt = System.currentTimeMillis()
         session.beginOwnGesture(tap.x, tap.y, tap.x, tap.y, tapAt)
-        try {
-            executor.dispatchRecognizedTap(gesture)
+        val result = try {
+            withContext(Dispatchers.Default) {
+                executor.dispatchRecognizedTap(permit)
+            }
         } finally {
             session.finishOwnGesture(System.currentTimeMillis())
         }
-        session.noteBoosterTap(tap.x, tap.y, FiveMoveSession.BOOSTER_TAP_MS)
+        val board = Board.fromVision(vision.board)
+        val settling = RecognizedTap.applyBooster(
+            session = session,
+            result = result,
+            x = tap.x,
+            y = tap.y,
+            nowMs = System.currentTimeMillis(),
+            playExport = playExport,
+            swipeSequence = frame.sequence,
+            beforeHash = board.contentHash(),
+            beforeLabel = board.labelHash(),
+            beforeCircles = if (hud.circlesClassifiable) hud.circlesBright else null,
+        )
         Timber.i(
-            "booster tap point=(%d,%d) durationMs=%d",
+            "booster tap point=(%d,%d) durationMs=%d kind=%s",
             tap.x.toInt(),
             tap.y.toInt(),
             FiveMoveSession.BOOSTER_TAP_MS,
+            RecognizedTap.kind(result),
         )
-        return true
+        return settling
     }
 
     private fun playVisionPass(vision: com.match3vision.analyzer.vision.VisionResult): Boolean {
@@ -2300,7 +2342,16 @@ class FloatingBubbleService : Service() {
                     "box" -> boxCell
                     "hammer" -> {
                         val picked = com.match3vision.analyzer.play.TargetPicker().bestCell(boardNow)
-                        picked.row to picked.col
+                        val tile = boardNow.get(picked.row, picked.col)
+                        if (
+                            picked.blue < 0 ||
+                            !tile.visible ||
+                            tile.color == com.match3vision.analyzer.vision.TileColor.UNKNOWN
+                        ) {
+                            null
+                        } else {
+                            picked.row to picked.col
+                        }
                     }
                     else -> null
                 }
@@ -2323,7 +2374,7 @@ class FloatingBubbleService : Service() {
                 when (helpGesture) {
                     is FiveMoveSession.HelpGesture.Tap -> {
                         session.releaseUnusedPermit()
-                        sendHelpTap(session, helpGesture.x, helpGesture.y)
+                        sendHelpTap(session, helpGesture.x, helpGesture.y, frame, vision)
                         refreshBubbleUi()
                         return false
                     }
@@ -2390,18 +2441,31 @@ class FloatingBubbleService : Service() {
                             session,
                             hud,
                             frame,
+                            vision,
                             extraMove,
                             gates.selfCheckMeasured,
+                            moveTrace(hud, boosterDecision, hud.log()),
                         )
                     } catch (t: Throwable) {
                         Timber.e(t, "booster tap failed; continuing play")
                         session.noteBoosterException(t.message ?: t.javaClass.simpleName)
                         false
                     }
+                    if (session.phase == FiveMoveSession.Phase.STOPPED) {
+                        session.releaseUnusedPermit()
+                        showChipNotice(session.stopReason)
+                        flushFiveMoveReport(session)
+                        return true
+                    }
                     if (sent) {
                         session.releaseUnusedPermit()
                         refreshBubbleUi()
-                        return false
+                        return settleFiveMove(
+                            session,
+                            frame,
+                            vision,
+                            Board.fromVision(vision.board).contentHash(),
+                        )
                     }
                 }
                 val chosenMove = playRanking.ordered

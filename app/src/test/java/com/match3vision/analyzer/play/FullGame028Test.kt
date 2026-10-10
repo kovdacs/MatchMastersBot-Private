@@ -182,7 +182,8 @@ class FullGame028Test {
                 needsTarget = true,
                 provenNoTarget = false,
             ),
-        ).isEqualTo(FiveMoveSession.BoosterStep.TAP)
+        ).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        assertThat(session.boosterTargetNote).contains("blocked")
         session.noteEquippedBooster(null)
         assertThat(
             session.considerBoosterFrame(
@@ -192,7 +193,7 @@ class FullGame028Test {
                 canSendNow = true,
             ),
         ).isEqualTo(FiveMoveSession.BoosterStep.TAP)
-        assertThat(session.boosterTargetNote).contains("unverified")
+        assertThat(session.boosterTargetNote).isEqualTo("id unknown")
     }
 
     @Test

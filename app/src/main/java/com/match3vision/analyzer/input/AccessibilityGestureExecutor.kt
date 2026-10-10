@@ -115,11 +115,11 @@ class AccessibilityGestureExecutor(
     fun dispatchManualTest(gesture: GestureSpec): InputDispatchResult = dispatchToChannel(gesture)
 
     /**
-     * Solo ACTIVATE tap. The caller already required the solo layout, a visible
-     * no-target button, and the default-off control. Board swipes stay on
-     * [dispatchChecked].
+     * Solo ACTIVATE and help taps. The same live STOP, input, accessibility,
+     * capture, and screen recheck as [dispatchChecked] runs before the channel
+     * sees the gesture. Call this off the main thread so the callback can be awaited.
      */
-    fun dispatchRecognizedTap(gesture: GestureSpec): InputDispatchResult = dispatchToChannel(gesture)
+    fun dispatchRecognizedTap(permit: DispatchPermit): InputDispatchResult = dispatchChecked(permit)
 
     private fun dispatchToChannel(gesture: GestureSpec): InputDispatchResult {
         val svc = serviceProvider()

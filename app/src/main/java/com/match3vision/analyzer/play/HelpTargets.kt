@@ -13,6 +13,8 @@ object HelpTargets {
         var bestRun = 0
         fun consider(row: Int, col: Int, run: Int) {
             if (row !in 0 until Board.SIZE || col !in 0 until Board.SIZE) return
+            val tile = board.get(row, col)
+            if (!tile.visible || tile.color == TileColor.UNKNOWN) return
             if (run > bestRun) {
                 bestRun = run
                 best = row to col
