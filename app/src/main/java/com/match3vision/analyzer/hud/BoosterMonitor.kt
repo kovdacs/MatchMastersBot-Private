@@ -36,10 +36,17 @@ object BoosterMonitor {
         (soloPositive || yourTurn)
 }
 
-/** Bubble toggle. Default on for solo and PvP. The owner can turn it off. */
+/**
+ * Bubble toggle. Default on for solo and PvP. The owner can turn it off.
+ * [equippedId] is the only source for [com.match3vision.analyzer.input.FiveMoveSession.noteEquippedBooster].
+ * Empty means the equipped booster is unknown, so a target booster is not tapped.
+ */
 object BoosterControl {
     @Volatile
     var enabled: Boolean = true
+
+    @Volatile
+    var equippedId: String = ""
 
     fun label(): String = if (enabled) "BOOSTER: BE" else "BOOSTER: KI"
 }

@@ -488,11 +488,7 @@ class PlayMoveRanker(
                 "and a measured self-check, on a positive solo layout or Your Turn."
 
         private val LOOKAHEAD_ORDER = Comparator<Candidate> { a, b ->
-            if (PlayFlags.specials && a.combo != b.combo) {
-                if (a.combo) -1 else 1
-            } else {
-                compareLookahead(a, b)
-            }
+            compareLookahead(a, b)
         }
 
         private fun compareLookahead(a: Candidate, b: Candidate): Int {
@@ -503,6 +499,8 @@ class PlayMoveRanker(
             val now = extraFirst(a.extraMove, b.extraMove)
             return if (now != 0) {
                 now
+            } else if (PlayFlags.specials && a.combo != b.combo) {
+                if (a.combo) -1 else 1
             } else {
                 val extras = turnExtras(b) - turnExtras(a)
                 if (extras != 0) {

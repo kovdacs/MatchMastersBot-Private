@@ -20,16 +20,16 @@ enum class PlayMode {
             if (hud.soloPositive || hud.hudState == HudObservation.HUD_SOLO || circles) {
                 return SOLO
             }
+            val banner = hud.turnState == HudObservation.TURN_YOUR ||
+                hud.turnState == HudObservation.TURN_OPPONENT ||
+                hud.hudState == HudObservation.HUD_YOUR ||
+                hud.hudState == HudObservation.HUD_OPPONENT
+            if (banner) return PVP
             val timer = hud.timeLeftSeconds != null ||
                 hud.turnState == HudObservation.TURN_TIME ||
                 hud.hudState == HudObservation.HUD_TIME
             if (timer) return TIMER
-            val pvp = hud.turnState == HudObservation.TURN_YOUR ||
-                hud.turnState == HudObservation.TURN_OPPONENT ||
-                hud.hudState == HudObservation.HUD_YOUR ||
-                hud.hudState == HudObservation.HUD_OPPONENT ||
-                hud.mode.equals("pvp", ignoreCase = true)
-            if (pvp) return PVP
+            if (hud.mode.equals("pvp", ignoreCase = true)) return PVP
             return BASIC
         }
     }

@@ -2213,11 +2213,18 @@ class FloatingBubbleService : Service() {
                     }
                 }
                 val boardNow = Board.fromVision(vision.board)
-                session.planBoosterTarget(sessionBoosterRegistry(), boardNow)
+                val registry = sessionBoosterRegistry()
+                session.noteEquippedBooster(BoosterControl.equippedId)
+                session.planBoosterTarget(registry, boardNow)
+                val rankStarted = System.nanoTime()
+                val playRanking = PlayMoveRanker().rankForPlay(boardNow, hud)
+                val rankMs = (System.nanoTime() - rankStarted) / 1_000_000L
                 val motion = session.considerSwipeFrame(
                     frame.ageMs(),
                     boardNow.labelHash(),
                     System.currentTimeMillis(),
+                    capturedAtMs = frame.timestampMs,
+                    rankMs = rankMs,
                 )
                 if (motion != null) {
                     session.releaseUnusedPermit()
@@ -2229,12 +2236,13 @@ class FloatingBubbleService : Service() {
                     refreshBubbleUi()
                     return false
                 }
-                val playRanking = PlayMoveRanker().rankForPlay(boardNow, hud)
                 session.considerHelp(
                     hasLegalMove = playRanking.ordered.isNotEmpty(),
                     extraMoveAvailable = playRanking.ordered.any { it.extraMove },
                 )
                 val extraMove = playRanking.ordered.any { it.extraMove }
+                val equipped = BoosterControl.equippedId.takeIf { it.isNotBlank() }
+                val entry = equipped?.let { registry.get(it) }
                 val boosterStep = try {
                     val canSend = boosterCanSend(
                         session,
@@ -2249,6 +2257,8 @@ class FloatingBubbleService : Service() {
                         activateVisible = hud.activateWord || hud.boosterReady,
                         barFull = hud.barFull,
                         canSendNow = canSend,
+                        needsTarget = entry?.needsTarget == true,
+                        provenNoTarget = entry != null && !entry.needsTarget,
                     )
                 } catch (t: Throwable) {
                     Timber.e(t, "booster check failed; continuing play")
@@ -2294,7 +2304,7 @@ class FloatingBubbleService : Service() {
                     .drop(session.playSkip)
                     .firstOrNull()
                     ?.move
-                if (chosenMove != null && !session.swipeOverride) {
+                if (chosenMove != null) {
                     val latest = CaptureService.managerOrNull()?.latestFrame?.value
                     if (latest != null && latest.sequence > frame.sequence) {
                         val analyzed = withContext(Dispatchers.Default) { analyzeFrame(latest) }
@@ -2311,7 +2321,12 @@ class FloatingBubbleService : Service() {
                                 )
                             ) {
                                 session.releaseUnusedPermit()
-                                session.notePlayBlock(System.currentTimeMillis(), "label error")
+                                session.notePlayBlock(
+                                    System.currentTimeMillis(),
+                                    "label error",
+                                    frame.ageMs(),
+                                    rankMs,
+                                )
                                 AutoPlaySession.updateDiagnostics(
                                     phase = "TARTÁS",
                                     cycleReason = "label error",
@@ -2364,6 +2379,7 @@ class FloatingBubbleService : Service() {
                         is AutomaticInputEngine.ExecuteResult.Held -> executed.reason
                         else -> cycle?.reason ?: "HOLD — move was not dispatched"
                     }
+                    session.notePlayBlock(System.currentTimeMillis(), reason)
                     AutoPlaySession.updateDiagnostics(
                         phase = "TARTÁS",
                         cycleReason = reason,

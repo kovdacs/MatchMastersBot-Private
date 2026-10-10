@@ -8,18 +8,20 @@ object PlayFlags {
     var continuous: Boolean = true
     var pvpResume: Boolean = true
     var boosters: Boolean = true
-    var targetBoosters: Boolean = true
+    /** Off until an owner frame names the equipped booster. A target tap is not sent. */
+    var targetBoosters: Boolean = false
     var helps: Boolean = true
-    var specials: Boolean = true
+    /** Off until real frames calibrate arrow, bomb, and color-bomb pixels. */
+    var specials: Boolean = false
     var modeAdapt: Boolean = true
 
     fun reset() {
         continuous = true
         pvpResume = true
         boosters = true
-        targetBoosters = true
+        targetBoosters = false
         helps = true
-        specials = true
+        specials = false
         modeAdapt = true
     }
 

@@ -36,6 +36,11 @@ class FullGame028Test {
         assertThat(PlayMode.classify(timer)).isEqualTo(PlayMode.TIMER)
         val yours = HudObservation.pvp(turnState = HudObservation.TURN_YOUR, multiplier = 3)
         assertThat(PlayMode.classify(yours)).isEqualTo(PlayMode.PVP)
+        val bannerBeforeTimer = HudObservation.pvp(
+            turnState = HudObservation.TURN_OPPONENT,
+            timeLeftSeconds = 9,
+        )
+        assertThat(PlayMode.classify(bannerBeforeTimer)).isEqualTo(PlayMode.PVP)
         val theirs = HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT)
         assertThat(PlayMode.classify(theirs)).isEqualTo(PlayMode.PVP)
         assertThat(PlayMode.classify(HudObservation.UNKNOWN)).isEqualTo(PlayMode.BASIC)
@@ -47,13 +52,17 @@ class FullGame028Test {
     fun pvp_waitsThroughOpponentTurn_thenResumes() {
         val session = FiveMoveSession()
         session.arm(0L)
-        session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT))
+        repeat(FiveMoveSession.MODE_CONFIRM_FRAMES) {
+            session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT))
+        }
         val held = session.notePlayHud(PlayGate.OPPONENT, 1_000L)
         assertThat(held).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         val blocked = session.requestDispatch(gates(2_000L, 1L))
         assertThat(blocked).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
         assertThat((blocked as FiveMoveSession.Decision.Hold).reason).isEqualTo("opponent turn")
-        session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_YOUR, multiplier = 2))
+        repeat(FiveMoveSession.MODE_CONFIRM_FRAMES) {
+            session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_YOUR, multiplier = 2))
+        }
         assertThat(session.notePlayHud(PlayGate.OURS, 3_000L)).isNull()
         val go = session.requestDispatch(gates(4_000L, 2L))
         assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
@@ -67,13 +76,19 @@ class FullGame028Test {
     fun timer_playsWithZeroCircles_andStopsWhenTimeHitsZero() {
         val session = FiveMoveSession()
         session.arm(0L)
-        session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_TIME, timeLeftSeconds = 12))
+        val ticking = HudObservation.pvp(turnState = HudObservation.TURN_TIME, timeLeftSeconds = 12)
+        session.observeHud(ticking)
+        assertThat(session.screenMode).isEqualTo(PlayMode.SOLO)
+        repeat(FiveMoveSession.MODE_CONFIRM_FRAMES - 1) { session.observeHud(ticking) }
         assertThat(session.screenMode).isEqualTo(PlayMode.TIMER)
         assertThat(session.noteCircles(true, 0, true, 1_000L, 1L)).isNull()
         assertThat(session.noteCircles(true, 0, true, 1_100L, 2L)).isNull()
         assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        session.observeHud(HudObservation.pvp(turnState = HudObservation.TURN_TIME, timeLeftSeconds = 0))
-        val stop = session.notePlayHud(PlayGate.OURS, 2_000L)
+        val done = HudObservation.pvp(turnState = HudObservation.TURN_TIME, timeLeftSeconds = 0)
+        session.observeHud(done)
+        assertThat(session.notePlayHud(PlayGate.OURS, 2_000L)).isNull()
+        session.observeHud(done)
+        val stop = session.notePlayHud(PlayGate.OURS, 2_100L)
         assertThat(stop).isInstanceOf(FiveMoveSession.Decision.Stop::class.java)
         assertThat(session.stopReason).contains("time out")
     }
@@ -82,10 +97,27 @@ class FullGame028Test {
     fun unknownLayout_doesNotStop_andSoloOpponentStillDoes() {
         val unknown = FiveMoveSession()
         unknown.arm(0L)
-        unknown.observeHud(HudObservation.UNKNOWN)
+        repeat(FiveMoveSession.MODE_CONFIRM_FRAMES) { unknown.observeHud(HudObservation.UNKNOWN) }
         assertThat(unknown.screenMode).isEqualTo(PlayMode.BASIC)
         assertThat(unknown.notePlayHud(PlayGate.UNKNOWN, 1_000L)).isNull()
         assertThat(unknown.notePlayHud(PlayGate.OPPONENT, 1_100L)).isNull()
+        val held = unknown.requestDispatch(
+            FiveMoveSession.Gates(
+                nowMs = 1_200L,
+                a11yConnected = true,
+                selfCheckMeasured = true,
+                overlayCollapsed = true,
+                overlayOutsideRoi = true,
+                visionPass = true,
+                frameFresh = true,
+                ownUi = false,
+                msSinceCollapse = FiveMoveSession.MIN_POST_COLLAPSE_MS,
+                roiPlausible = true,
+                frameSequence = 3L,
+            ),
+        )
+        assertThat(held).isInstanceOf(FiveMoveSession.Decision.Hold::class.java)
+        assertThat((held as FiveMoveSession.Decision.Hold).reason).isEqualTo("turn unconfirmed")
         assertThat(unknown.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
         val solo = FiveMoveSession()
         solo.arm(0L)
@@ -127,6 +159,9 @@ class FullGame028Test {
         val session = FiveMoveSession()
         session.arm(0L)
         assertThat(session.planBoosterTarget(registry, board)).isNull()
+        assertThat(session.boosterTargetNote).contains("off")
+        PlayFlags.targetBoosters = true
+        assertThat(session.planBoosterTarget(registry, board)).isNull()
         assertThat(session.boosterTargetNote).contains("unverified")
         session.noteEquippedBooster("firecracker")
         assertThat(session.planBoosterTarget(registry, board)).isNull()
@@ -138,6 +173,26 @@ class FullGame028Test {
         assertThat(target.col).isEqualTo(4)
         assertThat(session.considerHelp(hasLegalMove = false, extraMoveAvailable = true)).isNull()
         assertThat(session.helpNote).contains("unread")
+        assertThat(
+            session.considerBoosterFrame(
+                nowMs = 1_000L,
+                activateVisible = true,
+                barFull = true,
+                canSendNow = true,
+                needsTarget = true,
+                provenNoTarget = false,
+            ),
+        ).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        session.noteEquippedBooster(null)
+        assertThat(
+            session.considerBoosterFrame(
+                nowMs = 1_100L,
+                activateVisible = true,
+                barFull = true,
+                canSendNow = true,
+            ),
+        ).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
+        assertThat(session.boosterTargetNote).contains("unverified")
     }
 
     @Test
@@ -179,17 +234,47 @@ class FullGame028Test {
     }
 
     @Test
-    fun combo_isPreferred_andTheFlagCanTurnSpecialsOff() {
+    fun combo_neverOutranksAnExtraMove_andSpecialsDefaultOff() {
+        assertThat(PlayFlags.specials).isFalse()
         var board = latinBoard()
-        board = board.setCopy(0, 0, board.get(0, 0).copy(special = SpecialType.BOMB))
-        board = board.setCopy(0, 1, board.get(0, 1).copy(special = SpecialType.LIGHTNING))
-        val ranked = PlayMoveRanker().rankForPlay(board)
-        assertThat(ranked.ordered.first().combo).isTrue()
-        assertThat(ranked.ordered.first().move.normalized()).isEqualTo(Move(0, 0, 0, 1).normalized())
-        assertThat(ranked.boardSpecials).contains("color-bomb")
-        PlayFlags.specials = false
+        board = board.setCopy(0, 0, board.get(0, 0).copy(color = TileColor.R, shape = TileShape.CIRCLE))
+        board = board.setCopy(0, 1, board.get(0, 1).copy(color = TileColor.R, shape = TileShape.CIRCLE))
+        board = board.setCopy(0, 2, board.get(0, 2).copy(color = TileColor.R, shape = TileShape.CIRCLE))
+        board = board.setCopy(0, 3, board.get(0, 3).copy(color = TileColor.B, shape = TileShape.STAR))
+        board = board.setCopy(1, 3, board.get(1, 3).copy(color = TileColor.R, shape = TileShape.CIRCLE))
+        board = board.setCopy(6, 0, board.get(6, 0).copy(special = SpecialType.BOMB))
+        board = board.setCopy(6, 1, board.get(6, 1).copy(special = SpecialType.LIGHTNING))
         val plain = PlayMoveRanker().rankForPlay(board)
-        assertThat(plain.ordered.map { it.move.normalized() }).doesNotContain(Move(0, 0, 0, 1).normalized())
+        assertThat(plain.ordered.map { it.move.normalized() }).doesNotContain(Move(6, 0, 6, 1).normalized())
+        PlayFlags.specials = true
+        val ranked = PlayMoveRanker().rankForPlay(board)
+        val firstExtra = ranked.ordered.indexOfFirst { it.extraMove }
+        val firstCombo = ranked.ordered.indexOfFirst { it.combo && !it.extraMove }
+        assertThat(firstExtra).isAtLeast(0)
+        if (firstCombo >= 0) assertThat(firstExtra).isLessThan(firstCombo)
+        val row = board.get(2, 2)
+        val spun = board.setCopy(2, 2, row.copy(special = SpecialType.TWO_WAY_ARROW, starValue = 1))
+        val col = board.setCopy(2, 2, row.copy(special = SpecialType.TWO_WAY_ARROW, starValue = 2))
+        assertThat(spun.labelHash()).isEqualTo(col.labelHash())
+        assertThat(spun.labelKeys().contentEquals(col.labelKeys())).isTrue()
+    }
+
+    @Test
+    fun opponentWait_clearsAfterTwentySecondsWithoutOpponentFrames() {
+        val session = FiveMoveSession()
+        session.arm(0L)
+        val opponent = HudObservation.pvp(turnState = HudObservation.TURN_OPPONENT)
+        repeat(FiveMoveSession.MODE_CONFIRM_FRAMES) { session.observeHud(opponent) }
+        session.notePlayHud(PlayGate.OPPONENT, 1_000L)
+        val waiting = session.requestDispatch(gates(2_000L, 1L))
+        assertThat((waiting as FiveMoveSession.Decision.Hold).reason).isEqualTo("opponent turn")
+        session.notePlayHud(PlayGate.UNKNOWN, 1_000L + FiveMoveSession.IDLE_WITHOUT_GESTURE_MS)
+        val unconfirmed = session.requestDispatch(gates(22_000L, 2L))
+        assertThat((unconfirmed as FiveMoveSession.Decision.Hold).reason).isEqualTo("turn unconfirmed")
+        assertThat(session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
+        session.notePlayHud(PlayGate.OURS, 23_000L)
+        val go = session.requestDispatch(gates(24_000L, 3L))
+        assertThat(go).isInstanceOf(FiveMoveSession.Decision.Go::class.java)
     }
 
     @Test

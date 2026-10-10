@@ -239,6 +239,7 @@ class PlaySessionReplayTest {
                 activateVisible = true,
                 barFull = true,
                 canSendNow = true,
+                provenNoTarget = true,
             )
             play.now += FiveMoveSession.PLAYABLE_GAP_MS
             if (step == FiveMoveSession.BoosterStep.TAP) {
@@ -274,6 +275,7 @@ class PlaySessionReplayTest {
             activateVisible = true,
             barFull = true,
             canSendNow = false,
+            provenNoTarget = true,
         )
         assertThat(held).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
         assertThat(play.session.boosterAttempts).isEqualTo(0)
@@ -283,6 +285,7 @@ class PlaySessionReplayTest {
             activateVisible = true,
             barFull = true,
             canSendNow = true,
+            provenNoTarget = true,
         )
         assertThat(expired).isEqualTo(FiveMoveSession.BoosterStep.SWIPE)
         assertThat(play.session.boosterGaveUp).isTrue()
@@ -312,43 +315,46 @@ class PlaySessionReplayTest {
         play.swipe(nextHash = 13L, dropCircle = false)
         assertThat(play.circles).isEqualTo(8)
         val opened = play.now
-        var sentAt = 0L
-        var steps = 0
-        while (sentAt == 0L && play.now - opened <= FiveMoveSession.EXTRA_FOLLOW_UP_MS) {
-            check(steps < 20) { "extra-move follow-up hung" }
-            steps += 1
-            play.now += 1_000L
-            val block = play.session.considerSwipeFrame(400L, 9_000L + steps, play.now)
-            if (block == null) sentAt = play.now
-        }
-        assertThat(sentAt).isGreaterThan(0L)
-        assertThat(sentAt - opened).isAtMost(FiveMoveSession.EXTRA_FOLLOW_UP_MS)
+        val age = 3_500L
+        val captured = opened + 4_000L
+        val changed = play.session.considerSwipeFrame(age, 9_013L, captured + age, captured, rankMs = 4L)
+        assertThat(changed).isNotNull()
+        play.session.considerSwipeFrame(age, 13L, captured + age, captured, rankMs = 5L)
+        val stable = play.session.considerSwipeFrame(age, 13L, captured + age + 300L, captured + 300L, rankMs = 5L)
+        assertThat(stable).isNull()
+        assertThat(captured + age - opened).isAtMost(FiveMoveSession.EXTRA_FOLLOW_UP_MS)
+        assertThat(play.session.swipeOverride).isFalse()
         assertThat(play.session.report()).contains("idle reason=")
-        assertThat(play.session.report()).contains("swipe made during board motion")
+        assertThat(play.session.report()).contains("ageMs=$age")
+        assertThat(play.session.report()).contains("rankMs=")
+        play.now = captured + age
         play.swipe(nextHash = 14L, dropCircle = true)
         play.expectStillPlaying("extra-move follow-up")
     }
 
     @Test(timeout = 2_000)
-    fun live0278_passBoardsIdleFor100s_exportsTheReasonThenSwipes() {
+    fun live0278_frameAgesOfOneToThreePointFiveSeconds_keepSwiping() {
         val play = Play()
         play.start(circles = 8)
         play.swipe(nextHash = 30L, dropCircle = true)
-        var t = play.now
-        val end = t + 100_000L
-        while (t < end) {
-            t += 5_000L
-            val block = play.session.considerSwipeFrame(2_000L, 80_000L + t, t)
-            check(block != null) { "idle frame was swiped at $t" }
+        val ages = longArrayOf(1_000L, 2_200L, 3_500L)
+        var sent = 0
+        var cursor = play.now
+        while (cursor < play.now + 100_000L && sent < 3) {
+            val age = ages[sent]
+            cursor += 8_000L
+            val captured = cursor - age
+            val label = 40L + sent
+            play.session.considerSwipeFrame(age, label, cursor, captured, rankMs = 2L)
+            val second = play.session.considerSwipeFrame(age, label, cursor + 300L, captured + 300L, rankMs = 3L)
+            check(second == null) { "age ${age}ms blocked: $second" }
+            play.now = cursor + 400L
+            play.swipe(nextHash = label, dropCircle = true)
+            sent += 1
         }
+        assertThat(sent).isEqualTo(3)
         assertThat(play.session.phase).isEqualTo(FiveMoveSession.Phase.RUNNING)
-        assertThat(play.session.report()).contains("idle reason=")
-        assertThat(play.session.report()).contains("swipe made during board motion")
-        val stable = 80_000L + t
-        assertThat(play.session.considerSwipeFrame(400L, stable, t + 100L)).isNull()
-        play.now = t + 300L
-        play.hash = stable
-        play.swipe(nextHash = stable + 1L, dropCircle = true)
+        assertThat(play.session.swipesDispatched).isAtLeast(4)
         play.expectStillPlaying("0.27.8 idle")
     }
 
@@ -357,9 +363,11 @@ class PlaySessionReplayTest {
         val play = Play()
         play.start(circles = 8)
         play.swipe(nextHash = 21L, dropCircle = false)
-        val block = play.session.considerSwipeFrame(2_000L, 21L, play.now + 500L)
+        play.now += 3_000L
+        val captured = play.now - 2_000L
+        val block = play.session.considerSwipeFrame(2_000L, 21L, play.now, captured, rankMs = 1L)
         assertThat(block).isNull()
-        assertThat(play.session.swipeOverride).isTrue()
+        assertThat(play.session.swipeOverride).isFalse()
     }
 
     @Test
@@ -367,15 +375,16 @@ class PlaySessionReplayTest {
         val play = Play()
         play.start()
         assertThat(play.session.considerSwipeFrame(400L, 1L)).contains("previous PASS")
-        assertThat(play.session.considerSwipeFrame(2_000L, 1L)).contains("board motion")
-        assertThat(play.session.considerSwipeFrame(400L, 2L)).contains("board motion")
-        assertThat(play.session.considerSwipeFrame(400L, 2L)).isNull()
+        assertThat(play.session.considerSwipeFrame(6_000L, 1L)).contains("frame older than")
+        assertThat(play.session.considerSwipeFrame(400L, 2L)).contains("labels changed")
+        assertThat(play.session.considerSwipeFrame(3_500L, 2L)).isNull()
         val planned = LongArray(49) { 3L }
         val newest = planned.copyOf()
         newest[1] = 9L
         assertThat(SwipeGuard.cellsMatch(planned, newest, 0, 0, 0, 1)).isFalse()
         assertThat(SwipeGuard.cellsMatch(planned, planned, 0, 0, 0, 1)).isTrue()
-        assertThat(SwipeGuard.unverifiedReason(2_000L, true, true)).isEqualTo("swipe made during board motion")
+        assertThat(SwipeGuard.unverifiedReason(6_000L, true, true)).isEqualTo("swipe made during board motion")
+        assertThat(SwipeGuard.unverifiedReason(2_000L, true, true)).isEqualTo("label error")
         assertThat(SwipeGuard.unverifiedReason(200L, false, true)).isEqualTo("swipe made during board motion")
         assertThat(SwipeGuard.unverifiedReason(200L, true, false)).isEqualTo("swipe landed off-cell")
         assertThat(SwipeGuard.unverifiedReason(200L, true, true)).isEqualTo("label error")

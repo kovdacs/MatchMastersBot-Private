@@ -12,8 +12,8 @@ import com.match3vision.analyzer.play.TargetPicker
 import kotlin.math.hypot
 
 /**
- * Plays while bright move circles remain. A hard cap stops the session at
- * [MAX_MOVES] gestures or [SESSION_LIMIT_MS].
+ * Plays while bright move circles or timer seconds remain. A hard cap stops
+ * the session at [MAX_MOVES] gestures or [SESSION_LIMIT_MS].
  *
  * Move 1 is a probe. Later moves are issued only after the previous one verifies.
  * The same checks apply to every move. A failed check stops the session.
@@ -193,10 +193,19 @@ class FiveMoveSession {
     private var extraFollowUpUntilMs: Long = 0L
     private var lastBlockLogAtMs: Long = 0L
     private var previousPassLabel: Long? = null
+    private var previousCapturedAtMs: Long = Long.MAX_VALUE
 
-    /** Solo until [observeHud] reads a timer, a PvP turn, or an unknown layout. */
+    /** Solo until three agreeing frames change it. */
     var screenMode: PlayMode = PlayMode.SOLO
         private set
+
+    /** Latest classification, before the three-frame confirm. Turn guard uses this. */
+    private var latestClassified: PlayMode = PlayMode.SOLO
+    private var pendingMode: PlayMode? = null
+    private var pendingModeFrames: Int = 0
+    private var lastHudKind: String = PlayGate.OURS
+    private var lastOpponentAtMs: Long = 0L
+    private var zeroTimeReads: Int = 0
 
     var timeLeftSeconds: Int? = null
         private set
@@ -352,11 +361,31 @@ class FiveMoveSession {
      * frame clears that streak. An unknown HUD is logged and play continues.
      * A dimmed transition is ignored. Solo never increments the unknown streak.
      */
-    /** Stores the mode used by the stop and wait rules. Does not stop the session. */
+    /**
+     * Stores the reading. [screenMode] changes only after [MODE_CONFIRM_FRAMES]
+     * consecutive frames agree, so one odd banner does not flip the rules.
+     */
     fun observeHud(hud: HudObservation) {
-        screenMode = if (PlayFlags.modeAdapt) PlayMode.classify(hud) else PlayMode.BASIC
+        val next = if (PlayFlags.modeAdapt) PlayMode.classify(hud) else PlayMode.BASIC
         timeLeftSeconds = hud.timeLeftSeconds
         multiplier = hud.multiplier
+        latestClassified = next
+        if (next == screenMode) {
+            pendingMode = null
+            pendingModeFrames = 0
+            return
+        }
+        if (pendingMode == next) {
+            pendingModeFrames += 1
+        } else {
+            pendingMode = next
+            pendingModeFrames = 1
+        }
+        if (pendingModeFrames >= MODE_CONFIRM_FRAMES) {
+            screenMode = next
+            pendingMode = null
+            pendingModeFrames = 0
+        }
     }
 
     /**
@@ -415,16 +444,25 @@ class FiveMoveSession {
 
     fun notePlayHud(kind: String, nowMs: Long): Decision? {
         if (phase != Phase.RUNNING && phase != Phase.SETTLING) return null
-        if (ContinuousPlay.timeOut(screenMode, timeLeftSeconds)) {
+        lastHudKind = kind
+        expireOpponentWait(nowMs, kind)
+        if (screenMode == PlayMode.TIMER && timeLeftSeconds == 0) {
+            zeroTimeReads += 1
+        } else {
+            zeroTimeReads = 0
+        }
+        if (zeroTimeReads >= 2 && ContinuousPlay.timeOut(screenMode, timeLeftSeconds)) {
             return decided(abort("STOP — time out", nowMs), "hud")
         }
         if (boosterWindowActive(nowMs) && (kind == PlayGate.MENU || kind == PlayGate.UNKNOWN)) {
+            notePlayBlock(nowMs, "booster window")
             return decided(Decision.Hold("booster window"), "hud")
         }
         val decision: Decision? = when (kind) {
-            PlayGate.OPPONENT -> when (ContinuousPlay.opponentAction(screenMode)) {
+            PlayGate.OPPONENT -> when (ContinuousPlay.opponentAction(latestClassified)) {
                 ContinuousPlay.WAIT -> {
                     opponentWait = true
+                    lastOpponentAtMs = nowMs
                     Decision.Hold("opponent turn")
                 }
                 ContinuousPlay.PLAY -> {
@@ -455,7 +493,10 @@ class FiveMoveSession {
                 null
             }
         }
-        if (decision != null) return decided(decision, "hud")
+        if (decision != null) {
+            if (decision is Decision.Hold) notePlayBlock(nowMs, decision.reason)
+            return decided(decision, "hud")
+        }
         logDecision("hud $kind")
         return null
     }
@@ -589,6 +630,7 @@ class FiveMoveSession {
         boosterHandlingStartedAt = -1L
         boosterAttemptLog.clear()
         previousPassLabel = null
+        previousCapturedAtMs = Long.MAX_VALUE
     }
 
     /** Ignore ACTION_OUTSIDE that belongs to the swipe we just injected. */
@@ -755,11 +797,16 @@ class FiveMoveSession {
             }
         }
         sessionLimit(gates.nowMs)?.let { return it }
-        if (gates.nowMs < pauseUntilMs) return Decision.Hold("pause — outside touch")
+        if (gates.nowMs < pauseUntilMs) return holdLogged(gates.nowMs, "pause — outside touch")
         immediateAbort(gates.nowMs, gates.ownUi, gates.a11yConnected)?.let { return it }
+        expireOpponentWait(gates.nowMs, lastHudKind)
         if (opponentWait) {
             notePlayBlock(gates.nowMs, "opponent turn")
             return Decision.Hold("opponent turn")
+        }
+        if (turnUnconfirmed()) {
+            notePlayBlock(gates.nowMs, "turn unconfirmed")
+            return Decision.Hold("turn unconfirmed")
         }
         if (gesturesDispatched >= MAX_MOVES || verifiedCount >= MAX_MOVES) {
             return stop(gates.nowMs, safetyCapText())
@@ -769,12 +816,13 @@ class FiveMoveSession {
                 noteIdle(gates.nowMs, true, "dispatch permit already issued")
                 outstanding = null
             } else {
+                notePlayBlock(gates.nowMs, "dispatch permit already issued")
                 return Decision.Hold("dispatch permit already issued")
             }
         }
         val hold = holdReason(gates)
         if (hold != null) {
-            noteIdle(gates.nowMs, gates.visionPass, hold)
+            notePlayBlock(gates.nowMs, hold)
             return Decision.Hold(hold)
         }
         val permit = Permit(token = nextToken++, moveNumber = gesturesDispatched + 1)
@@ -821,8 +869,18 @@ class FiveMoveSession {
         activateVisible: Boolean,
         barFull: Boolean,
         canSendNow: Boolean,
+        needsTarget: Boolean = false,
+        provenNoTarget: Boolean = false,
     ): BoosterStep {
         if (!PlayFlags.boosters) return BoosterStep.SWIPE
+        if (needsTarget) {
+            boosterTargetNote = "booster target=off needsTarget equipped=${equippedBoosterId ?: "unknown"}"
+            return BoosterStep.SWIPE
+        }
+        if (equippedBoosterId == null && !provenNoTarget) {
+            boosterTargetNote = "booster target=unverified equipped=unknown"
+            return BoosterStep.SWIPE
+        }
         if (phase != Phase.RUNNING) return BoosterStep.SWIPE
         val interested = !boosterLatched && !boosterGaveUp && (activateVisible || boosterAttempts > 0)
         if (interested && boosterHandlingStartedAt < 0L) {
@@ -894,43 +952,56 @@ class FiveMoveSession {
     fun boosterLog(): String = boosterAttemptLog.joinToString("\n")
 
     /**
-     * Null when this frame may be swiped. A rejected frame is an idle reason
-     * in the export, once immediately and then every [IDLE_LOG_EVERY_MS].
-     * After an extra move whose circles did not drop, a fresh PASS frame is
-     * swiped anyway once [EXTRA_FOLLOW_UP_MS] has passed, and sooner when its
-     * labels still match the previous PASS frame.
+     * Null when this frame may be swiped. A rejection is logged with [ageMs]
+     * and [rankMs]. Allowing a swipe does not consume the extra-move window
+     * and does not skip the newest-frame cell check. The window clears in
+     * [noteGesture], when a swipe is actually sent.
      */
-    fun considerSwipeFrame(ageMs: Long, labelHash: Long, nowMs: Long = 0L): String? {
+    fun considerSwipeFrame(
+        ageMs: Long,
+        labelHash: Long,
+        nowMs: Long = 0L,
+        capturedAtMs: Long = Long.MIN_VALUE,
+        rankMs: Long = -1L,
+    ): String? {
         val previous = previousPassLabel
+        val previousCaptured = previousCapturedAtMs
+        val captured = when {
+            capturedAtMs != Long.MIN_VALUE -> capturedAtMs
+            nowMs > 0L -> (nowMs - ageMs).coerceAtLeast(0L)
+            else -> Long.MAX_VALUE
+        }
         previousPassLabel = labelHash
-        val block = SwipeGuard.motionBlock(ageMs, previous, labelHash) ?: run {
-            extraFollowUpUntilMs = 0L
-            swipeOverride = false
-            return null
-        }
-        val follow = extraFollowUpUntilMs > 0L && nowMs > 0L
-        val labelsAgree = previous != null && previous == labelHash
-        val freshEnough = ageMs <= SETTLE_FRAME_AGE_MS
-        if (follow && freshEnough && (labelsAgree || nowMs >= extraFollowUpUntilMs)) {
-            if (!labelsAgree) notePlayBlock(nowMs, "extra-move follow-up")
-            extraFollowUpUntilMs = 0L
-            swipeOverride = true
-            return null
-        }
+        previousCapturedAtMs = captured
+        val block = SwipeGuard.motionBlock(
+            ageMs,
+            previous,
+            labelHash,
+            captured,
+            previousCaptured,
+            lastGestureAtMs,
+        )
         swipeOverride = false
-        if (nowMs > 0L) notePlayBlock(nowMs, block)
+        if (block == null) return null
+        if (nowMs > 0L) notePlayBlock(nowMs, block, ageMs, rankMs)
         return block
     }
 
-    /** True when [considerSwipeFrame] allowed a swipe past the freshness guard. */
+    /**
+     * Kept so a caller can see that a stability pass did not skip the cell
+     * re-check. It stays false: the newest frame is always re-checked.
+     */
     var swipeOverride: Boolean = false
         private set
 
-    /** Exported under `--- IDLE ---`. The first block is kept, then one line per 5 s. */
-    fun notePlayBlock(nowMs: Long, reason: String) {
-        if (lastBlockLogAtMs > 0L && nowMs - lastBlockLogAtMs < IDLE_LOG_EVERY_MS) return
+    /** Exported under `--- IDLE ---`. The last [IDLE_RING] lines are kept. */
+    fun notePlayBlock(nowMs: Long, reason: String, ageMs: Long = -1L, rankMs: Long = -1L) {
         lastBlockLogAtMs = nowMs
-        if (idleLog.size < 80) idleLog += "idle reason=$reason"
+        val extra = buildString {
+            if (ageMs >= 0L) append(" ageMs=$ageMs")
+            if (rankMs >= 0L) append(" rankMs=$rankMs")
+        }
+        pushIdle("idle reason=$reason$extra")
     }
 
     /**
@@ -1186,6 +1257,7 @@ class FiveMoveSession {
         )
         if (!open.countsAsSwipe) {
             previousPassLabel = labels
+            previousCapturedAtMs = (sample.nowMs - sample.frameAgeMs).coerceAtLeast(0L)
             return acceptBooster(open, sample, spent)
         }
         val circlesSame = open.beforeCircles != null &&
@@ -1206,6 +1278,7 @@ class FiveMoveSession {
                 extraFollowUpUntilMs = sample.nowMs + EXTRA_FOLLOW_UP_MS
             }
             previousPassLabel = labels
+            previousCapturedAtMs = (sample.nowMs - sample.frameAgeMs).coerceAtLeast(0L)
             closeOpen(
                 open,
                 sample,
@@ -1537,11 +1610,32 @@ class FiveMoveSession {
     }
 
     private fun noteIdle(nowMs: Long, visionPass: Boolean, reason: String) {
-        if (!visionPass) return
-        if (idleSinceGesture(nowMs) <= IDLE_WITHOUT_GESTURE_MS) return
-        if (lastIdleLogAtMs > 0L && nowMs - lastIdleLogAtMs < IDLE_LOG_EVERY_MS) return
-        lastIdleLogAtMs = nowMs
-        if (idleLog.size < 80) idleLog += "idle reason=$reason"
+        val logged = if (visionPass) reason else "$reason visionHold"
+        notePlayBlock(nowMs, logged)
+    }
+
+    private fun holdLogged(nowMs: Long, reason: String): Decision.Hold {
+        notePlayBlock(nowMs, reason)
+        return Decision.Hold(reason)
+    }
+
+    private fun pushIdle(line: String) {
+        idleLog.add(line)
+        while (idleLog.size > IDLE_RING) idleLog.removeAt(0)
+    }
+
+    /** PvP and an unrecognized layout do not dispatch until the turn is ours. */
+    private fun turnUnconfirmed(): Boolean {
+        if (latestClassified != PlayMode.PVP && latestClassified != PlayMode.BASIC) return false
+        if (latestClassified == PlayMode.PVP && lastHudKind == PlayGate.OURS) return false
+        return true
+    }
+
+    private fun expireOpponentWait(nowMs: Long, kind: String) {
+        if (!opponentWait || kind == PlayGate.OPPONENT || lastOpponentAtMs <= 0L) return
+        if (nowMs - lastOpponentAtMs < IDLE_WITHOUT_GESTURE_MS) return
+        opponentWait = false
+        notePlayBlock(nowMs, "opponent wait expired")
     }
 
     private fun ignore(open: OpenMove, reason: String): Decision.Hold {
@@ -1591,6 +1685,13 @@ class FiveMoveSession {
         swipeOverride = false
         decisionLog.clear()
         screenMode = PlayMode.SOLO
+        latestClassified = PlayMode.SOLO
+        pendingMode = null
+        pendingModeFrames = 0
+        lastHudKind = PlayGate.OURS
+        lastOpponentAtMs = 0L
+        zeroTimeReads = 0
+        previousCapturedAtMs = Long.MAX_VALUE
         timeLeftSeconds = null
         multiplier = null
         opponentWait = false
@@ -1694,8 +1795,10 @@ class FiveMoveSession {
     }
 
     companion object {
-        const val MAX_MOVES = 60
-        const val SESSION_LIMIT_MS = 900_000L
+        const val MAX_MOVES = 120
+        const val SESSION_LIMIT_MS = 1_800_000L
+        const val MODE_CONFIRM_FRAMES = 3
+        const val IDLE_RING = 80
         const val BOOSTER_TAP_MS = 120L
         const val BOOSTER_MAX_ATTEMPTS = 3
         const val BOOSTER_CONFIRM_BOARDS = 2
